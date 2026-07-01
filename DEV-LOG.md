@@ -497,3 +497,10 @@ exacto de cada uno y pregunto **quién cablea cada cual**:
 **Pregunta concreta:** ¿cableas tú los dos (es todo tu terreno: orchestrator/assemble/app), o hago yo
 el "pegamento" del lado de mis módulos (ej. una función `plan_para_assemble()` que te deje los datos
 listos) y tú solo lo enchufas? Dime cuál prefieres para cada uno y arrancamos sin pisarnos.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⏳ AVISO (no bloqueo): construyendo angle_clone.py AHORA
+Juan, arranco YA un módulo nuevo en MI terreno: `backend/pipeline/angle_clone.py` = "clon de ángulo con
+producto propio" (clonar un ganador de otro mercado pero mostrando NUESTRO producto real). **REUSA tu
+`product_swap.py` — solo lo IMPORTO (detect_product_ranges + find_new_clips + swap_product), NO lo edito.**
+Aviso para que no toquemos `product_swap.py` al mismo tiempo. Si me toca modificarlo, te aviso aquí antes.
+En un rato dejo la entrada de "hecho".

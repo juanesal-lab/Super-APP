@@ -106,6 +106,7 @@
     <button data-p="p-crear" class="active">✂️ Cortar clips</button>
     <button data-p="p-producto">📦 Mi producto</button>
     <button data-p="p-descargar">📥 Descargar</button>
+    <button data-p="p-buscar">🔎 Buscar TikTok</button>
     <button data-p="p-auto">✨ Crear creativo</button>
     <button data-p="p-swap">🔄 Clonar ganador</button>
     <button data-p="p-dub">🎙️ Doblar</button>
@@ -248,6 +249,58 @@
     }
   </script>
   </div><!-- /p-auto -->
+
+  <!-- 🔎 BUSCAR CREATIVOS EN TIKTOK (sección nueva) -->
+  <div class="panel" id="p-buscar" style="display:none">
+    <div class="autoHero">
+      <h2>🔎 <span>Buscar en TikTok</span></h2>
+      <p class="lead">Sube una foto de tu producto (o escribe el nombre) y te doy <b>links REALES</b> de
+        creativos de TikTok para que elijas cuáles usar. Luego copias los que quieras y los bajas en la
+        pestaña 📥 Descargar.</p>
+      <input type="file" id="tkFoto" accept="image/*" class="hidden">
+      <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Foto del producto (opcional)</b>
+        <div class="s">o solo escribe el nombre abajo</div></label>
+      <div class="autoOpts">
+        <input type="text" id="tkNombre" class="full" placeholder="Nombre / palabras clave (ej. repelente ultrasónico plagas)">
+        <select id="tkCount"><option value="15">15 links</option><option value="20" selected>20 links</option><option value="30">30 links</option></select>
+      </div>
+      <button class="autoBtn" id="tkGo" onclick="tkRun()">🔎 Buscar creativos</button>
+      <div class="autoProg hidden" id="tkProg"><div class="autoMsg" id="tkMsg">Buscando…</div></div>
+      <div id="tkResult"></div>
+    </div>
+    <script>
+      (function(){ const el=document.getElementById('tkFoto');
+        el.addEventListener('change',e=>{ const f=e.target.files[0]; window._tkFoto=f;
+          document.getElementById('tkFotoName').textContent = f?('📸 '+f.name):'📸 Foto del producto (opcional)'; }); })();
+      async function tkRun(){
+        const nombre=document.getElementById('tkNombre').value.trim();
+        if(!nombre && !window._tkFoto){ alert('Escribe el nombre o sube una foto'); return; }
+        const fd=new FormData();
+        if(window._tkFoto) fd.append('foto',window._tkFoto);
+        fd.append('nombre',nombre); fd.append('count',document.getElementById('tkCount').value);
+        document.getElementById('tkGo').disabled=true;
+        document.getElementById('tkProg').classList.remove('hidden');
+        document.getElementById('tkMsg').textContent='Buscando en TikTok…';
+        document.getElementById('tkResult').innerHTML='';
+        try{
+          const r=await fetch('/api/tiktok-search',{method:'POST',body:fd}); const j=await r.json();
+          document.getElementById('tkGo').disabled=false; tkRender(j);
+        }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
+      }
+      function tkRender(j){
+        document.getElementById('tkMsg').textContent = j.keywords ? ('🔑 Buscado: '+j.keywords) : '';
+        const links=(j.links||[]); let h='';
+        if(!links.length){
+          h='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+j.busqueda+'" target="_blank">'+j.busqueda+'</a></div>';
+        } else {
+          const urls=links.map(l=>l.url).join('\n');
+          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${links.length} links</button>`;
+          links.forEach((l,i)=>{ h+=`<div class="autoStep"><a href="${l.url}" target="_blank" style="color:var(--accent)">${i+1}. ${l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`; });
+        }
+        document.getElementById('tkResult').innerHTML=h;
+      }
+    </script>
+  </div><!-- /p-buscar -->
 
   <div class="panel" id="p-config" style="display:none">
   <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>

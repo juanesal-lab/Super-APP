@@ -853,3 +853,17 @@ con audio ✓. No toqué `render_clip` ni tu `venc()`/word-subs.
   Verificado con tiempos que se pisaban a propósito → sale uno solo limpio.
 - **Tapado no cubría entero:** subí el margen de la caja en text_translate (mx=bw*0.14+18, my=bh*0.6+20)
   para tapar el original ENTERO sin que se asome. (Toqué esa línea de tu archivo, Juan; solo el margen.)
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔎 NUEVA sección "Buscar en TikTok" (foto/nombre → links reales)
+Lo que pidió jack: una sección donde pone foto + nombre y recibe LINKS de creativos de TikTok.
+- **NUEVO `backend/pipeline/tiktok_search.py`**: `buscar(image_path, nombre, api_key, count)` →
+  {ok, keywords, links:[{url,title,cover}], busqueda}. Si hay foto, Gemini visión saca las palabras
+  clave; luego busca en TikTok vía la API pública de **tikwm** (sin login) y devuelve links REALES.
+  Degradación: si tikwm falla, devuelve el link de BÚSQUEDA de TikTok para abrir a mano.
+- **`app.py`**: endpoint síncrono `POST /api/tiktok-search` (foto opcional + nombre + count).
+- **`frontend`** (TOQUÉ tu nav, Juan — aviso): pestaña nueva "🔎 Buscar TikTok" + panel `p-buscar`
+  (foto/nombre → lista de links + botón "copiar todos"). Usa tu lógica de pestañas genérica (data-p).
+- **Probado EN VIVO** (con captura): "faja reductora colombiana" → 19 links reales de TikTok con títulos.
+- **Aviso de fragilidad honesto:** tikwm es un servicio de TERCEROS (no oficial); puede limitar o caerse.
+  Si algún día falla, la sección igual muestra el link de búsqueda para abrir a mano. Si prefieres algo
+  más robusto a futuro, tocaría Playwright/oficial (más pesado).

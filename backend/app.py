@@ -303,6 +303,25 @@ async def auto(
     return {"job_id": job_id}
 
 
+# ---- BUSCAR CREATIVOS EN TIKTOK (foto + nombre -> links reales) ----
+
+@app.post("/api/tiktok-search")
+async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
+                        foto: UploadFile = File(None)):
+    from pipeline.tiktok_search import buscar
+    img_path = None
+    if foto is not None and foto.filename:
+        d = os.path.join(UPLOAD_DIR, "tksearch")
+        os.makedirs(d, exist_ok=True)
+        img_path = os.path.join(d, os.path.basename(foto.filename))
+        with open(img_path, "wb") as o:
+            shutil.copyfileobj(foto.file, o)
+    if not (nombre.strip() or img_path):
+        raise HTTPException(400, "Dame el nombre del producto o una foto")
+    return buscar(image_path=img_path, nombre=nombre.strip(),
+                  api_key=_load_env_key(), count=int(count))
+
+
 # ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----
 
 def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, settings: dict):

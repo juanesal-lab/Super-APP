@@ -262,8 +262,8 @@ def traducir_texto_pantalla(
     # 2) Renderizar un PNG por bloque (fondo que tapa + texto traducido)
     report(f"Traduciendo {len(bloques)} bloque(s) de texto en pantalla...", 70)
     inputs, filt, last = ["-i", video_path], [], "[0:v]"
-    cap_s = cv2.VideoCapture(video_path) if modo == "tapar" else None   # para muestrear color real
-    n = 0
+    n = 0        # paso del overlay (tags [v0],[v1]...)
+    img_i = 0    # PNGs agregados como input (el input 0 es el video)
     for b in bloques:
         es = str(b.get("es_colombia", "")).strip()
         if modo == "traducir" and not es:   # en "tapar" cubrimos aunque no haya traducción
@@ -275,25 +275,30 @@ def traducir_texto_pantalla(
         mx, my = int(bw * 0.14) + 18, int(bh * 0.6) + 20
         bx, by = max(0, bx - mx), max(0, by - my)
         bw, bh = min(W - bx, bw + 2 * mx), min(H - by, bh + 2 * my)
-        bg = _hex(b.get("fondo"), (255, 255, 255))
-        fg = _hex(b.get("texto_color"), (0, 0, 0))
-        png = os.path.join(work, f"b{n}.png")
-        if modo == "tapar":
-            # color REAL de la zona (mediana) para que el relleno sólido combine con el fondo
-            fill = _region_color_rgb(cap_s, _mmss(b.get("inicio", 0)), bx, by, bw, bh, bg)
-            _render_solid(bw, bh, fill, png)
-        else:
-            _render_block(es, bw, bh, bg, fg, png)  # reescribe la traducción
-        inputs += ["-i", png]
+        bw, bh = max(8, bw - bw % 2), max(8, bh - bh % 2)   # pares y mínimo, para crop/blur
         s, e = _mmss(b.get("inicio", 0)), _mmss(b.get("fin", dur))
         if e <= s:
             e = dur
         tag = f"[v{n}]"
-        filt.append(f"{last}[{n + 1}:v]overlay={bx}:{by}:enable='between(t,{s:.2f},{e:.2f})'{tag}")
+        if modo == "tapar":
+            # DESENFOQUE REAL de la zona (no relleno sólido de color, que quedaba como un parche feo):
+            # recorto la región, la difumino fuerte (gblur) y la pego de vuelta → borroso natural que
+            # se MEZCLA con la imagen y es ESTABLE (caja fija = no titila). sigma escala con el tamaño
+            # para que el texto quede siempre ilegible.
+            sigma = max(12, min(30, int(min(bw, bh) / 4)))
+            filt.append(f"{last}split[b{n}a][b{n}b]")
+            filt.append(f"[b{n}b]crop={bw}:{bh}:{bx}:{by},gblur=sigma={sigma}:steps=2[b{n}bl]")
+            filt.append(f"[b{n}a][b{n}bl]overlay={bx}:{by}:enable='between(t,{s:.2f},{e:.2f})'{tag}")
+        else:
+            bg = _hex(b.get("fondo"), (255, 255, 255))
+            fg = _hex(b.get("texto_color"), (0, 0, 0))
+            png = os.path.join(work, f"b{img_i}.png")
+            _render_block(es, bw, bh, bg, fg, png)  # reescribe la traducción
+            inputs += ["-i", png]
+            img_i += 1
+            filt.append(f"{last}[{img_i}:v]overlay={bx}:{by}:enable='between(t,{s:.2f},{e:.2f})'{tag}")
         last = tag
         n += 1
-    if cap_s is not None:
-        cap_s.release()
 
     if n == 0:
         return {"ok": True, "bloques": [], "video": video_path}

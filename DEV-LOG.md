@@ -887,3 +887,19 @@ Jack: del flujo de links, que también genere los guiones de voz en off (no solo
   videos). Lo cambié a: si hay `versions` → renderResults; si hay `scripts` → renderScripts. Así se ven
   AMBOS cuando vienen juntos (y no rompe /api/process ni /api/scripts). Botón: "Bajar → cortar + guiones".
 - **Verificado EN VIVO (capturas):** 1 link real → 6 versiones + 10 guiones (con ángulos y "▶️ Escuchar").
+
+### 2026-07-01 · Claude (juanesal-lab) · 🎨 FIX: "tapar textos" ahora es DESENFOQUE real (no parche de color)
+Juan mostró una captura: el tapado quedaba como un PARCHE DE COLOR sólido feo. Quiere que se vea BORROSO
+(vidrio esmerilado), mezclándose con la imagen, como antes. Era el relleno sólido que yo mismo puse cuando
+él pidió "que el blur sea sólido" — malinterpreté: quería ESTABLE/sin titilar, no color plano.
+- **`text_translate.py` (modo "tapar", TU archivo — cambio quirúrgico):** en vez de overlay de PNG sólido
+  (`_render_solid`/`_region_color_rgb`), ahora RECORTA la región + `gblur` fuerte (sigma escala con la caja,
+  steps=2) + overlay de vuelta → borroso natural y ESTABLE (caja fija = no titila). Desacoplé el índice de
+  PNG (`img_i`) del paso (`n`) porque "tapar" ya no agrega PNGs; el modo "traducir" quedó IGUAL. `_render_solid`
+  y `_region_color_rgb` quedaron sin uso (los dejé por si los usas en otro lado). NO toqué tu detección
+  Gemini ni tus márgenes (mx/my).
+- **`text_detect.py` (EAST, fallback sin key):** el relleno de color mediano → `cv2.GaussianBlur` de la ROI
+  (kernel impar que escala con la caja). Mismo look borroso.
+- Probado: frame con texto amarillo grande → queda ILEGIBLE y borroso, se mezcla con el fondo (no parche).
+- **AVISO:** toqué `text_translate.py` (tu terreno) pero solo el bloque de armado de overlays del modo tapar.
+  Pull antes de push.

@@ -450,6 +450,14 @@
       <input type="file" id="fileInput" accept="video/*" multiple class="hidden">
     </div>
     <div class="files" id="fileList"></div>
+
+    <!-- O pegar links de TikTok (en vez de subir archivos) -->
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <label class="lbl">…o pega links de TikTok (uno por línea) y la app los baja y los corta</label>
+      <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
+      <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="cortarDesdeLinks()">📥✂️ Bajar y cortar desde links</button>
+    </div>
   </div>
 
   <!-- Settings -->
@@ -970,6 +978,24 @@ document.getElementById("go").onclick = async ()=>{
   const j = await r.json();
   poll(j.job_id);
 };
+
+// Cortar clips DESDE links de TikTok (los baja y los corta, reusando los mismos ajustes)
+async function cortarDesdeLinks(){
+  const links = document.getElementById("tkClipLinks").value.trim();
+  if(!links){ alert("Pega al menos un link de TikTok"); return; }
+  document.getElementById("goLinks").disabled = true;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("scripts").innerHTML = "";
+  document.getElementById("progCard").classList.remove("hidden");
+  const fd = buildForm();                 // mismos ajustes; los archivos van vacíos
+  fd.append("links", links);
+  try{
+    const r = await fetch("/api/process-links",{method:"POST",body:fd});
+    const j = await r.json();
+    document.getElementById("goLinks").disabled = false;
+    poll(j.job_id);
+  }catch(e){ document.getElementById("goLinks").disabled = false; alert("Error: "+e); }
+}
 
 async function poll(id){
   const r = await fetch("/api/status/"+id);

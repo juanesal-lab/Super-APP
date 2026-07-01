@@ -867,3 +867,13 @@ Lo que pidió jack: una sección donde pone foto + nombre y recibe LINKS de crea
 - **Aviso de fragilidad honesto:** tikwm es un servicio de TERCEROS (no oficial); puede limitar o caerse.
   Si algún día falla, la sección igual muestra el link de búsqueda para abrir a mano. Si prefieres algo
   más robusto a futuro, tocaría Playwright/oficial (más pesado).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📥✂️ Cortar clips DESDE links de TikTok (pegar links, no solo subir)
+Jack pidió: en "Cortar clips", además de subir videos, poder PEGAR links de TikTok.
+- **`app.py`**: nuevo `POST /api/process-links` + `_run_links_job`: recibe `links` (texto) + los MISMOS
+  ajustes de /api/process, baja los videos con `download_urls` (tu downloader) y luego REUSA `_run_job`
+  (tu flujo de cortar clips). No modifiqué /api/process ni process_job.
+- **`frontend`** (TOQUÉ tu sección p-crear, Juan — aviso): agregué un cuadro para pegar links + botón
+  "Bajar y cortar desde links" → `cortarDesdeLinks()` que reusa tu `buildForm()` y tu `poll()`.
+- **Probado end-to-end (con captura):** pegué 1 link real de TikTok → bajó (3.1MB) → analizó → armó
+  2 versiones → done. La descarga real de TikTok funciona (yt-dlp).

@@ -224,6 +224,75 @@ async def process(
     return {"job_id": job_id}
 
 
+# ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
+
+def _run_links_job(job_id: str, links_text: str, settings: dict):
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        urls = [u for u in links_text.split() if u.startswith("http")]
+        if not urls:
+            job["status"] = "error"; job["message"] = "No hay links válidos (pega URLs de TikTok)"
+            return
+        progress(f"Bajando {len(urls)} video(s) de TikTok...", 3)
+        dl = download_urls(urls, os.path.join(UPLOAD_DIR, job_id), progress)
+        paths = [d["path"] for d in dl if d.get("ok") and d.get("path")]
+        if not paths:
+            job["status"] = "error"
+            job["message"] = "No se pudo bajar ningún video (revisa los links o cierra Chrome para las cookies)"
+            return
+        _run_job(job_id, paths, settings)   # reusa el flujo de "cortar clips" existente
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/process-links")
+async def process_links(
+    links: str = Form(""),
+    target_seconds: float = Form(15.0),
+    max_clip: float = Form(2.5),
+    use_gemini: bool = Form(True),
+    product_desc: str = Form(""),
+    aspect: str = Form("1:1"),
+    hook_text: str = Form(""),
+    hook_pos: str = Form("arriba"),
+    auto_hook: bool = Form(False),
+    page_url: str = Form(""),
+    enhance: bool = Form(False),
+    effects: bool = Form(False),
+    blur_captions: bool = Form(False),
+    text_mode: str = Form("tapar"),
+    caption_pos: str = Form("abajo"),
+):
+    if not links.strip():
+        raise HTTPException(400, "Pega al menos un link de TikTok")
+    job_id = uuid.uuid4().hex[:12]
+    JOBS[job_id] = {"status": "running", "progress": 0,
+                    "message": "Iniciando...", "result": None, "created": time.time()}
+    settings = {
+        "target_seconds": float(target_seconds),
+        "max_clip_seconds": min(5.0, max(1.0, float(max_clip))),
+        "use_gemini": bool(use_gemini),
+        "product_desc": product_desc.strip(),
+        "aspect": aspect if aspect in ("1:1", "9:16", "4:5", "16:9") else "1:1",
+        "hook_text": hook_text.strip(),
+        "hook_pos": hook_pos if hook_pos in ("arriba", "centro", "abajo") else "arriba",
+        "auto_hook": bool(auto_hook),
+        "page_url": page_url.strip(),
+        "enhance": bool(enhance),
+        "effects": bool(effects),
+        "blur_captions": bool(blur_captions),
+        "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
+        "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
+    }
+    threading.Thread(target=_run_links_job, args=(job_id, links, settings), daemon=True).start()
+    return {"job_id": job_id}
+
+
 @app.get("/api/status/{job_id}")
 def status(job_id: str):
     job = JOBS.get(job_id)

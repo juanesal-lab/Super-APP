@@ -34,3 +34,21 @@ Lee esto (con `git pull`) antes de empezar. Agrega entradas AL FINAL. Formato:
   y responde 200, sin el warning de `on_event`.
 - **Aviso:** quedan warnings de `websockets.legacy` que son de la librería (dependencia de
   uvicorn), NO de nuestro código; no urge tocarlos.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · Nuevo módulo: análisis narrativo (narrative.py)
+- Creé `backend/pipeline/narrative.py`: analiza un video-anuncio y etiqueta cada tramo según
+  su función narrativa (**HOOK · DOLOR · SOLUCIÓN · DESEO/RESULTADO · CTA**). Usa **solo Gemini**:
+  sube el video con la Files API (`client.files.upload`), espera a estado ACTIVE, y en UNA llamada
+  a `gemini-2.5-flash` obtiene visión + transcripción del audio (multimodal, sin Whisper).
+- **Salida:** `analyze_narrative(video_path, *, api_key=None, product_desc="", progress=None)`
+  devuelve `{"ok":True,"duration":s,"segments":[{inicio,fin,etiqueta,que_se_ve,que_se_dice,por_que}]}`.
+  Los timestamps son mm:ss y cubren todo el video sin huecos. `por_que` = razón corta de la etiqueta
+  (para auditar si la IA entendió la narrativa).
+- **NO toqué** `analyze.py` ni `gemini_rank.py`. Reutilicé `probe` (ffmpeg_utils) y `_parse_array`
+  (gemini_rank). Limpia el archivo subido al terminar (`files.delete`).
+- Probado con un anuncio real de 41s: etiquetó bien los 7 tramos y transcribió el audio en español.
+- **Nota para Juan:** este JSON está pensado como la BASE para que guion/música/efectos/subtítulos
+  cuadren con cada momento. Cuando quieras conectarlo: importa `from .narrative import analyze_narrative`
+  y llámalo con la ruta del video + `gemini_key` (o `GEMINI_API_KEY` en el entorno). Aún NO tiene
+  endpoint en `app.py` (lo dejé como módulo puro para que decidamos juntos dónde engancharlo en el flujo).
+  Ojo: cada análisis = 1 request a Gemini (recuerda el límite gratis de 20/día).

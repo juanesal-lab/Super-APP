@@ -6,21 +6,43 @@
 <title>CreativeMaxing · Vidaria</title>
 <style>
   :root{
-    --bg:#0d0f14; --card:#161a23; --card2:#1e2430; --line:#2a313f;
-    --txt:#e8ecf3; --muted:#8b94a7; --accent:#6c5ce7; --accent2:#00d2a8;
-    --ok:#27c498; --warn:#f0a73f;
+    --bg:#eef1f7; --card:#ffffff; --card2:#f4f6fb; --line:#e5e9f2;
+    --txt:#1f2937; --muted:#6b7488; --accent:#6c5ce7; --accent2:#0aa88d;
+    --ok:#10a37f; --warn:#d98420;
+    --shadow:0 1px 2px rgba(20,30,60,.04), 0 8px 24px rgba(20,30,60,.06);
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg);color:var(--txt);line-height:1.5}
-  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
-  h1{font-size:26px;margin:0 0 4px;font-weight:700}
+    background:var(--bg);color:var(--txt);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:34px 20px 90px}
+  h1{font-size:28px;margin:0 0 4px;font-weight:800;letter-spacing:-.4px}
   h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));
     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .sub{color:var(--muted);margin:0 0 28px;font-size:14px}
+  .sub{color:var(--muted);margin:0 0 24px;font-size:14.5px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
-    padding:22px;margin-bottom:18px}
-  .card h2{font-size:15px;margin:0 0 14px;font-weight:600;color:var(--txt)}
+    padding:24px;margin-bottom:18px;box-shadow:var(--shadow)}
+  .card h2{font-size:16px;margin:0 0 14px;font-weight:700;color:var(--txt);letter-spacing:-.2px}
+  /* Pestañas */
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:6px;margin-bottom:22px;box-shadow:var(--shadow);position:sticky;top:12px;z-index:20}
+  .tabs button{flex:1;min-width:120px;border:0;background:transparent;color:var(--muted);
+    font-size:13.5px;font-weight:600;padding:11px 10px;border-radius:10px;cursor:pointer;
+    transition:.15s;white-space:nowrap}
+  .tabs button:hover{background:var(--card2);color:var(--txt)}
+  .tabs button.active{background:linear-gradient(90deg,var(--accent),#8a7bff);color:#fff;
+    box-shadow:0 4px 12px rgba(108,92,231,.28)}
+  .panel{animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  /* Ayuda: "¿qué hace?" y tips */
+  .qhace{background:var(--card2);border-left:3px solid var(--accent2);border-radius:0 10px 10px 0;
+    padding:12px 14px;margin:-6px 0 18px;font-size:13.5px;color:var(--muted)}
+  .qhace b{color:var(--txt)}
+  .tip{display:flex;gap:9px;font-size:13.5px;color:var(--muted);margin:8px 0}
+  .tip .em{font-size:16px;line-height:1.3}
+  .step{display:flex;gap:12px;margin-bottom:14px}
+  .step .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+    font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step .st{font-size:14px}.step .st b{color:var(--txt)}
   .drop{border:2px dashed var(--line);border-radius:14px;padding:38px 20px;text-align:center;
     cursor:pointer;transition:.2s;background:var(--card2)}
   .drop:hover,.drop.over{border-color:var(--accent);background:#1c2030}
@@ -49,8 +71,8 @@
     padding:11px 12px;border-radius:10px;font-size:13px}
   .keyrow button{padding:0 18px;white-space:nowrap}
   .pill{display:inline-block;font-size:12px;padding:3px 10px;border-radius:20px;
-    background:#1d2b27;color:var(--ok);border:1px solid #234}
-  .pill.off{background:#2b2620;color:var(--warn)}
+    background:#e7f7f1;color:var(--ok);border:1px solid #c6ece0;font-weight:600}
+  .pill.off{background:#fbeedb;color:var(--warn);border:1px solid #f2ddbb}
   .bar{height:10px;background:var(--card2);border-radius:8px;overflow:hidden;margin:14px 0 8px}
   .bar > div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));
     transition:width .4s}
@@ -78,12 +100,21 @@
 <body>
 <div class="wrap">
   <h1>Creative<span>Maxing</span></h1>
-  <p class="sub">Sube videos de proveedor → la IA encuentra los mejores cortes, los recorta a 1:1 (&lt;3s) y arma varias versiones para tu landing.</p>
+  <p class="sub">Tu estudio de creativos con IA para dropshipping — clips, versiones, doblaje, GIFs y más, en un solo lugar.</p>
+
+  <nav class="tabs" id="tabs">
+    <button data-p="p-crear" class="active">✂️ Crear clips</button>
+    <button data-p="p-auto">✨ Automático</button>
+    <button data-p="p-swap">🔄 Reemplazar producto</button>
+    <button data-p="p-dub">🎙️ Doblar</button>
+    <button data-p="p-config">🔑 Configuración</button>
+    <button data-p="p-guia">📚 Guía &amp; Tips</button>
+  </nav>
 
   <!-- ✨ MODO AUTOMÁTICO (sección nueva, autocontenida) -->
   <style>
-    .autoHero{position:relative;border-radius:20px;padding:26px;margin:0 0 30px;
-      background:linear-gradient(135deg,#1b1830,#12212b);
+    .autoHero{position:relative;border-radius:20px;padding:26px;margin:0 0 22px;
+      background:linear-gradient(135deg,#f3f0ff,#e8f7f2);box-shadow:var(--shadow);
       border:1px solid transparent;background-clip:padding-box;overflow:hidden}
     .autoHero::before{content:"";position:absolute;inset:0;border-radius:20px;padding:1px;
       background:linear-gradient(135deg,var(--accent),var(--accent2));
@@ -94,7 +125,7 @@
       -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
     .autoHero .lead{color:var(--muted);font-size:13.5px;margin:0 0 18px}
     .autoDrop{display:block;border:2px dashed var(--line);border-radius:14px;padding:26px;
-      text-align:center;cursor:pointer;transition:.2s;background:rgba(255,255,255,.02);margin-top:4px}
+      text-align:center;cursor:pointer;transition:.2s;background:#ffffff;margin-top:4px}
     .autoDrop:hover,.autoDrop.over{border-color:var(--accent2);background:rgba(0,210,168,.06)}
     .autoDrop b{font-size:15px}.autoDrop .s{color:var(--muted);font-size:12.5px;margin-top:6px}
     .autoOpts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
@@ -120,6 +151,7 @@
     .autoStep span{color:var(--muted)}
     .hidden{display:none}
   </style>
+  <div class="panel" id="p-auto" style="display:none">
   <div class="autoHero">
     <h2>✨ <span>Generar Creativo</span> — Modo Automático</h2>
     <p class="lead">Sube UN creativo ganador (en cualquier idioma) y la IA hace TODO en cadena:
@@ -212,6 +244,11 @@
       box.innerHTML=h;
     }
   </script>
+  </div><!-- /p-auto -->
+
+  <div class="panel" id="p-config" style="display:none">
+  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
+  <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
 
   <!-- Gemini key -->
   <div class="card" id="keyCard">
@@ -242,6 +279,11 @@
     </div>
     <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, Claude (Opus 4.8) revisa la calidad de cada paso y corrige (ej. el tapado de textos: aprueba o manda a re-tapar). Sin key, todo funciona igual pero sin supervisión. La sacas en console.anthropic.com → API Keys.</p>
   </div>
+
+  </div><!-- /p-config -->
+
+  <div class="panel" id="p-crear">
+  <div class="qhace"><b>¿Qué hace?</b> Subes varios videos del proveedor y la IA encuentra los mejores momentos, los recorta a clips 1:1 y arma <b>6 versiones</b> distintas para tu landing. Opcional: voz en off, subtítulos, tapar/traducir textos y GIFs.</div>
 
   <!-- Upload -->
   <div class="card">
@@ -344,9 +386,12 @@
 
   <!-- Results -->
   <div id="results"></div>
+  </div><!-- /p-crear -->
 
-  <!-- Herramienta aparte: reemplazar producto -->
-  <div class="card" style="margin-top:36px;border-color:var(--accent)">
+  <div class="panel" id="p-swap" style="display:none">
+  <div class="qhace"><b>¿Qué hace?</b> Tomas un video (con su audio/voz) y le cambias el producto: la IA detecta dónde sale el producto viejo y mete tus tomas del producto nuevo en su lugar. Ideal para clonar un ganador con TU producto.</div>
+
+  <div class="card" style="border-color:var(--accent)">
     <h2>🔄 Reemplazar producto en un video</h2>
     <p class="pmsg" style="margin:-6px 0 16px">Mantiene el AUDIO igual. La IA detecta dónde aparece el producto viejo y mete tus tomas del producto nuevo en su lugar.</p>
 
@@ -375,9 +420,12 @@
     </div>
     <div id="swapResult"></div>
   </div>
+  </div><!-- /p-swap -->
 
-  <!-- Herramienta aparte: doblaje -->
-  <div class="card" style="margin-top:24px;border-color:var(--accent2)">
+  <div class="panel" id="p-dub" style="display:none">
+  <div class="qhace"><b>¿Qué hace?</b> Traduce la voz de un video a otro idioma manteniendo el tono. Perfecto para llevar un ad ganador a otro mercado (ej. un ad en inglés → español, o al revés para USA).</div>
+
+  <div class="card" style="border-color:var(--accent2)">
     <h2>🎙️ Doblaje (dubbing) — traducir a otro idioma</h2>
     <p class="pmsg" style="margin:-6px 0 16px">Traduce la voz del video a otro idioma manteniendo el tono. Ideal para llevar un ad ganador a otro mercado (ej. inglés para USA).</p>
     <div class="drop" id="dropDub" style="padding:22px"><div class="small" id="dubName">Clic para elegir el video a doblar</div><input type="file" id="dubInput" accept="video/*" class="hidden"></div>
@@ -399,11 +447,53 @@
     </div>
     <div id="dubResult"></div>
   </div>
+  </div><!-- /p-dub -->
+
+  <div class="panel" id="p-guia" style="display:none">
+    <div class="card">
+      <h2>📚 Cómo usar CreativeMaxing — paso a paso</h2>
+      <div class="step"><div class="num">1</div><div class="st"><b>Configura las IAs</b> (pestaña 🔑). Pega tu key de Gemini (el cerebro). ElevenLabs (voz/doblaje) y Claude (capitán de calidad) son opcionales.</div></div>
+      <div class="step"><div class="num">2</div><div class="st"><b>Sube tus videos</b> (pestaña ✂️ Crear clips). Entre 3 y 10+ videos del proveedor — entre más subas, más variedad y mejores versiones.</div></div>
+      <div class="step"><div class="num">3</div><div class="st"><b>Ajusta</b> la duración, el formato (9:16 para Reels/TikTok) y activa lo que quieras: gancho con IA, voz en off, tapar/traducir textos, efectos.</div></div>
+      <div class="step"><div class="num">4</div><div class="st"><b>Genera y descarga</b>: te da 6 versiones distintas + clips sueltos (cada uno con su GIF). ¡Listo para subir!</div></div>
+    </div>
+
+    <div class="card">
+      <h2>🧩 Qué hace cada pestaña</h2>
+      <div class="tip"><span class="em">✂️</span><span><b>Crear clips</b> — el flujo principal: de tus videos crudos saca los mejores momentos y arma 6 versiones + clips sueltos + GIFs.</span></div>
+      <div class="tip"><span class="em">✨</span><span><b>Automático</b> — subes UN creativo ganador (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
+      <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — clona un ganador poniendo TU producto en lugar del viejo (conserva el audio original).</span></div>
+      <div class="tip"><span class="em">🎙️</span><span><b>Doblar</b> — traduce la voz de un video a otro idioma manteniendo el tono (ej. inglés ↔ español).</span></div>
+      <div class="tip"><span class="em">🔑</span><span><b>Configuración</b> — donde pegas tus API keys (Gemini, ElevenLabs, Claude).</span></div>
+    </div>
+
+    <div class="card">
+      <h2>💡 Tips para creativos que venden</h2>
+      <div class="tip"><span class="em">🎯</span><span>Escribe <b>qué es tu producto</b> en Ajustes — la IA prioriza mejor los clips donde se ve y se usa.</span></div>
+      <div class="tip"><span class="em">📱</span><span>Para Reels / TikTok / Stories usa <b>9:16 vertical</b>. Para una landing page, <b>1:1</b>.</span></div>
+      <div class="tip"><span class="em">🪝</span><span>El <b>gancho</b> (primer segundo) frena el scroll. Déjalo vacío y marca "Generar con IA" para que la IA lo escriba por ti.</span></div>
+      <div class="tip"><span class="em">🇨🇴</span><span>¿Ad gringo con texto quemado? Usa <b>Textos del proveedor → Traducir a español</b> para que quede 100% en español.</span></div>
+      <div class="tip"><span class="em">📐</span><span>En Voz en off puedes <b>clonar la estructura de un ad ganador</b>: sube uno y la IA copia su arco (hook → dolor → solución → deseo → CTA).</span></div>
+      <div class="tip"><span class="em">🎞️</span><span>Cada clip suelto trae su <b>GIF (WebP)</b> liviano para landings — descárgalo con el botón bajo el clip.</span></div>
+    </div>
+  </div><!-- /p-guia -->
 </div>
 
 <script>
 const API = "";
 let files = [];
+
+// --- Pestañas ---
+document.querySelectorAll('#tabs button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('.panel').forEach(p=>p.style.display='none');
+    document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active'));
+    const panel = document.getElementById(b.dataset.p);
+    if(panel) panel.style.display='';
+    b.classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  };
+});
 
 // --- API keys (Gemini + ElevenLabs + Claude) ---
 async function refreshConfig(){

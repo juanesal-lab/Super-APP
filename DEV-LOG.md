@@ -647,3 +647,18 @@ Un solo botón: video ganador (cualquier idioma) → creativo terminado en espa�
   unifiquemos el estilo/las reglas entre `scripts.py` y `dub_colombia`, coordinamos.
 - **Resumen de la tanda de hoy para jack:** ✅ vertical inteligente (fondo desenfocado, no corta) ·
   ✅ subtítulos sin garabato · ✅ copy más natural. Falta pulir el "tapado" en casos feos (siguiente).
+
+### 2026-07-01 · Claude (juanesal-lab) · 🎨 REDISEÑO del frontend (tema claro + pestañas + guía)
+- **Pedido de Juan:** app más linda, profesional, colores CLAROS, dividida en pestañas, con tips y
+  "clases" que expliquen cada función. Limpio y minimalista.
+- **Qué hice en `frontend/index.html` (solo CSS + estructura HTML; NO toqué la lógica JS):**
+  - **Tema claro:** cambié las variables `:root` (fondo claro, tarjetas blancas, sombras suaves) →
+    re-tematiza TODA la app (incluida tu sección de Modo Automático, que pasé de degradado oscuro a claro).
+  - **Pestañas:** barra de navegación (Crear clips · Automático · Reemplazar · Doblar · Configuración ·
+    Guía). Cada sección va envuelta en `<div class="panel" id="p-...">`; un JS chico las muestra/oculta.
+  - **Tips + "¿Qué hace?":** cada pestaña tiene su explicación; nueva pestaña **Guía & Tips** con paso
+    a paso, qué hace cada función, y tips de creativos.
+- **⚠️ IMPORTANTE para jackingshop1-cell:** rehíce toda la ESTRUCTURA del `index.html` (envolví las
+  secciones en paneles + tema claro). **Haz `git pull` ANTES de tocar el frontend** para no chocar.
+  Conservé TODOS los IDs y tu Modo Automático intacto (solo lo envolví en su panel + lo aclaré).
+- **Verificado con screenshot en el navegador:** se ve limpio, claro, las pestañas cambian bien.

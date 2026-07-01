@@ -796,3 +796,16 @@ encuentra los 2-3 ganadores (juzga mejor) y pega los links; la máquina hace TOD
   no apto, no es bug.)
 - **🔌 Para tu ingesta:** esta pestaña ES el consumidor "links → clips". Si tu scout/descargador vuelca
   URLs, entran directo aquí. Cuando quieras cableamos el volcado automático de URLs a este tab.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✨ Pulido final: Clon con word-subs, Gemini en paralelo, sin emojis rotos
+- **winner_clone (Clon Ganador):** ahora (1) corre narrativa + detección de producto EN PARALELO
+  (2 llamadas Gemini a la vez = más rápido) y (2) usa subtítulos PALABRA POR PALABRA (word_timings del
+  doblaje) igual que el Modo Automático.
+- **Emojis:** Poppins no los tiene → salían como cuadrito □. Ahora se quitan del texto en caption_styles
+  (subs/oferta) y en text_translate (tapado). Probado.
+- **PRUEBA REAL end-to-end CON doblaje** (Modo Automático, video real): terminó en **106 s** (antes se
+  pasaba de 9 min). 7/9 pasos OK — subtítulos palabra x palabra (46 palabras, karaoke) + oferta pill
+  ("ENVÍO GRATIS") + 9:16 + normalizado + capitán. La narrativa tuvo un hipo transitorio de Gemini
+  (JSON inválido) pero la cadena SIGUIÓ sin romperse (resiliencia OK). Demo:
+  `~/Downloads/prueba/FINAL_creativo_completo.mp4`.
+- Solo mis módulos. La velocidad ahora la manda la IA externa (Gemini/ElevenLabs), no el código.

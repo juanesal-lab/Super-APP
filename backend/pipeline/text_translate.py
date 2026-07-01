@@ -156,6 +156,10 @@ def _region_color_rgb(cap, t_sec, x, y, w, h, default_rgb):
 
 def _render_block(text: str, box_w: int, box_h: int, bg: tuple, fg: tuple, out_png: str) -> None:
     """Dibuja un PNG del tamaño de la caja: fondo relleno + texto traducido centrado y ajustado."""
+    # Quitar emojis que Poppins no tiene (salían como cuadrito □)
+    text = re.sub("[\U0001F000-\U0001FAFF\U00002600-\U000026FF\U00002700-\U000027BF"
+                  "\U0001F1E6-\U0001F1FF\U00002B00-\U00002BFF\U0000FE0F\U00002190-\U000021FF]",
+                  "", text or "").strip()
     box_w, box_h = max(8, box_w), max(8, box_h)
     img = Image.new("RGBA", (box_w, box_h), bg + (255,))
     draw = ImageDraw.Draw(img)

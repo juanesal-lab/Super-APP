@@ -121,18 +121,34 @@ def clonar_ganador(
     os.makedirs(work_dir, exist_ok=True)
     current = winner_path
     dub_segments: list[dict] = []
+    word_timings: list[dict] = []
 
-    # 0) Narrativa (para música/subtítulos por fase)
-    report("📖 Leyendo la narrativa del ganador...", 8)
+    # 0) Narrativa + detección del producto EN PARALELO (2 llamadas Gemini independientes = más rápido)
+    report("📖 Analizando el ganador (narrativa + producto)...", 8)
     blueprint = None
-    try:
-        bp = analyze_narrative(winner_path, api_key=gemini_key, product_desc=product_desc)
-        if bp.get("ok"):
-            blueprint = bp; paso("Narrativa", True, f"{len(bp['segments'])} fases")
-        else:
-            paso("Narrativa", False, bp.get("error", ""))
-    except Exception as e:  # noqa: BLE001
-        paso("Narrativa", False, str(e))
+    ranges: list = []
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _narr():
+        try:
+            bp = analyze_narrative(winner_path, api_key=gemini_key, product_desc=product_desc)
+            return bp if bp.get("ok") else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _det():
+        if not gemini_key:
+            return []
+        try:
+            return detect_product_ranges(gemini_key, winner_path, old_desc) or []
+        except Exception:  # noqa: BLE001
+            return []
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fb, fd = ex.submit(_narr), ex.submit(_det)
+        blueprint, ranges = fb.result(), fd.result()
+    paso("Narrativa", bool(blueprint), f"{len(blueprint['segments'])} fases" if blueprint else "no")
+    paso("Detectar producto", bool(ranges), f"{len(ranges)} momento(s)" if ranges else "no detectado")
 
     # 1) Voz: original o doblada a español colombiano
     if doblar and eleven_key:
@@ -144,6 +160,7 @@ def clonar_ganador(
                             work_dir=wd, blueprint=blueprint)
             if d.get("ok") and d.get("video"):
                 current = d["video"]; dub_segments = d.get("segments", [])
+                word_timings = d.get("word_timings", [])
                 paso("Doblaje CO", True, f"voz {d.get('voz')}")
             else:
                 paso("Doblaje CO", False, d.get("error", ""))
@@ -152,18 +169,7 @@ def clonar_ganador(
     else:
         paso("Voz", True, "se conserva la voz original")
 
-    # 2) Momentos del producto ORIGINAL (sobre los frames del ganador)
-    report("🔍 Detectando dónde aparece el producto original...", 34)
-    ranges = []
-    if gemini_key:
-        try:
-            ranges = detect_product_ranges(gemini_key, winner_path, old_desc)
-        except Exception as e:  # noqa: BLE001
-            paso("Detectar producto", False, str(e))
-    if ranges:
-        paso("Detectar producto", True, f"{len(ranges)} momento(s)")
-    else:
-        paso("Detectar producto", False, "no detecté el producto (revisa old_desc)")
+    # (la detección del producto ya se hizo en paralelo con la narrativa, arriba)
 
     # 3) Clasificar nuestras tomas por movimiento
     report("🎬 Preparando tus tomas...", 46)
@@ -237,10 +243,18 @@ def clonar_ganador(
         except Exception as e:  # noqa: BLE001
             paso("Música + SFX", False, str(e))
 
-    # 8) Subtítulos por fase
+    # 8) Subtítulos: palabra por palabra si hay doblaje (tiempos reales); si no, bloque por fase
     report("💬 Subtítulos...", 90)
     subs = dub_segments or (blueprint.get("segments") if blueprint else [])
-    if subs:
+    if word_timings:
+        try:
+            from .caption_styles import burn_word_captions
+            out = os.path.join(work_dir, "subs.mp4")
+            current = burn_word_captions(current, word_timings, work_dir, out, style="karaoke")
+            paso("Subtítulos", True, f"palabra x palabra ({len(word_timings)})")
+        except Exception as e:  # noqa: BLE001
+            paso("Subtítulos", False, str(e))
+    elif subs:
         try:
             out = os.path.join(work_dir, "subs.mp4")
             current = A._burn_subs(current, subs, work_dir, out); paso("Subtítulos", True)

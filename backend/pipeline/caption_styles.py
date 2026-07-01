@@ -16,7 +16,18 @@ look estático PRO; la animación real por-palabra queda para v2 (necesita word-
 from __future__ import annotations
 
 import os
+import re
 from typing import Callable
+
+# Emojis/pictogramas que Poppins NO tiene (salen como cuadrito □). Se quitan del texto.
+_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\U00002600-\U000026FF\U00002700-\U000027BF"
+    "\U0001F1E6-\U0001F1FF\U00002B00-\U00002BFF\U0000FE0F\U00002190-\U000021FF]",
+    flags=re.UNICODE)
+
+
+def _strip_emoji(t: str) -> str:
+    return _EMOJI_RE.sub("", t or "").strip()
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -106,7 +117,7 @@ def _line_width(draw, words, font):
 def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Image.Image:
     """Devuelve un PNG RGBA (W×H, transparente) con el subtítulo en el estilo pedido, auto-ajustado
     dentro de la zona segura, en el tercio inferior-medio. Overlay directo en 0:0."""
-    text = (text or "").strip()
+    text = _strip_emoji(text)
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if not text:
         return img
@@ -211,7 +222,8 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     Palabra por palabra: se muestran pocas palabras a la vez y la que se está diciendo se resalta.
     """
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    words = [w.get("word", "").strip() for w in group if w.get("word", "").strip()]
+    words = [_strip_emoji(w.get("word", "")) for w in group]
+    words = [w for w in words if w]
     if not words:
         return img
     draw = ImageDraw.Draw(img)
@@ -293,7 +305,7 @@ def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
 def render_offer_pill(text: str, W: int, H: int) -> Image.Image:
     """Pill pequeña de OFERTA (Poppins) arriba-centro, sin tapar la cara, auto-ajustada."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    text = (text or "").strip()
+    text = _strip_emoji(text)
     if not text:
         return img
     draw = ImageDraw.Draw(img)

@@ -17,6 +17,7 @@ from .text_overlay import burn_hook
 from .hook_gen import generate_hook, fetch_page_text
 from .captions import add_captions
 from . import supervisor
+from . import gif_export
 
 
 # Cuántas veces el capitán (Claude) puede mandar a re-tapar un corte hasta aprobarlo
@@ -276,7 +277,22 @@ def render_versions(
 
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         list(ex.map(_render_one, zip(loose_set, outs)))
-    loose_clips = [{"path": o, "segment": s.to_dict()} for s, o in zip(loose_set, outs)]
+
+    # GIFs (WebP animado, como video-studio) de cada clip suelto — ADEMÁS del .mp4.
+    gifs = [None] * len(outs)
+    if gif_export.available():
+        report("Generando GIFs (WebP animado) de los clips...", 68)
+
+        def _gif_one(item):
+            i, mp4 = item
+            return i, gif_export.to_animated_webp(mp4, os.path.splitext(mp4)[0] + ".webp")
+
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            for i, g in ex.map(_gif_one, list(enumerate(outs))):
+                gifs[i] = g
+
+    loose_clips = [{"path": o, "gif": g, "segment": s.to_dict()}
+                   for s, o, g in zip(loose_set, outs, gifs)]
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,

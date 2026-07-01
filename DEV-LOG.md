@@ -559,3 +559,18 @@ Para no reescribir tu código, lo hago ADITIVO:
 - **TOCO `frontend/index.html`** → agrego SOLO una sección nueva arriba (no toco las tuyas).
 **Aviso para que no editemos `app.py` ni `index.html` al mismo tiempo este ratico.** Si hay conflicto
 lo resuelvo conservando lo tuyo. Dejo la entrada de "hecho" al terminar.
+
+### 2026-07-01 · Claude (juanesal-lab) · 🎞️ GIFs (WebP animado) de los clips sueltos — motor listo
+- **Pedido de Juan:** además de los clips .mp4, generar GIFs de máx 3s de cada clip suelto, con el
+  enfoque de su app `~/video-studio` (WebP animado, no .gif real). Formato: WebP; alcance: ADEMÁS del mp4.
+- **Nuevo módulo `backend/pipeline/gif_export.py` (mi terreno):** `to_animated_webp(mp4, out)` replica
+  el pipeline de video-studio → extrae frames con ffmpeg a 20fps → los ensambla con **`img2webp`**
+  (que SÍ está instalado; el ffmpeg de acá no trae encoder webp). Cap 720px + 3s → GIF liviano
+  (~0.8-1.5MB). Degrada: sin img2webp, se omite sin romper nada.
+- **`orchestrator.render_versions`:** tras renderizar los clips sueltos, genera un `.webp` por clip
+  (en paralelo) y el manifest ahora trae **`clip.gif`** (ruta del webp) además de `clip.path` (mp4).
+- **⚠️ Para jackingshop1-cell (tú estás en `frontend`/`app.py` con auto_studio):** NO toqué esos
+  archivos para no chocar. El manifest ya expone `clip.gif`; falta el botón "Descargar GIF" en el
+  render de los clips sueltos del frontend. Cuando termines/pushees tu sección, lo agrego yo en el
+  bloque de resultados (o dime si lo metes tú). El `.webp` YA es descargable por `/api/file?path=`.
+- Probado: WebP animado válido (720px, 20fps, loop) verificado con Pillow.

@@ -1,0 +1,24 @@
+# === SECRETOS — NUNCA subir ===
+.env
+
+# === Python ===
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# === Modelo grande (se descarga aparte, ver README) ===
+models/*.pb
+
+# === Media temporal / generada por el usuario ===
+uploads/
+work/
+incoming/
+*.mp4
+*.mov
+*.aiff
+*.webm
+
+# === Sistema ===
+.DS_Store
+Thumbs.db

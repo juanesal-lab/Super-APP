@@ -1,0 +1,16 @@
+EFECTOS DE TRANSICIÓN
+=====================
+
+Aquí van los sonidos de transición (whoosh/swoosh) que se ponen entre cortes.
+
+👉 Para usar TUS PROPIOS efectos (los de CapCut/TikTok que más te gusten):
+   1. Descarga los archivos de sonido que quieras (.wav o .mp3)
+      - Mixkit: https://mixkit.co/free-sound-effects/whoosh/
+      - Pixabay: https://pixabay.com/sound-effects/search/whoosh/
+   2. Cópialos a ESTA carpeta (assets/sfx/)
+   3. La app los usará automáticamente, alternándolos en cada transición.
+
+Si quieres SOLO usar uno, deja únicamente ese archivo y borra los demás.
+
+Los .wav que vienen por defecto (swoosh, whoosh, impact) son sintetizados;
+puedes borrarlos y poner los tuyos cuando quieras.

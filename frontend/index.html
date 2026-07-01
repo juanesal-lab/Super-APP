@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cortador de Clips · Vidaria</title>
+<style>
+  :root{
+    --bg:#0d0f14; --card:#161a23; --card2:#1e2430; --line:#2a313f;
+    --txt:#e8ecf3; --muted:#8b94a7; --accent:#6c5ce7; --accent2:#00d2a8;
+    --ok:#27c498; --warn:#f0a73f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--txt);line-height:1.5}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:26px;margin:0 0 4px;font-weight:700}
+  h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--muted);margin:0 0 28px;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:22px;margin-bottom:18px}
+  .card h2{font-size:15px;margin:0 0 14px;font-weight:600;color:var(--txt)}
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:38px 20px;text-align:center;
+    cursor:pointer;transition:.2s;background:var(--card2)}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#1c2030}
+  .drop .big{font-size:15px;font-weight:600}
+  .drop .small{color:var(--muted);font-size:13px;margin-top:6px}
+  .files{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+  .file{display:flex;align-items:center;gap:10px;background:var(--card2);
+    border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px}
+  .file .x{margin-left:auto;color:var(--muted);cursor:pointer;font-size:18px;line-height:1}
+  .row{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .opt{flex:1;min-width:220px}
+  label.lbl{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+  input[type=range]{width:100%}
+  .val{color:var(--accent2);font-weight:600}
+  .toggle{display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;
+    padding:10px 12px;background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .toggle input{width:18px;height:18px;accent-color:var(--accent)}
+  .btn{background:linear-gradient(90deg,var(--accent),#8a7bff);color:#fff;border:0;
+    padding:14px 26px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;
+    transition:.15s;width:100%}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.sec{background:var(--card2);border:1px solid var(--line)}
+  .keyrow{display:flex;gap:10px}
+  .keyrow input{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+    padding:11px 12px;border-radius:10px;font-size:13px}
+  .keyrow button{padding:0 18px;white-space:nowrap}
+  .pill{display:inline-block;font-size:12px;padding:3px 10px;border-radius:20px;
+    background:#1d2b27;color:var(--ok);border:1px solid #234}
+  .pill.off{background:#2b2620;color:var(--warn)}
+  .bar{height:10px;background:var(--card2);border-radius:8px;overflow:hidden;margin:14px 0 8px}
+  .bar > div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));
+    transition:width .4s}
+  .pmsg{font-size:13px;color:var(--muted)}
+  .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .vcard{background:var(--card2);border:1px solid var(--line);border-radius:14px;
+    overflow:hidden;display:flex;flex-direction:column}
+  .vcard video{width:100%;aspect-ratio:1;background:#000;object-fit:cover}
+  .vcard .body{padding:12px 14px}
+  .vcard .name{font-weight:600;font-size:14px;margin-bottom:4px}
+  .vcard .meta{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .vcard .dlrow{display:flex;gap:8px}
+  .vcard select{flex:1;background:var(--card);border:1px solid var(--line);color:var(--txt);
+    padding:8px;border-radius:8px;font-size:13px}
+  .vcard .dl{background:var(--accent2);color:#08130f;border:0;border-radius:8px;
+    padding:0 14px;font-weight:600;cursor:pointer;font-size:13px}
+  .clip{aspect-ratio:1}
+  .clip video{width:100%;height:100%;object-fit:cover;border-radius:10px;background:#000}
+  .clip .sc{font-size:11px;color:var(--muted);text-align:center;margin-top:4px}
+  .hidden{display:none}
+  .tag{font-size:11px;background:var(--accent);color:#fff;padding:2px 8px;border-radius:6px;margin-left:6px}
+  .err{color:#ff6b6b;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cortador de <span>Clips</span></h1>
+  <p class="sub">Sube videos de proveedor → la IA encuentra los mejores cortes, los recorta a 1:1 (&lt;3s) y arma varias versiones para tu landing.</p>
+
+  <!-- Gemini key -->
+  <div class="card" id="keyCard">
+    <h2>Motor inteligente (Gemini) <span id="keyPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow">
+      <input type="password" id="keyInput" placeholder="Pega tu API key de Gemini (AIza...)">
+      <button class="btn sec" id="keySave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Sin key, igual funciona con el motor local (nitidez, luz, movimiento). Con key, Gemini elige los clips más vendedores.</p>
+  </div>
+
+  <!-- ElevenLabs key (voz en off) -->
+  <div class="card" id="elevenCard">
+    <h2>Voz en off · ElevenLabs <span id="elevenPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow">
+      <input type="password" id="elevenInput" placeholder="Pega tu API key de ElevenLabs">
+      <button class="btn sec" id="elevenSave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Solo se necesita si activas la voz en off. La sacas gratis en elevenlabs.io → perfil → API key.</p>
+  </div>
+
+  <!-- Upload -->
+  <div class="card">
+    <h2>1 · Tus videos</h2>
+    <div class="drop" id="drop">
+      <div class="big">Arrastra tus videos aquí</div>
+      <div class="small">3 a 10+ videos · entre más subas, más variedad y mejores versiones · MP4, MOV, etc.</div>
+      <input type="file" id="fileInput" accept="video/*" multiple class="hidden">
+    </div>
+    <div class="files" id="fileList"></div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <h2>2 · Ajustes</h2>
+    <div style="margin-bottom:18px">
+      <label class="lbl">¿Qué es tu producto? <span style="color:var(--accent2)">(recomendado — ayuda a la IA a priorizar el producto)</span></label>
+      <input type="text" id="productDesc" placeholder="Ej: lanza/pistola de presión para limpiar con agua a presión"
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+    </div>
+    <div class="row">
+      <div class="opt">
+        <label class="lbl">Duración total objetivo: <span class="val" id="durVal">15s</span></label>
+        <input type="range" id="dur" min="6" max="40" value="15" step="1">
+      </div>
+      <div class="opt">
+        <label class="lbl">Formato de salida</label>
+        <select id="aspect" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+          <option value="9:16">9:16 vertical · Reels / TikTok / Stories</option>
+          <option value="1:1">1:1 cuadrado · Landing page</option>
+          <option value="4:5">4:5 vertical · Feed Meta</option>
+          <option value="16:9">16:9 horizontal</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label class="lbl">Duración máx por corte</label>
+        <select id="maxClip" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+          <option value="1.5">1.5s · muy dinámico</option>
+          <option value="2.0">2s · dinámico</option>
+          <option value="2.5" selected>2.5s · equilibrado</option>
+          <option value="3.0">3s · pausado</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:18px">
+      <label class="lbl">Texto de gancho <span style="color:var(--accent2)">(escríbelo tú, o déjalo vacío y marca "Generar con IA")</span></label>
+      <div style="display:flex;gap:10px">
+        <input type="text" id="hookText" placeholder='Ej: ADIÓS A LA MUGRE 💦'
+          style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+        <select id="hookPos" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+          <option value="arriba">Arriba</option>
+          <option value="centro">Centro</option>
+          <option value="abajo">Abajo</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="autoHook"> ✨ Generar gancho con IA</label>
+        <input type="text" id="pageUrl" placeholder="🔗 Link de tu página (opcional — gancho más preciso)"
+          style="flex:1;min-width:240px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <label class="toggle"><input type="checkbox" id="useGemini" checked> Usar Gemini (selección inteligente)</label>
+      <label class="toggle"><input type="checkbox" id="enhance"> Mejorar calidad (nitidez + 4K)</label>
+      <label class="toggle"><input type="checkbox" id="effects"> ✨ Efectos (zoom + whoosh)</label>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Tapar textos del proveedor <span style="color:var(--accent2)">(la IA los detecta y enmascara)</span></label>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useVO"> 🎙️ Voz en off (genera 10 guiones y narra)</label>
+      <span id="voiceWrap" style="display:none;align-items:center;gap:8px">
+        <span class="lbl" style="margin:0">Voz:</span>
+        <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
+        <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
+        <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useCaptions" checked> 💬 Subtítulos animados</label>
+      </span>
+    </div>
+  </div>
+
+  <button class="btn" id="go" disabled>✂️  Generar clips</button>
+
+  <!-- Progress -->
+  <div class="card hidden" id="progCard" style="margin-top:18px">
+    <h2>Procesando…</h2>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="pmsg" id="progMsg">Iniciando…</div>
+  </div>
+
+  <!-- Guiones de voz en off (paso intermedio) -->
+  <div id="scripts"></div>
+
+  <!-- Results -->
+  <div id="results"></div>
+
+  <!-- Herramienta aparte: reemplazar producto -->
+  <div class="card" style="margin-top:36px;border-color:var(--accent)">
+    <h2>🔄 Reemplazar producto en un video</h2>
+    <p class="pmsg" style="margin:-6px 0 16px">Mantiene el AUDIO igual. La IA detecta dónde aparece el producto viejo y mete tus tomas del producto nuevo en su lugar.</p>
+
+    <label class="lbl">1 · Video viejo <span style="color:var(--accent2)">(se conserva su audio/voz)</span></label>
+    <div class="drop" id="dropOld" style="padding:22px"><div class="small" id="oldName">Clic para elegir el video viejo</div><input type="file" id="oldInput" accept="video/*" class="hidden"></div>
+
+    <label class="lbl" style="margin-top:16px">2 · Videos de TU producto nuevo</label>
+    <div class="drop" id="dropNew" style="padding:22px"><div class="small" id="newName">Clic para elegir tus videos del producto nuevo (1 o varios)</div><input type="file" id="newInput" accept="video/*" multiple class="hidden"></div>
+
+    <div class="row" style="margin-top:16px">
+      <div class="opt">
+        <label class="lbl">Producto VIEJO <span style="color:var(--muted)">(el del video) — texto o link</span></label>
+        <input type="text" id="swapDesc" placeholder="ej. frasco de suero  ·  o pega el link" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+      </div>
+      <div class="opt">
+        <label class="lbl">Producto NUEVO <span style="color:var(--muted)">(el tuyo) — texto o link</span></label>
+        <input type="text" id="swapNewDesc" placeholder="ej. botella azul de colágeno  ·  o pega el link" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+      </div>
+    </div>
+
+    <button class="btn" id="swapGo" style="margin-top:16px" disabled>🔄  Reemplazar producto</button>
+
+    <div class="card hidden" id="swapProg" style="margin-top:14px">
+      <div class="bar"><div id="swapBar"></div></div>
+      <div class="pmsg" id="swapMsg">Procesando…</div>
+    </div>
+    <div id="swapResult"></div>
+  </div>
+
+  <!-- Herramienta aparte: doblaje -->
+  <div class="card" style="margin-top:24px;border-color:var(--accent2)">
+    <h2>🎙️ Doblaje (dubbing) — traducir a otro idioma</h2>
+    <p class="pmsg" style="margin:-6px 0 16px">Traduce la voz del video a otro idioma manteniendo el tono. Ideal para llevar un ad ganador a otro mercado (ej. inglés para USA).</p>
+    <div class="drop" id="dropDub" style="padding:22px"><div class="small" id="dubName">Clic para elegir el video a doblar</div><input type="file" id="dubInput" accept="video/*" class="hidden"></div>
+    <div class="row" style="margin-top:16px">
+      <div class="opt">
+        <label class="lbl">Idioma del video (origen)</label>
+        <select id="dubSrc" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px"><option value="auto">Detectar automático</option></select>
+      </div>
+      <div class="opt">
+        <label class="lbl">Traducir a</label>
+        <select id="dubTgt" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px"></select>
+      </div>
+    </div>
+    <button class="btn" id="dubGo" style="margin-top:16px" disabled>🎙️  Doblar video</button>
+    <p class="pmsg" style="margin-top:8px">⏱️ El doblaje tarda unos minutos (lo procesa ElevenLabs).</p>
+    <div class="card hidden" id="dubProg" style="margin-top:14px">
+      <div class="bar"><div id="dubBar"></div></div>
+      <div class="pmsg" id="dubMsg">Procesando…</div>
+    </div>
+    <div id="dubResult"></div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let files = [];
+
+// --- API keys (Gemini + ElevenLabs) ---
+async function refreshConfig(){
+  const r = await fetch("/api/config"); const j = await r.json();
+  const setPill=(id,ok)=>{const p=document.getElementById(id);
+    p.textContent=ok?"configurada ✓":"sin configurar"; p.className=ok?"pill":"pill off";};
+  setPill("keyPill", j.has_gemini_key);
+  setPill("elevenPill", j.has_eleven_key);
+  // poblar voces (una sola vez)
+  const vs=document.getElementById("voice");
+  if(vs && !vs.dataset.loaded && j.voices){
+    j.voices.forEach(v=>{const o=document.createElement("option");o.value=v.key;o.textContent=v.label;vs.appendChild(o);});
+    vs.dataset.loaded="1";
+  }
+  // poblar idiomas de doblaje (una sola vez)
+  const dt=document.getElementById("dubTgt"), ds=document.getElementById("dubSrc");
+  if(dt && !dt.dataset.loaded && j.dub_langs){
+    j.dub_langs.forEach(l=>{
+      const o=document.createElement("option");o.value=l.code;o.textContent=l.label;
+      dt.appendChild(o.cloneNode(true)); ds.appendChild(o);
+    });
+    dt.value="en"; dt.dataset.loaded="1";
+  }
+}
+async function saveKey(provider, inputId){
+  const k = document.getElementById(inputId).value.trim();
+  if(!k) return;
+  const fd = new FormData(); fd.append("key", k); fd.append("provider", provider);
+  await fetch("/api/save-key",{method:"POST",body:fd});
+  document.getElementById(inputId).value="";
+  refreshConfig();
+}
+document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
+document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
+refreshConfig();
+
+// --- Voz en off toggle ---
+const useVO = document.getElementById("useVO");
+useVO.onchange = ()=>{
+  document.getElementById("voiceWrap").style.display = useVO.checked ? "inline-flex" : "none";
+  document.getElementById("go").textContent = useVO.checked ? "📝  Generar guiones de voz" : "✂️  Generar clips";
+};
+
+// --- Files ---
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("fileInput");
+drop.onclick = ()=>fileInput.click();
+fileInput.onchange = e=>addFiles(e.target.files);
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop",e=>addFiles(e.dataTransfer.files));
+
+function addFiles(list){
+  for(const f of list){ if(f.type.startsWith("video")) files.push(f); }
+  renderFiles();
+}
+function renderFiles(){
+  const el = document.getElementById("fileList");
+  el.innerHTML = "";
+  files.forEach((f,i)=>{
+    const d = document.createElement("div"); d.className="file";
+    d.innerHTML = `🎬 <span>${f.name}</span> <span style="color:var(--muted)">${(f.size/1e6).toFixed(1)} MB</span><span class="x" data-i="${i}">×</span>`;
+    el.appendChild(d);
+  });
+  el.querySelectorAll(".x").forEach(x=>x.onclick=()=>{files.splice(+x.dataset.i,1);renderFiles();});
+  document.getElementById("go").disabled = files.length===0;
+}
+
+// --- Settings ---
+const dur = document.getElementById("dur");
+dur.oninput = ()=>document.getElementById("durVal").textContent = dur.value+"s";
+
+// --- Process ---
+function buildForm(){
+  const fd = new FormData();
+  files.forEach(f=>fd.append("files", f));
+  fd.append("target_seconds", dur.value);
+  fd.append("max_clip", document.getElementById("maxClip").value);
+  fd.append("use_gemini", document.getElementById("useGemini").checked);
+  fd.append("product_desc", document.getElementById("productDesc").value);
+  fd.append("aspect", document.getElementById("aspect").value);
+  fd.append("hook_text", document.getElementById("hookText").value);
+  fd.append("hook_pos", document.getElementById("hookPos").value);
+  fd.append("auto_hook", document.getElementById("autoHook").checked);
+  fd.append("page_url", document.getElementById("pageUrl").value);
+  fd.append("enhance", document.getElementById("enhance").checked);
+  fd.append("effects", document.getElementById("effects").checked);
+  fd.append("blur_captions", document.getElementById("blurCaptions").checked);
+  fd.append("use_music", document.getElementById("useMusic").checked);
+  fd.append("use_captions", document.getElementById("useCaptions").checked);
+  return fd;
+}
+
+document.getElementById("go").onclick = async ()=>{
+  if(!files.length) return;
+  document.getElementById("go").disabled = true;
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("scripts").innerHTML = "";
+  document.getElementById("progCard").classList.remove("hidden");
+  const endpoint = useVO.checked ? "/api/scripts" : "/api/process";
+  const r = await fetch(endpoint,{method:"POST",body:buildForm()});
+  const j = await r.json();
+  poll(j.job_id);
+};
+
+async function poll(id){
+  const r = await fetch("/api/status/"+id);
+  const j = await r.json();
+  document.getElementById("barFill").style.width = j.progress+"%";
+  document.getElementById("progMsg").textContent = j.message;
+  if(j.status==="running"){ setTimeout(()=>poll(id),1200); return; }
+  document.getElementById("go").disabled = false;
+  if(j.status==="error"){
+    document.getElementById("progMsg").innerHTML = `<span class="err">${j.message}</span>`;
+    return;
+  }
+  document.getElementById("progCard").classList.add("hidden");
+  if(j.result && j.result.scripts){ renderScripts(id, j.result.scripts); }
+  else { renderResults(j.result); }
+}
+
+// Genera y reproduce el audio de un guion (bajo demanda)
+async function previewVoice(i, text, btn){
+  const slot = document.getElementById("audio"+i);
+  const orig = btn.textContent;
+  btn.textContent = "⏳ generando..."; btn.disabled = true;
+  try{
+    const fd = new FormData();
+    fd.append("text", text);
+    fd.append("voice", document.getElementById("voice").value);
+    const r = await fetch("/api/preview-voice",{method:"POST",body:fd});
+    if(!r.ok){ throw new Error(await r.text()); }
+    const url = URL.createObjectURL(await r.blob());
+    slot.innerHTML = `<audio controls autoplay src="${url}" style="height:34px;vertical-align:middle"></audio>`;
+    btn.textContent = "▶️ Escuchar de nuevo";
+  }catch(e){
+    slot.innerHTML = `<span class="err" style="font-size:12px">No se pudo generar el audio</span>`;
+    btn.textContent = "▶️ Reintentar";
+  }
+  btn.disabled = false;
+}
+
+// --- Paso intermedio: elegir guion de voz en off ---
+function renderScripts(jobId, scripts){
+  const root = document.getElementById("scripts");
+  if(!scripts || !scripts.length){
+    root.innerHTML = `<div class="card"><p class="err">No se pudieron generar guiones (revisa tu key de Gemini).</p></div>`;
+    return;
+  }
+  let html = `<div class="card"><h2>📝 Guiones de voz en off</h2>
+    <p class="pmsg" style="margin:-6px 0 14px">Se generan <b>6 versiones</b>, cada una con un guion distinto. Marca hasta 6 (vienen marcados los primeros 6). Puedes escuchar cada uno antes.</p>
+    <div style="display:flex;flex-direction:column;gap:8px" id="scriptList">`;
+  scripts.forEach((s,i)=>{
+    const chk = i < 6 ? "checked" : "";
+    html += `<div class="scriptOpt" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+      <label style="display:flex;gap:10px;cursor:pointer;align-items:flex-start">
+        <input type="checkbox" class="scriptChk" data-i="${i}" ${chk} style="width:18px;height:18px;accent-color:var(--accent);margin-top:2px">
+        <span>
+          <div style="font-size:12px;color:var(--accent2);text-transform:uppercase;margin-bottom:4px">${s.angulo||('Opción '+(i+1))}</div>
+          <div style="font-size:14px">${s.texto}</div>
+        </span>
+      </label>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+        <button class="listenBtn" data-i="${i}" style="background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">▶️ Escuchar</button>
+        <span class="audioSlot" id="audio${i}"></span>
+      </div></div>`;
+  });
+  html += `</div>
+    <button class="btn" id="renderVO" style="margin-top:16px">🔊  Generar 6 videos (un guion por versión)</button>
+    </div>`;
+  root.innerHTML = html;
+
+  const chks = [...root.querySelectorAll(".scriptChk")];
+  root.querySelectorAll(".listenBtn").forEach(b=>{
+    b.onclick=(ev)=>{ ev.stopPropagation(); previewVoice(+b.dataset.i, scripts[+b.dataset.i].texto, b); };
+  });
+
+  document.getElementById("renderVO").onclick = async ()=>{
+    const chosen = chks.filter(c=>c.checked).map(c=>scripts[+c.dataset.i].texto).slice(0,6);
+    if(!chosen.length){ alert("Marca al menos un guion"); return; }
+    document.getElementById("renderVO").disabled = true;
+    root.innerHTML = "";
+    document.getElementById("progCard").classList.remove("hidden");
+    const fd = new FormData();
+    fd.append("job_id", jobId);
+    fd.append("scripts_json", JSON.stringify(chosen));
+    fd.append("voice", document.getElementById("voice").value);
+    const r = await fetch("/api/render",{method:"POST",body:fd});
+    const j = await r.json();
+    poll(j.job_id);
+  };
+}
+
+function enc(p){ return encodeURIComponent(p); }
+
+function renderResults(res){
+  const root = document.getElementById("results");
+  const ar = ({"1:1":"1 / 1","9:16":"9 / 16","4:5":"4 / 5","16:9":"16 / 9"})[res.aspect] || "1 / 1";
+  const gem = res.used_gemini
+    ? '<span class="tag">Gemini ✓</span>'
+    : '<span class="tag" style="background:var(--warn)">solo motor local</span>';
+  const enh = res.enhanced ? '<span class="tag" style="background:var(--accent2);color:#08130f">calidad mejorada</span>' : '';
+
+  // Versiones
+  const hookLine = res.hook_used ? `<div class="pmsg" style="margin:-6px 0 14px">✨ Gancho: <b style="color:var(--txt)">${res.hook_used}</b></div>` : '';
+  const warn = res.music_warning ? `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn);font-size:14px">⚠️ ${res.music_warning}</p></div>` : '';
+  let html = warn + `<div class="card"><h2>Versiones del video ${gem} ${enh}</h2>${hookLine}<div class="vgrid">`;
+  const names = {A_gancho:"Versión A · Gancho primero", B_narrativa:"Versión B · Narrativa", C_corta:"Versión C · Corta", D_dinamica:"Versión D · Dinámica", E_inversa:"Versión E · Inversa", F_express:"Versión F · Express"};
+  res.versions.forEach((v,i)=>{
+    const file = "/api/file?path="+enc(v.path);
+    html += `<div class="vcard">
+      <video src="${file}" controls muted loop style="aspect-ratio:${ar}"></video>
+      <div class="body">
+        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
+        <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        <div class="dlrow">
+          <select id="res${i}">
+            <option value="2160">4K · 2160</option>
+            <option value="1440">2K · 1440</option>
+            <option value="1080" selected>Alta · 1080</option>
+            <option value="720">Media · 720</option>
+            <option value="480">Baja · 480</option>
+          </select>
+          <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}')">Descargar</button>
+        </div>
+      </div></div>`;
+  });
+  html += `</div></div>`;
+
+  // Clips sueltos
+  if(res.clips && res.clips.length){
+    html += `<div class="card"><h2>Clips sueltos (${res.clips.length})</h2><div class="vgrid">`;
+    res.clips.forEach(c=>{
+      const file = "/api/file?path="+enc(c.path);
+      const s = c.segment;
+      const prod = s.product_visible ? '<span style="color:var(--accent2)">●&nbsp;producto</span>' : '';
+      const use = s.shows_use ? '<span style="color:var(--accent)">●&nbsp;en uso</span>' : '';
+      const tag = s.tag ? `<div class="sc" style="color:var(--txt)">${s.tag}</div>` : '';
+      html += `<div class="clip" style="aspect-ratio:${ar}"><video src="${file}" controls muted loop style="aspect-ratio:${ar}"></video>
+        ${tag}<div class="sc">score ${s.score} · ${s.duration}s ${prod} ${use}</div></div>`;
+    });
+    html += `</div></div>`;
+  }
+  root.innerHTML = html;
+}
+
+function dl(path, selId, name){
+  const res = document.getElementById(selId).value;
+  window.location = `/api/download?path=${path}&res=${res}&name=${encodeURIComponent("vidaria_"+name)}`;
+}
+
+// --- Reemplazar producto ---
+let oldFile = null, newSwapFiles = [];
+const dropOld = document.getElementById("dropOld"), oldInput = document.getElementById("oldInput");
+const dropNew = document.getElementById("dropNew"), newInput = document.getElementById("newInput");
+dropOld.onclick = ()=>oldInput.click();
+dropNew.onclick = ()=>newInput.click();
+function swapReady(){ document.getElementById("swapGo").disabled = !(oldFile && newSwapFiles.length); }
+oldInput.onchange = e=>{ oldFile = e.target.files[0]||null; document.getElementById("oldName").textContent = oldFile?("🎬 "+oldFile.name):"Clic para elegir el video viejo"; swapReady(); };
+newInput.onchange = e=>{ newSwapFiles = [...e.target.files]; document.getElementById("newName").textContent = newSwapFiles.length?(newSwapFiles.length+" video(s) del producto nuevo"):"Clic para elegir tus videos del producto nuevo"; swapReady(); };
+[dropOld,dropNew].forEach((d,di)=>{
+  ["dragover","dragenter"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.add("over")}));
+  ["dragleave","drop"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.remove("over")}));
+  d.addEventListener("drop",e=>{ if(di===0){oldFile=e.dataTransfer.files[0]; oldInput.onchange({target:{files:[oldFile]}});} else {newInput.onchange({target:{files:e.dataTransfer.files}});} });
+});
+
+document.getElementById("swapGo").onclick = async ()=>{
+  if(!oldFile || !newSwapFiles.length) return;
+  document.getElementById("swapGo").disabled = true;
+  document.getElementById("swapResult").innerHTML = "";
+  document.getElementById("swapProg").classList.remove("hidden");
+  const fd = new FormData();
+  fd.append("old", oldFile);
+  newSwapFiles.forEach(f=>fd.append("new_files", f));
+  fd.append("product_desc", document.getElementById("swapDesc").value);
+  fd.append("new_desc", document.getElementById("swapNewDesc").value);
+  const r = await fetch("/api/swap",{method:"POST",body:fd});
+  const j = await r.json();
+  swapPoll(j.job_id);
+};
+
+async function swapPoll(id){
+  const r = await fetch("/api/status/"+id); const j = await r.json();
+  document.getElementById("swapBar").style.width = j.progress+"%";
+  document.getElementById("swapMsg").textContent = j.message;
+  if(j.status==="running"){ setTimeout(()=>swapPoll(id),1200); return; }
+  document.getElementById("swapGo").disabled = false;
+  if(j.status==="error"){ document.getElementById("swapMsg").innerHTML = `<span class="err">${j.message}</span>`; return; }
+  document.getElementById("swapProg").classList.add("hidden");
+  const res = j.result;
+  document.getElementById("swapResult").innerHTML = `
+    <div style="margin-top:14px">
+      <div class="pmsg" style="margin-bottom:8px">✅ Reemplacé <b style="color:var(--txt)">${res.n_ranges}</b> tomas del producto (en ${res.ranges.map(r=>r[0]+'-'+r[1]+'s').join(', ')})</div>
+      <video src="/api/file?path=${enc(res.path)}" controls style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
+      <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=reemplazado'">Descargar</button></div>
+    </div>`;
+}
+
+// --- Doblaje (dubbing) ---
+let dubFile = null;
+const dropDub = document.getElementById("dropDub"), dubInput = document.getElementById("dubInput");
+dropDub.onclick = ()=>dubInput.click();
+dubInput.onchange = e=>{ dubFile = e.target.files[0]||null; document.getElementById("dubName").textContent = dubFile?("🎬 "+dubFile.name):"Clic para elegir el video a doblar"; document.getElementById("dubGo").disabled = !dubFile; };
+["dragover","dragenter"].forEach(ev=>dropDub.addEventListener(ev,e=>{e.preventDefault();dropDub.classList.add("over")}));
+["dragleave","drop"].forEach(ev=>dropDub.addEventListener(ev,e=>{e.preventDefault();dropDub.classList.remove("over")}));
+dropDub.addEventListener("drop",e=>{ dubFile=e.dataTransfer.files[0]; dubInput.onchange({target:{files:[dubFile]}}); });
+
+document.getElementById("dubGo").onclick = async ()=>{
+  if(!dubFile) return;
+  document.getElementById("dubGo").disabled = true;
+  document.getElementById("dubResult").innerHTML = "";
+  document.getElementById("dubProg").classList.remove("hidden");
+  const fd = new FormData();
+  fd.append("video", dubFile);
+  fd.append("target_lang", document.getElementById("dubTgt").value);
+  fd.append("source_lang", document.getElementById("dubSrc").value);
+  const r = await fetch("/api/dub",{method:"POST",body:fd});
+  const j = await r.json();
+  dubPoll(j.job_id);
+};
+
+async function dubPoll(id){
+  const r = await fetch("/api/status/"+id); const j = await r.json();
+  document.getElementById("dubBar").style.width = j.progress+"%";
+  document.getElementById("dubMsg").textContent = j.message;
+  if(j.status==="running"){ setTimeout(()=>dubPoll(id),3000); return; }
+  document.getElementById("dubGo").disabled = false;
+  if(j.status==="error"){ document.getElementById("dubMsg").innerHTML = `<span class="err">${j.message}</span>`; return; }
+  document.getElementById("dubProg").classList.add("hidden");
+  const res = j.result;
+  document.getElementById("dubResult").innerHTML = `
+    <div style="margin-top:14px">
+      <div class="pmsg" style="margin-bottom:8px">✅ Video doblado a <b style="color:var(--txt)">${res.target_lang.toUpperCase()}</b></div>
+      <video src="/api/file?path=${enc(res.path)}" controls style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
+      <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=doblado_'+res.target_lang">Descargar</button></div>
+    </div>`;
+}
+</script>
+</body>
+</html>

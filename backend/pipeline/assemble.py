@@ -1,0 +1,457 @@
+"""Ensamblado con FFmpeg: recorte al formato elegido, clips, video final y versiones.
+
+Soporta varios formatos de salida (1:1 landing, 9:16 Reels/TikTok, 4:5 feed).
+Cada clip se escala para CUBRIR el encuadre y se recorta al centro, luego se
+normaliza a un tamano/fps/codec comun para concatenar sin glitches.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+
+from .analyze import Segment
+from .ffmpeg_utils import run
+
+FPS = 30
+_CPU = os.cpu_count() or 4
+_SFX_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "assets", "sfx")
+
+
+def list_sfx() -> list[str]:
+    """Efectos de transición disponibles. El usuario puede poner los suyos en assets/sfx/."""
+    if not os.path.isdir(_SFX_DIR):
+        return []
+    out = [os.path.join(_SFX_DIR, f) for f in sorted(os.listdir(_SFX_DIR))
+           if f.lower().endswith((".wav", ".mp3", ".m4a", ".aac", ".ogg"))]
+    return out
+
+
+def _gpu_available() -> bool:
+    try:
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
+                             capture_output=True, text=True, timeout=20).stdout
+        return "h264_videotoolbox" in out
+    except Exception:
+        return False
+
+
+GPU = _gpu_available()
+# La GPU (VideoToolbox) admite pocas sesiones a la vez; en CPU paralelizamos mas
+WORKERS = 3 if GPU else min(8, max(2, _CPU - 2))
+
+
+def venc() -> list[str]:
+    """Codec de video: GPU (VideoToolbox) si esta disponible, si no libx264."""
+    if GPU:
+        return ["-c:v", "h264_videotoolbox", "-profile:v", "high", "-b:v", "12M"]
+    return ["-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20"]
+
+# Formatos soportados -> (ancho, alto) de trabajo
+ASPECTS = {
+    "1:1": (1080, 1080),    # landing page
+    "9:16": (1080, 1920),   # Reels / TikTok / Stories
+    "4:5": (1080, 1350),    # feed vertical Meta
+    "16:9": (1920, 1080),   # horizontal
+}
+DEFAULT_ASPECT = "1:1"
+
+# Cadena de mejora de calidad: limpia ruido/compresion, afina y da un toque de color
+ENHANCE_CHAIN = "hqdn3d=1.5:1.5:6:6,unsharp=5:5:0.9:5:5:0.0,eq=contrast=1.04:saturation=1.07"
+
+
+def dims_for(aspect: str) -> tuple[int, int]:
+    return ASPECTS.get(aspect, ASPECTS[DEFAULT_ASPECT])
+
+
+def _fill_filter(dims: tuple[int, int], enhance: bool = False, fx: bool = False) -> str:
+    """Escala para CUBRIR el encuadre y recorta al centro (look nativo de Reels).
+    enhance=True agrega limpieza+nitidez+color. fx=True agrega un punch-in zoom."""
+    w, h = dims
+    chain = (
+        f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop={w}:{h},setsar=1,fps={FPS}"
+    )
+    if enhance:
+        chain += "," + ENHANCE_CHAIN
+    if fx:
+        chain += (
+            f",zoompan=z='min(zoom+0.0012,1.12)':d=1:"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={FPS}"
+        )
+    return chain
+
+
+def render_clip(seg: Segment, out_path: str, dims: tuple[int, int],
+                has_audio: bool = True, enhance: bool = False, fx: bool = False) -> str:
+    """Renderiza un segmento como clip independiente en el formato pedido."""
+    dur = max(0.1, seg.end - seg.start)
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{dur:.3f}",
+        "-vf", _fill_filter(dims, enhance, fx),
+        *venc(),
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+    ]
+    if has_audio:
+        cmd += ["-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2"]
+    else:
+        cmd += ["-an"]
+    cmd += [out_path]
+    run(cmd)
+    return out_path
+
+
+def _normalized_clip(seg: Segment, out_path: str, dims: tuple[int, int],
+                     enhance: bool = False, fx: bool = False) -> str:
+    """Clip normalizado SIEMPRE con pista de audio (silencio si la fuente no tiene),
+    para que el concat no falle al mezclar clips con y sin audio."""
+    dur = max(0.1, seg.end - seg.start)
+    cmd_real = [
+        "ffmpeg", "-y",
+        "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{dur:.3f}",
+        "-vf", _fill_filter(dims, enhance, fx),
+        *venc(), "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+        "-map", "0:v:0", "-map", "0:a:0?",
+        out_path,
+    ]
+    cmd_silent = [
+        "ffmpeg", "-y",
+        "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{dur:.3f}",
+        "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+        "-vf", _fill_filter(dims, enhance, fx),
+        "-map", "0:v:0", "-map", "1:a:0", "-shortest",
+        *venc(), "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+        out_path,
+    ]
+    try:
+        run(cmd_real)
+    except Exception:
+        run(cmd_silent)
+    return out_path
+
+
+def concat_clips(clip_paths: list[str], out_path: str, work_dir: str) -> str:
+    """Une clips ya normalizados usando el demuxer concat."""
+    list_file = os.path.join(work_dir, f"_concat_{os.path.basename(out_path)}.txt")
+    with open(list_file, "w") as f:
+        for p in clip_paths:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+    cmd = [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file,
+        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "-c:a", "aac", "-b:a", "128k",
+        out_path,
+    ]
+    run(cmd)
+    try:
+        os.remove(list_file)
+    except OSError:
+        pass
+    return out_path
+
+
+_TRANSITIONS = ["fade", "slideleft", "wipeup", "circleopen", "slideup"]
+
+
+def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
+                       d: float = 0.3) -> str:
+    """Une clips con TRANSICIONES (xfade en video + acrossfade en audio)."""
+    if len(clip_paths) <= 1:
+        return concat_clips(clip_paths, out_path, work_dir)
+
+    from .ffmpeg_utils import probe
+    durs = [max(0.4, probe(p).duration) for p in clip_paths]
+
+    inputs = []
+    for p in clip_paths:
+        inputs += ["-i", p]
+    fc = []
+    vlast, alast = "[0:v]", "[0:a]"
+    acc = durs[0]
+    for i in range(1, len(clip_paths)):
+        tr = _TRANSITIONS[(i - 1) % len(_TRANSITIONS)]
+        off = max(0.1, acc - d)
+        vtag, atag = f"[vx{i}]", f"[ax{i}]"
+        fc.append(f"{vlast}[{i}:v]xfade=transition={tr}:duration={d}:offset={off:.3f}{vtag}")
+        fc.append(f"{alast}[{i}:a]acrossfade=d={d}{atag}")
+        vlast, alast = vtag, atag
+        acc = acc + durs[i] - d
+    run([
+        "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(fc),
+        "-map", vlast, "-map", alast,
+        *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "-c:a", "aac", "-b:a", "128k",
+        out_path,
+    ])
+    return out_path
+
+
+def build_variations(selected: list[Segment], work_dir: str,
+                     dims: tuple[int, int], enhance: bool = False,
+                     fx: bool = False, target_seconds: float = 15.0) -> dict:
+    """Crea clips normalizados y arma varias versiones (montajes) del video final.
+
+    Devuelve dict con: clips[], versions[] (cada una {name, path, segments}).
+    """
+    os.makedirs(work_dir, exist_ok=True)
+    n = len(selected)
+    NV = 6
+    names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express"]
+    cpv = max(4, min(10, round(target_seconds / 2.2)))   # clips por version
+
+    by_score = sorted(range(n), key=lambda i: selected[i].score, reverse=True)
+    by_time = sorted(range(n), key=lambda i: (selected[i].source_index, selected[i].start))
+    by_use = sorted(range(n), key=lambda i: (selected[i].shows_use, selected[i].score), reverse=True)
+
+    def order_version(idxs):
+        """Gancho fuerte primero + resto cronologico (secuencia natural)."""
+        if not idxs:
+            return []
+        best = max(idxs, key=lambda i: selected[i].score)
+        rest = sorted([i for i in idxs if i != best],
+                      key=lambda i: (selected[i].source_index, selected[i].start))
+        return [best] + rest
+
+    if n >= NV * 4:
+        # POOL GRANDE: cada version usa clips DISJUNTOS (de videos distintos) -> máxima diversidad
+        buckets = [[] for _ in range(NV)]
+        for rank, i in enumerate(by_score):
+            buckets[rank % NV].append(i)
+        version_orders = [(names[vi], order_version(buckets[vi][:cpv])) for vi in range(NV)]
+    else:
+        # POCOS CLIPS: subconjuntos solapados pero con gancho/orden/largo distintos
+        def build(lead, body):
+            return [lead] + [i for i in body if i != lead]
+        leads = []
+        for c in by_use[:1] + by_score:
+            if len(leads) >= NV:
+                break
+            if c not in leads:
+                leads.append(c)
+        while len(leads) < NV:
+            leads.append(by_score[len(leads) % n])
+        weak = set(by_score[-max(1, n // 4):]) if n >= 4 else set()
+        alt0 = [i for k, i in enumerate(by_score) if k % 2 == 0]
+        alt1 = [i for k, i in enumerate(by_score) if k % 2 == 1]
+        half = max(4, (n + 1) // 2)
+        third = max(3, n // 3 + 1)
+        version_orders = [
+            (names[0], build(leads[0], by_score)),
+            (names[1], build(leads[1], [i for i in by_time if i not in weak])),
+            (names[2], build(leads[2], alt0)[:half]),
+            (names[3], build(leads[3], alt1 + alt0)),
+            (names[4], build(leads[4], list(reversed(by_time)))),
+            (names[5], build(leads[5], by_score)[:third]),
+        ]
+
+    # Renderizar SOLO los clips que de verdad se usan (no todo el pool) -> más rápido
+    used_idx = sorted({i for _, order in version_orders for i in order})
+    norm_paths: dict[int, str] = {}
+
+    def _mk(i):
+        p = os.path.join(work_dir, f"clip_{i:02d}.mp4")
+        _normalized_clip(selected[i], p, dims, enhance, fx)
+        return i, p
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        for i, p in ex.map(_mk, used_idx):
+            norm_paths[i] = p
+
+    out_versions = []
+    for name, order in version_orders:
+        clip_list = [norm_paths[i] for i in order if i in norm_paths]
+        if not clip_list:
+            continue
+        out_path = os.path.join(work_dir, f"version_{name}.mp4")
+        if fx:
+            concat_clips_xfade(clip_list, out_path, work_dir)
+        else:
+            concat_clips(clip_list, out_path, work_dir)
+        out_versions.append({
+            "name": name,
+            "path": out_path,
+            "segments": [selected[i].to_dict() for i in order],
+        })
+
+    return {"clips": list(norm_paths.values()), "versions": out_versions}
+
+
+def add_voiceover(video_path: str, vo_path: str, out_path: str) -> str:
+    """Pone la voz en off como audio (reemplaza el original). La duracion final
+    = la de la voz; si el video es mas corto, congela el ultimo frame para cubrirla."""
+    run([
+        "ffmpeg", "-y", "-i", video_path, "-i", vo_path,
+        "-filter_complex", "[0:v]tpad=stop_mode=clone:stop_duration=30[v]",
+        "-map", "[v]", "-map", "1:a:0", "-shortest",
+        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "-c:a", "aac", "-b:a", "192k",
+        out_path,
+    ])
+    return out_path
+
+
+def blur_caption(in_path: str, out_path: str, position: str = "abajo") -> str:
+    """Tapa con desenfoque una franja del video (donde el proveedor puso textos/captions).
+    position: 'abajo' | 'arriba' | 'ambos'."""
+    bands = []  # (y_frac, h_frac)
+    if position in ("abajo", "ambos"):
+        bands.append((0.80, 0.20))
+    if position in ("arriba", "ambos"):
+        bands.append((0.0, 0.16))
+    if not bands:
+        return in_path
+
+    splits = len(bands) + 1
+    fc = [f"[0:v]split={splits}[base]" + "".join(f"[c{i}]" for i in range(len(bands)))]
+    for i, (yf, hf) in enumerate(bands):
+        fc.append(f"[c{i}]crop=iw:ih*{hf}:0:ih*{yf},boxblur=24:4[b{i}]")
+    last = "[base]"
+    for i, (yf, hf) in enumerate(bands):
+        tag = "[v]" if i == len(bands) - 1 else f"[t{i}]"
+        fc.append(f"{last}[b{i}]overlay=0:main_h*{yf}{tag}")
+        last = f"[t{i}]"
+    run([
+        "ffmpeg", "-y", "-i", in_path,
+        "-filter_complex", ";".join(fc),
+        "-map", "[v]", "-map", "0:a?",
+        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy",
+        out_path,
+    ])
+    return out_path
+
+
+def blur_boxes(in_path: str, out_path: str, boxes: list[dict]) -> str:
+    """Tapa con desenfoque cajas especificas {x,y,w,h} (fracciones) del frame."""
+    boxes = [b for b in (boxes or []) if b.get("w", 0) > 0 and b.get("h", 0) > 0][:6]
+    if not boxes:
+        return in_path
+    n = len(boxes)
+    fc = [f"[0:v]split={n + 1}[base]" + "".join(f"[c{i}]" for i in range(n))]
+    for i, b in enumerate(boxes):
+        fc.append(
+            f"[c{i}]crop=iw*{b['w']:.4f}:ih*{b['h']:.4f}:iw*{b['x']:.4f}:ih*{b['y']:.4f},"
+            f"boxblur=26:5[bb{i}]")
+    last = "[base]"
+    for i, b in enumerate(boxes):
+        tag = "[v]" if i == n - 1 else f"[t{i}]"
+        fc.append(f"{last}[bb{i}]overlay=main_w*{b['x']:.4f}:main_h*{b['y']:.4f}{tag}")
+        last = f"[t{i}]"
+    run([
+        "ffmpeg", "-y", "-i", in_path, "-filter_complex", ";".join(fc),
+        "-map", "[v]", "-map", "0:a?",
+        *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy",
+        out_path,
+    ])
+    return out_path
+
+
+def blur_boxes_timed(in_path: str, out_path: str, timed_boxes: list[dict],
+                     window: float = 0.9) -> str:
+    """Tapa cada caja {x,y,w,h,t} SOLO durante [t-window, t+window] (sigue el caption)."""
+    boxes = [b for b in (timed_boxes or []) if b.get("w", 0) > 0 and b.get("h", 0) > 0][:24]
+    if not boxes:
+        return in_path
+    n = len(boxes)
+    fc = [f"[0:v]split={n + 1}[base]" + "".join(f"[c{i}]" for i in range(n))]
+    for i, b in enumerate(boxes):
+        fc.append(
+            f"[c{i}]crop=iw*{b['w']:.4f}:ih*{b['h']:.4f}:iw*{b['x']:.4f}:ih*{b['y']:.4f},"
+            f"boxblur=28:6[bb{i}]")
+    last = "[base]"
+    for i, b in enumerate(boxes):
+        t0 = max(0.0, float(b.get("t", 0)) - window)
+        t1 = float(b.get("t", 0)) + window
+        tag = "[v]" if i == n - 1 else f"[t{i}]"
+        fc.append(f"{last}[bb{i}]overlay=main_w*{b['x']:.4f}:main_h*{b['y']:.4f}:"
+                  f"enable='between(t,{t0:.2f},{t1:.2f})'{tag}")
+        last = f"[t{i}]"
+    run([
+        "ffmpeg", "-y", "-i", in_path, "-filter_complex", ";".join(fc),
+        "-map", "[v]", "-map", "0:a?",
+        *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy",
+        out_path,
+    ])
+    return out_path
+
+
+def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
+                          sfx_paths: list[str] | None = None,
+                          cut_times: list[float] | None = None,
+                          music_path: str | None = None) -> str:
+    """Voz en off + efectos REALES en transiciones (alternados) + musica de fondo."""
+    cut_times = [t for t in (cut_times or []) if t > 0.2][:8]
+    sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
+    has_sfx = bool(sfx_paths and cut_times)
+    has_music = bool(music_path and os.path.exists(music_path))
+    if not has_sfx and not has_music:
+        return add_voiceover(video_path, vo_path, out_path)
+
+    inputs = ["-i", video_path, "-i", vo_path]
+    fc = ["[0:v]tpad=stop_mode=clone:stop_duration=30[v]", "[1:a]volume=1.0[vo]"]
+    mix_labels = ["[vo]"]
+    idx = 2
+
+    if has_sfx:
+        # asignar un efecto a cada transicion (alternando los disponibles)
+        assign = [sfx_paths[i % len(sfx_paths)] for i in range(len(cut_times))]
+        in_index = {}
+        for p in assign:
+            if p not in in_index:
+                inputs += ["-i", p]
+                in_index[p] = idx
+                idx += 1
+        from collections import Counter
+        counts = Counter(assign)
+        for p, ii in in_index.items():
+            fc.append(f"[{ii}:a]asplit={counts[p]}" + "".join(f"[s{ii}_{k}]" for k in range(counts[p])))
+        ptr = {p: 0 for p in in_index}
+        for i, (t, p) in enumerate(zip(cut_times, assign)):
+            ii = in_index[p]; k = ptr[p]; ptr[p] += 1
+            ms = int(t * 1000)
+            fc.append(f"[s{ii}_{k}]adelay={ms}|{ms},volume=0.8[w{i}]")
+            mix_labels.append(f"[w{i}]")
+
+    if has_music:
+        inputs += ["-i", music_path]
+        m_idx = idx; idx += 1
+        fc.append(f"[{m_idx}:a]aloop=loop=-1:size=2000000000,volume=0.16[mus]")
+        mix_labels.append("[mus]")
+
+    fc.append("".join(mix_labels) + f"amix=inputs={len(mix_labels)}:normalize=0:duration=first[a]")
+    run([
+        "ffmpeg", "-y", *inputs,
+        "-filter_complex", ";".join(fc),
+        "-map", "[v]", "-map", "[a]", "-shortest",
+        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "-c:a", "aac", "-b:a", "192k",
+        out_path,
+    ])
+    return out_path
+
+
+def export_resolution(src_path: str, out_path: str, width: int) -> str:
+    """Re-escala un montaje al ancho pedido para descarga, conservando el formato.
+    Recipe de maxima compatibilidad (QuickTime/Apple/Meta/TikTok): H.264 High,
+    yuv420p, faststart (moov al inicio) y AAC. Escribe a .tmp y renombra (atomico)."""
+    tmp = out_path + f".{uuid.uuid4().hex[:8]}.tmp.mp4"
+    cmd = [
+        "ffmpeg", "-y", "-i", src_path,
+        "-vf", f"scale={width}:-2:flags=lanczos,setsar=1,format=yuv420p",
+        "-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", "19",
+        "-movflags", "+faststart",
+        "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+        tmp,
+    ]
+    run(cmd)
+    os.replace(tmp, out_path)  # renombrado atomico: nunca se sirve un archivo a medias
+    return out_path

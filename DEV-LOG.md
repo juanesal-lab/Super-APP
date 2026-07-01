@@ -504,3 +504,23 @@ producto propio" (clonar un ganador de otro mercado pero mostrando NUESTRO produ
 `product_swap.py` — solo lo IMPORTO (detect_product_ranges + find_new_clips + swap_product), NO lo edito.**
 Aviso para que no toquemos `product_swap.py` al mismo tiempo. Si me toca modificarlo, te aviso aquí antes.
 En un rato dejo la entrada de "hecho".
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ angle_clone.py HECHO (clon de ángulo, nivel realista)
+- **Construido y probado.** `backend/pipeline/angle_clone.py` = clonar un ganador mostrando NUESTRO
+  producto. **NO toqué `product_swap.py`** (solo lo importé: `detect_product_ranges`, `find_new_clips`,
+  `swap_product`). ✅
+- **`clonar_angulo(winner_path, our_videos, our_photos, *, api_key, old_desc, our_desc, manual_ranges,
+  photo_seconds, out_path, work_dir, progress)`** → `{ok, ranges, n_tomas, video}`.
+  1. Momentos del producto viejo: `detect_product_ranges` (Gemini) o `manual_ranges` (['mm:ss-mm:ss']).
+  2. Nuestras tomas: FOTOS→clip (lo agregué yo) + videos→`find_new_clips`.
+  3. Empalme con `swap_product` (nuestras tomas en esos momentos, CONSERVA el audio/ángulo del ganador).
+- **Nivel:** REALISTA (mezcla ganador + tomas propias en los momentos del producto). El reemplazo
+  automático perfecto sobre producto EN MOVIMIENTO queda para un nivel superior (v2).
+- **Probado EN VIVO** (determinista, sin gastar Gemini): metí una foto de "MI CREMA" en 00:05-00:09 de
+  un ganador de 22s → verifiqué por frames: seg 1 = ganador original, seg 7 = mi producto, audio del
+  ganador conservado, duración intacta. Demo en `~/Downloads/prueba/CLON_angulo_demo.mp4`.
+- **Para cablear (tu terreno, cuando quieras):** endpoint/UI que reciba ganador + fotos/videos de
+  nuestro producto (+ manual_ranges opcional) y llame a `clonar_angulo`. Yo no toco `app.py`/`frontend`.
+- **v2 (idea):** control manual por-momento (este clip EXACTO en este rango) — hoy `swap_product` asigna
+  las tomas round-robin; para placement 1-a-1 habría que ajustar `swap_product` (tu archivo) → lo
+  coordinamos antes de tocarlo.

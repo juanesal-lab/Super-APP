@@ -24,8 +24,15 @@ _net = None
 _face = None
 DETECT_EVERY = 4      # detecta cada N frames (reutiliza entre medio: el texto casi no se mueve)
 _INW, _INH = 320, 640  # entrada de la red (múltiplos de 32, ratio vertical)
-_CONF = 0.6           # confianza mínima (más alta = menos falsos positivos)
+_CONF = 0.6           # confianza mínima (EAST está igual de "seguro" en árboles que en texto: no discrimina)
 _MIN_H = 0.022        # alto mínimo del texto (fracción): descarta texto chico (envase/ruido)
+# Discriminador principal: el texto quemado es una LÍNEA horizontal (más ancha que alta).
+# El follaje/arrugas/bordes que confunden a EAST son cuadrados o verticales. Es robusto al
+# movimiento de cámara (a diferencia de la persistencia temporal).
+_MIN_WH = 1.5         # ancho/alto mínimo para considerar una caja: descarta cuadradas/verticales (árboles, arrugas)
+_TEXT_WH = 3.0        # muy horizontal -> línea de texto clara: se conserva aunque no persista (cámara en mano)
+_MIN_DETECTIONS = 2   # cajas dudosas (poco anchas): exige persistir en >=2 frames de detección (mata parpadeos)
+_IOU = 0.3            # dos cajas son "la misma" (misma posición) si su IoU >= esto
 
 
 def ensure_model() -> bool:
@@ -123,7 +130,10 @@ def _detect(net, frame, conf=_CONF) -> list[tuple]:
         # padding: un poco horizontal, más vertical (EAST recorta alto)
         px, py = int(w * 0.10) + 4, int(h * 0.35) + 6
         boxes.append((x - px, y - py, w + 2 * px, h + 2 * py))
-    return _merge_lines(boxes, W)
+    # solo cajas horizontales (líneas de texto). Descarta cuadradas/verticales: follaje,
+    # arrugas de tela, bordes... que es donde EAST mete falsos positivos.
+    return [(x, y, w, h) for (x, y, w, h) in _merge_lines(boxes, W)
+            if w > 0 and h > 0 and w >= h * _MIN_WH]
 
 
 def _merge_lines(boxes: list[tuple], W: int) -> list[tuple]:
@@ -150,8 +160,50 @@ def _merge_lines(boxes: list[tuple], W: int) -> list[tuple]:
     return [tuple(m) for m in merged]
 
 
+def _iou(a: tuple, b: tuple) -> float:
+    """Intersección sobre unión de dos cajas (x,y,w,h). 0 = disjuntas, 1 = idénticas."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    ix0, iy0 = max(ax, bx), max(ay, by)
+    ix1, iy1 = min(ax + aw, bx + bw), min(ay + ah, by + bh)
+    inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
+    if inter <= 0:
+        return 0.0
+    return inter / float(aw * ah + bw * bh - inter)
+
+
+def _confirm(detections: list[tuple], min_det: int) -> dict[int, list[tuple]]:
+    """Filtra falsos positivos combinando forma (aspecto) y persistencia temporal.
+
+    - Caja MUY horizontal (w/h >= _TEXT_WH): es claramente una línea de texto -> se conserva
+      aunque aparezca en un solo frame (así no se pierden captions con cámara en movimiento).
+    - Caja poco horizontal (dudosa): solo se conserva si PERSISTE en varios frames en la misma
+      posición (IoU >= _IOU en >= `min_det` frames). Un caption real persiste; el ruido parpadea.
+
+    `detections`: lista de (frame_index, [cajas]).  Devuelve {frame_index: [cajas confirmadas]}.
+    """
+    flat = [(fidx, box) for fidx, boxes in detections for box in boxes]
+    confirmed: dict[int, list[tuple]] = {}
+    for fidx, box in flat:
+        x, y, w, h = box
+        if w < h * _TEXT_WH:                 # no es "obviamente texto" -> exige persistencia
+            frames_seen = {f2 for f2, b2 in flat if _iou(box, b2) >= _IOU}
+            if len(frames_seen) < min_det:
+                continue
+        confirmed.setdefault(fidx, []).append(box)
+    return confirmed
+
+
 def mask_video(in_path: str, out_path: str) -> str:
-    """Tapa el texto detectado frame por frame y conserva el audio."""
+    """Tapa el texto detectado frame por frame y conserva el audio.
+
+    Dos pases para evitar falsos positivos (blur donde NO hay texto):
+      1) DETECTAR: recorre el video guardando solo las CAJAS de cada frame de detección
+         (no guarda frames -> memoria mínima aunque sea 4K y aunque corran varios clips a la vez).
+      2) CONFIRMAR: por consistencia temporal, descarta las cajas que no persisten.
+      3) APLICAR: re-lee el video y difumina SOLO las cajas confirmadas.
+    Si no queda nada confirmado, devuelve el original sin re-codificar.
+    """
     if not available():
         return in_path
     net = _load()
@@ -161,10 +213,9 @@ def mask_video(in_path: str, out_path: str) -> str:
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    tmp = out_path + ".noaudio.mp4"
-    writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
 
-    boxes, i = [], 0
+    # ── Pase 1: detectar (guarda solo cajas, no frames) ──
+    detections, i = [], 0
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -174,6 +225,28 @@ def mask_video(in_path: str, out_path: str) -> str:
                 boxes = _detect(net, frame)
             except Exception:
                 boxes = []
+            detections.append((i, boxes))
+        i += 1
+    cap.release()
+
+    # ── Pase 2: filtrar falsos positivos por forma + persistencia (clip corto -> umbral 1) ──
+    n = len(detections)
+    min_det = _MIN_DETECTIONS if n >= 3 else 1
+    confirmed = _confirm(detections, min_det)
+    if not confirmed:                 # no hay texto real que tapar -> original tal cual
+        return in_path
+
+    # ── Pase 3: aplicar blur solo a lo confirmado (re-lee el video) ──
+    cap = cv2.VideoCapture(in_path)
+    tmp = out_path + ".noaudio.mp4"
+    writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
+    boxes, i = [], 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if i % DETECT_EVERY == 0:
+            boxes = confirmed.get(i, [])
         for (x, y, w, h) in boxes:
             x0, y0 = max(0, x), max(0, y)
             x1, y1 = min(W, x + w), min(H, y + h)

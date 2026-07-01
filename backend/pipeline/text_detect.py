@@ -6,6 +6,8 @@ frame, y lo tapa con desenfoque solo en esas cajas (sigue el caption sin tapar d
 from __future__ import annotations
 
 import os
+import tempfile
+import urllib.request
 
 import cv2
 import numpy as np
@@ -14,6 +16,8 @@ from .ffmpeg_utils import run
 
 _MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "models", "east.pb")
+_MODEL_URL = ("https://raw.githubusercontent.com/oyyd/"
+              "frozen_east_text_detection.pb/master/frozen_east_text_detection.pb")
 _LAYERS = ["feature_fusion/Conv_7/Sigmoid", "feature_fusion/concat_3"]
 
 _net = None
@@ -22,6 +26,30 @@ DETECT_EVERY = 4      # detecta cada N frames (reutiliza entre medio: el texto c
 _INW, _INH = 320, 640  # entrada de la red (múltiplos de 32, ratio vertical)
 _CONF = 0.6           # confianza mínima (más alta = menos falsos positivos)
 _MIN_H = 0.022        # alto mínimo del texto (fracción): descarta texto chico (envase/ruido)
+
+
+def ensure_model() -> bool:
+    """Descarga el modelo EAST (~92 MB) la primera vez si aún no existe.
+
+    Devuelve True si el modelo está disponible (ya estaba o se descargó bien).
+    Si falla la descarga (p. ej. sin internet) devuelve False sin romper la app.
+    """
+    if os.path.exists(_MODEL_PATH):
+        return True
+    os.makedirs(os.path.dirname(_MODEL_PATH), exist_ok=True)
+    print("⬇️  Descargando modelo de detección de texto (EAST, ~92 MB, solo la primera vez)...")
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(_MODEL_PATH), suffix=".part")
+    os.close(tmp_fd)
+    try:
+        urllib.request.urlretrieve(_MODEL_URL, tmp_path)
+        os.replace(tmp_path, _MODEL_PATH)  # renombra solo si bajó completo
+        print("✅ Modelo EAST listo.")
+        return True
+    except Exception as e:
+        print(f"⚠️  No se pudo descargar el modelo EAST: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return False
 
 
 def available() -> bool:

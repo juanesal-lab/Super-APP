@@ -33,6 +33,15 @@ os.makedirs(WORK_DIR, exist_ok=True)
 
 app = FastAPI(title="Cortador de Clips")
 
+
+@app.on_event("startup")
+def _descargar_modelo_si_falta():
+    # Baja el modelo EAST (~92 MB) la primera vez, en segundo plano para no
+    # frenar el arranque del servidor. Así el usuario no hace nada manual.
+    from pipeline.text_detect import ensure_model
+    threading.Thread(target=ensure_model, daemon=True).start()
+
+
 # Estado de trabajos en memoria
 JOBS: dict[str, dict] = {}
 

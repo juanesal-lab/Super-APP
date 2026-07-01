@@ -13,6 +13,7 @@ from .assemble import (build_variations, render_clip, export_resolution, dims_fo
                        add_voiceover, add_voiceover_and_sfx, WORKERS)
 from .text_detect import mask_video as mask_video_text, available as east_available
 from .text_translate import traducir_texto_pantalla as translate_screen_text
+from .smart_caption_mask import mask_captions_smart
 from .text_overlay import burn_hook
 from .hook_gen import generate_hook, fetch_page_text
 from .captions import add_captions
@@ -174,13 +175,11 @@ def render_versions(
 
     # Tapar textos del proveedor: Gemini DETECTA las cajas y se enmascara la FUENTE
     # (antes de cortar), para que la mascara quede justo donde esta cada caption.
-    if blur_captions and gemini_key and text_mode in ("traducir", "tapar"):
-        # Con key de Gemini, la DETECCIÓN del texto la hace Gemini (entiende texto vs caras/casas,
-        # a diferencia de EAST). modo "traducir" = reescribe en español; modo "tapar" = relleno
-        # sólido. Se procesa cada FUENTE única UNA vez (1 llamada a Gemini por fuente, NO por corte)
-        # -> no revienta el límite de Gemini ni frena. Los cortes conservan sus tiempos.
-        report("Traduciendo el texto..." if text_mode == "traducir"
-               else "Detectando y tapando el texto del proveedor (IA)...", 56)
+    if blur_captions and gemini_key and text_mode == "traducir":
+        # "traducir" SÍ necesita Gemini (lee el texto y lo reescribe en español). Se procesa cada
+        # FUENTE única UNA vez. (El modo "tapar" YA NO va por aquí: Gemini estimaba cajas mirando el
+        # video entero y ponía blur en lugares random -> ahora "tapar" usa EAST por-corte, abajo.)
+        report("Traduciendo el texto...", 56)
         fuentes = list({seg.video for seg in selected})
         remap, done_t = {}, [0]
         pref = "es_" if text_mode == "traducir" else "cov_"
@@ -222,11 +221,17 @@ def render_versions(
                 run(["ffmpeg", "-y", "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{d:.3f}",
                      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
                      "-c:a", "aac", raw])
-                final = mask_video_text(raw, masked)   # == masked (tapó algo) o == raw (nada)
+                # Con key de Gemini: tapado INTELIGENTE por corte (EAST afinado localiza el texto
+                # frame por frame + Gemini clasifica cada zona -> solo CAPTIONS, nunca el producto).
+                # Sin key: EAST puro (con el capitán de Claude abajo).
+                if gemini_key:
+                    final = mask_captions_smart(raw, masked, gemini_key=gemini_key)
+                else:
+                    final = mask_video_text(raw, masked)   # == masked (tapó algo) o == raw (nada)
 
-                # ── Capitán (Claude): revisa el tapado y corrige si hace falta ──
-                # Solo en una muestra (cada `cap_cada` cortes) para no frenar el pipeline.
-                revisar = capitan and (idx % cap_cada == 0)
+                # ── Capitán (Claude): revisa el tapado del path EAST puro y corrige si hace falta ──
+                # (No aplica al tapado inteligente con Gemini, que ya filtra por su cuenta.)
+                revisar = capitan and not gemini_key and (idx % cap_cada == 0)
                 if revisar and final == masked and os.path.exists(masked):
                     mw = cf = None
                     for _ in range(_MAX_CORRECCIONES):

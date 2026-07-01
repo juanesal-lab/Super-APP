@@ -27,6 +27,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_utils import run, probe
+from .assemble import venc   # codec GPU (VideoToolbox) si hay, para no re-encodar en CPU (lento)
 
 _MODEL = "gemini-2.5-flash"
 
@@ -308,7 +309,7 @@ def traducir_texto_pantalla(
     try:
         run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filt),
              "-map", last, "-map", "0:a?", "-c:a", "copy",
-             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+             *venc(),
              "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path])
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"Error montando el texto: {e}", "bloques": bloques}

@@ -943,6 +943,28 @@ Jack: el blur salía gigante; quería que tape SOLO la franja exacta de los subt
   banda TIGHT {x,y,w,h}. Descarta texto esporádico de la escena (envases, letreros).
 - **auto_studio:** el paso "tapar subtítulos" ahora usa `detect_subtitle_band` + `blur_boxes` (antes
   hacía unión de cajas de Gemini → banda enorme de 42%). Ahora tapa solo la franja real.
+
+### 2026-07-01 · Claude (juanesal-lab) · 🎯 Tapado de captions PRECISO en el flujo de CLIPS (EAST afinado + Gemini clasifica)
+Juan mostró que el "tapar" ponía blur en lugares RANDOM (encima del volante/producto). Diagnóstico con
+capturas: Gemini analizando el video ENTERO localiza PÉSIMO (leyó "Sujetos roban las llantas..." pero puso
+la caja encima del CARRO, no abajo donde está); y EAST por defecto (input 320x640) se saltaba captions
+grandes-abajo. Ninguno de los dos solo servía.
+- **NUEVO `smart_caption_mask.py` (mío):** `mask_captions_smart(in,out,gemini_key)` — (1) EAST AFINADO
+  (input 640x1280, min_h 0.013, conf 0.5) localiza el texto frame por frame, PRECISO (agarra captions
+  grandes y chicas + algunos falsos positivos tipo reflejos); (2) arma un contact-sheet de las zonas y
+  **Gemini clasifica** cada una (caption real vs reflejo/ventana/estantería/producto/tablero); (3) desenfoca
+  SOLO las captions. Reusa el EAST de `text_detect`.
+- **orchestrator (mi cambio):** el modo "tapar" YA NO va por `text_translate` (Gemini-video-entero,
+  impreciso). Ahora: "traducir" → text_translate (necesita leer/traducir); **"tapar" → `_mask_seg` POR
+  CORTE**, que usa el smart masker si hay key de Gemini (o EAST puro + capitán Claude si no).
+- **Probado (capturas en `~/Desktop/PRUEBAS-CreativeMaxing/_BLUR-TEST/`):** news con caption amarilla gigante
+  → caption DESENFOCADA, carro/personas limpios ✅. Honda (reflejos hexagonales, sin caption) → 100% limpio,
+  cero falso positivo ✅.
+- **⚠️ SOLAPAMIENTO contigo:** tu `subtitle_band.py` (auto_studio, banda tight abajo) y mi `smart_caption_mask.py`
+  (process_job, cualquier caption + Gemini rechaza reflejos/producto) resuelven lo MISMO en flujos distintos.
+  El tuyo es tight para la banda de subtítulos de abajo; el mío agarra captions en cualquier posición y filtra
+  falsos positivos con Gemini. **¿Unificamos en uno solo?** Cuando quieras lo alineamos (no toqué tu `subtitle_band`
+  ni `auto_studio`).
 - Probado en file(2): antes tapaba y=0.58→1.0 (42%); ahora y=0.69→0.90 (banda del texto, 21%).
   En un ORIGINAL limpio (subs de 1 línea) será aún más fino. Demo: ~/Downloads/prueba/BLUR_tight.png.
 

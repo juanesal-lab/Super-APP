@@ -460,3 +460,74 @@ Diagnóstico general de la app + endurecimiento (sin tocar tus archivos). Estado
 - **Cambio (`text_detect.py::mask_video` pase 3):** en vez de mosaico+blur, relleno SÓLIDO con el
   color MEDIANO de la zona (≈ el fondo detrás del texto; la mediana ignora el texto porque es minoría).
   Tapa parejo, combina con el fondo y NO se mueve. Verificado por frame.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📊 Blueprint de creativos ganadores + fase PRUEBA
+- **Nuevo doc `assets/blueprint-creativos-ganadores.md`** (referencia estratégica de jack, de un
+  estudio de 4.994 ads DTC): estructura madre, 9 hooks, specs (9:16, 9-15s, safe zone 120px), audio
+  como 50% del resultado, árbol de variantes (mín. 8), scorecard. Es la teoría que deben leer
+  narrative/phase_effects/hooks/guiones. Los ejemplos reales los traen sonar-auto / tiktok-scout.
+- **Alineé MIS módulos a la estructura madre** (no toqué los tuyos): agregué la fase **PRUEBA**
+  (evidencia/reseñas/demostración), que faltaba y el estudio marca como clave del esqueleto ganador:
+  - `narrative.py`: `ETIQUETAS` ahora HOOK·DOLOR·SOLUCIÓN·**PRUEBA**·DESEO/RESULTADO·CTA + aliases
+    (proof/testimonio/reseña/demostración/social proof) + definición en el prompt (no la inventa si no está).
+  - `phase_effects.py`: fase PRUEBA con efecto (zoom suave) + SFX (swoosh) + música creíble (energía 0.6) + por_que.
+  - `dub_colombia.py`: el prompt ahora cubre PRUEBA y aplica **problem-aware first** (nombrar el dolor
+    antes del producto, clave para tráfico frío según el blueprint).
+  - Probado sin gastar API: aliases → PRUEBA OK, y el plan de efectos le da música/efecto propios.
+- **Para ti (checklist del blueprint que toca TU terreno, cuando quieras):** subir de 6 a **≥8 variantes**,
+  **duración objetivo 9-15s** en el corte principal, **CTA con corte duro** a producto en los últimos 3s,
+  **safe zone 120px** para subtítulos/CTA, y **marcar elementos ganadores**. Yo sigo con lo mío.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔌 COORDINAR: faltan cablear 2 módulos (¿quién hace cuál?)
+Juan, gracias por cablear `narrative` (guiones) y `text_translate` (Tapar/Traducir) 🙌. Para que el
+gusanito quede completo de punta a punta, **faltan enganchar 2 módulos míos al orchestrator/UI**.
+Ambos ya están construidos, probados en vivo y no tocan tus archivos. Te dejo el punto de enganche
+exacto de cada uno y pregunto **quién cablea cada cual**:
+
+**1) `phase_effects.py` — música + efectos POR FASE (a partir del blueprint).**
+- Da: `phase_effect_plan(blueprint, target_seconds, sfx_paths)` → por fase `{inicio_s, fin_s, efecto,
+  sfx, musica, por_que}`; y `phase_cut_times(plan)` → tiempos para colocar el SFX.
+- Punto de enganche: en `render_versions`, cuando hay `blueprint` + efectos activos, pasar
+  `cut_times=phase_cut_times(plan)` y el `sfx` por fase a `assemble.add_voiceover_and_sfx`
+  (hoy asigna el sfx alternando `i%len`; para respetar la fase habría que aceptar sfx por-corte).
+  La `musica.estilo` por fase se la puedes pasar a `voiceover.gen_music`. **Esto toca `assemble.py`/
+  `orchestrator.py` (tu terreno).**
+- Antes ya lo hablamos: tú ibas con orden-de-clips por fase; esto es su gemelo (efectos/música por fase).
+
+**2) `dub_colombia.py` — doblaje colombiano congruente (con calce exacto al video).**
+- Da: `generar_dub(video, api_key, eleven_key, voz, oferta_2x1, generar_video, work_dir, blueprint,
+  progress)` → `{ok, voz, segments, audio, video}` (video ya doblado y sincronizado). También
+  `adaptar_guion(...)` si quieres solo el guion.
+- Punto de enganche: un botón/endpoint propio, O que tu `dubbing.py` derive el caso "target = es (CO)"
+  a `generar_dub`. **Esto toca `app.py`/`dubbing.py`/`frontend` (tu terreno).**
+
+**Pregunta concreta:** ¿cableas tú los dos (es todo tu terreno: orchestrator/assemble/app), o hago yo
+el "pegamento" del lado de mis módulos (ej. una función `plan_para_assemble()` que te deje los datos
+listos) y tú solo lo enchufas? Dime cuál prefieres para cada uno y arrancamos sin pisarnos.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⏳ AVISO (no bloqueo): construyendo angle_clone.py AHORA
+Juan, arranco YA un módulo nuevo en MI terreno: `backend/pipeline/angle_clone.py` = "clon de ángulo con
+producto propio" (clonar un ganador de otro mercado pero mostrando NUESTRO producto real). **REUSA tu
+`product_swap.py` — solo lo IMPORTO (detect_product_ranges + find_new_clips + swap_product), NO lo edito.**
+Aviso para que no toquemos `product_swap.py` al mismo tiempo. Si me toca modificarlo, te aviso aquí antes.
+En un rato dejo la entrada de "hecho".
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ angle_clone.py HECHO (clon de ángulo, nivel realista)
+- **Construido y probado.** `backend/pipeline/angle_clone.py` = clonar un ganador mostrando NUESTRO
+  producto. **NO toqué `product_swap.py`** (solo lo importé: `detect_product_ranges`, `find_new_clips`,
+  `swap_product`). ✅
+- **`clonar_angulo(winner_path, our_videos, our_photos, *, api_key, old_desc, our_desc, manual_ranges,
+  photo_seconds, out_path, work_dir, progress)`** → `{ok, ranges, n_tomas, video}`.
+  1. Momentos del producto viejo: `detect_product_ranges` (Gemini) o `manual_ranges` (['mm:ss-mm:ss']).
+  2. Nuestras tomas: FOTOS→clip (lo agregué yo) + videos→`find_new_clips`.
+  3. Empalme con `swap_product` (nuestras tomas en esos momentos, CONSERVA el audio/ángulo del ganador).
+- **Nivel:** REALISTA (mezcla ganador + tomas propias en los momentos del producto). El reemplazo
+  automático perfecto sobre producto EN MOVIMIENTO queda para un nivel superior (v2).
+- **Probado EN VIVO** (determinista, sin gastar Gemini): metí una foto de "MI CREMA" en 00:05-00:09 de
+  un ganador de 22s → verifiqué por frames: seg 1 = ganador original, seg 7 = mi producto, audio del
+  ganador conservado, duración intacta. Demo en `~/Downloads/prueba/CLON_angulo_demo.mp4`.
+- **Para cablear (tu terreno, cuando quieras):** endpoint/UI que reciba ganador + fotos/videos de
+  nuestro producto (+ manual_ranges opcional) y llame a `clonar_angulo`. Yo no toco `app.py`/`frontend`.
+- **v2 (idea):** control manual por-momento (este clip EXACTO en este rango) — hoy `swap_product` asigna
+  las tomas round-robin; para placement 1-a-1 habría que ajustar `swap_product` (tu archivo) → lo
+  coordinamos antes de tocarlo.

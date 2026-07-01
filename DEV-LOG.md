@@ -658,3 +658,26 @@ mucho movimiento/manos→corta a toma propia; si no hay buena toma→deja el ori
 - Reusa también auto_studio (verticalizar blur, música/sfx, subs, normalizar), dub_colombia, text_translate.
 - **TOCARÉ `app.py` + `frontend`** (aditivo): endpoint `/api/clone` + sección nueva. Aviso para no
   editarlos al tiempo. Dejo entrada "hecho" al terminar.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ "Clon Ganador con mi Producto" HECHO (reemplazo inteligente)
+- **NUEVO `backend/pipeline/winner_clone.py`** (mi terreno): `clonar_ganador(winner, our_photos,
+  our_videos, *, product_desc, old_desc, doblar, voz, verticalizar, ...)`. Clona un ganador mostrando
+  NUESTRO producto, con **reemplazo inteligente por MOVIMIENTO**:
+  - `_motion_score()` mide el movimiento de cada momento del producto (OpenCV, diff media 64×64).
+  - Quieto (<4) → **reemplaza** con toma quieta (foto→clip). Movido (>11) → **corta** a toma dinámica;
+    si no hay → **deja el original** (no fuerza → no se ve falso). Medio → mejor disponible.
+  - Devuelve `decisiones:[{rango,movimiento,accion}]` para auditar qué hizo en cada momento.
+- **REUSA tu `product_swap.py` SIN tocarlo:** el empalme lo hace `swap_product` pasándole solo los
+  rangos elegidos + la toma alineada a cada uno (aprovecho que asigna en orden). También reusa
+  auto_studio (verticalizar blur / música-sfx / subs / normalizar), dub_colombia, text_translate, narrative.
+- **TOQUÉ `app.py` + `frontend` (aditivo, avisado):** endpoint `POST /api/clone` + sección
+  "🎯 Clon Ganador con mi Producto" (reusa clases `auto*`, ids `cl*`). No modifiqué lo tuyo.
+- **Probado:** el clasificador de movimiento distingue 3 niveles (quieto/medio/mucho) con clips
+  sintéticos; backend compila/importa; la sección renderiza bien (screenshot). Cada sub-pieza (splice,
+  finalización, narrativa, dub) ya estaba validada por separado.
+- **Voz:** opción de dejar la ORIGINAL o doblar a es-CO (checkbox).
+- **Enganche futuro (tu terreno / externo):** buscar tomas en TikTok (sonar-auto / tiktok-scout) NO se
+  llama inline (es skill + navegador); hoy el usuario alimenta `our_photos`/`our_videos` (puede sacarlas
+  del scout+descargador). Cuando quieras, cableamos ese puente.
+- **v2 (lo más difícil):** reemplazo automático PERFECTO in-place sobre producto en movimiento. Hoy la
+  estrategia es "corta a toma propia / deja original" donde el in-place quedaría falso (natural > forzado).

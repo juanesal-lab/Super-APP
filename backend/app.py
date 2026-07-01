@@ -287,6 +287,76 @@ async def auto(
     return {"job_id": job_id}
 
 
+# ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----
+
+def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, settings: dict):
+    from pipeline.winner_clone import clonar_ganador
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        result = clonar_ganador(
+            winner, our_photos=photos, our_videos=videos,
+            product_desc=settings.get("product_desc", ""),
+            old_desc=settings.get("old_desc", ""),
+            doblar=settings.get("doblar", False),
+            voz=settings.get("voz", "juan_carlos"),
+            verticalizar=settings.get("verticalizar", True),
+            gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
+            work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
+        )
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "Error")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/clone")
+async def clone(
+    winner: UploadFile = File(...),
+    photos: list[UploadFile] = File([]),
+    videos: list[UploadFile] = File([]),
+    product_desc: str = Form(""),
+    old_desc: str = Form(""),
+    doblar: bool = Form(False),
+    voz: str = Form("juan_carlos"),
+    verticalizar: bool = Form(True),
+):
+    if not winner:
+        raise HTTPException(400, "Sube el creativo ganador")
+    job_id = uuid.uuid4().hex[:12]
+    up = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(up, exist_ok=True)
+
+    def _save(f, sub):
+        d = os.path.join(up, sub); os.makedirs(d, exist_ok=True)
+        dest = os.path.join(d, os.path.basename(f.filename or "f"))
+        with open(dest, "wb") as o:
+            shutil.copyfileobj(f.file, o)
+        return dest
+
+    winner_path = _save(winner, "winner")
+    photo_paths = [_save(f, "photos") for f in (photos or []) if f and f.filename]
+    video_paths = [_save(f, "videos") for f in (videos or []) if f and f.filename]
+
+    JOBS[job_id] = {"status": "running", "progress": 0,
+                    "message": "Iniciando...", "result": None, "created": time.time()}
+    settings = {
+        "product_desc": product_desc.strip(), "old_desc": old_desc.strip(),
+        "doblar": bool(doblar), "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
+        "verticalizar": bool(verticalizar),
+    }
+    threading.Thread(target=_run_clone_job,
+                     args=(job_id, winner_path, photo_paths, video_paths, settings),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
 # ---- Proceso por pasos para VOZ EN OFF ----
 
 def _save_uploads(files: list[UploadFile]) -> tuple[str, list[str]]:

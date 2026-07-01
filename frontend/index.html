@@ -213,6 +213,106 @@
     }
   </script>
 
+  <!-- 🎯 CLON GANADOR CON MI PRODUCTO (sección nueva, autocontenida, reusa clases auto*) -->
+  <div class="autoHero" style="margin-top:0">
+    <h2>🎯 <span>Clon Ganador</span> con mi Producto</h2>
+    <p class="lead">Sube un creativo GANADOR + foto/clips de TU producto. La IA detecta dónde aparece
+      el producto original y mete el TUYO — inteligente: <b>reemplaza donde queda limpio</b> (producto
+      quieto) y <b>corta a una toma tuya donde hay mucho movimiento</b> (para que no se vea falso).
+      Conserva el ángulo/guion y termina el creativo (9:16, música, subtítulos).</p>
+
+    <input type="file" id="clWinner" accept="video/*" class="hidden">
+    <label class="autoDrop" for="clWinner"><b id="clWinnerName">🏆 Elige el creativo GANADOR a clonar</b>
+      <div class="s">el ad de otro producto que usa el ángulo que quieres</div></label>
+
+    <input type="file" id="clPhotos" accept="image/*" multiple class="hidden">
+    <label class="autoDrop" for="clPhotos" style="margin-top:10px"><b id="clPhotosName">📸 Foto(s) de TU producto</b>
+      <div class="s">1 o más fotos del producto real</div></label>
+
+    <input type="file" id="clVideos" accept="video/*" multiple class="hidden">
+    <label class="autoDrop" for="clVideos" style="margin-top:10px"><b id="clVideosName">🎥 Clips de TU producto (opcional)</b>
+      <div class="s">videos donde se ve tu producto (mejoran los momentos con movimiento)</div></label>
+
+    <div class="autoOpts">
+      <input type="text" id="clDesc" class="full" placeholder="Tu producto (ej. crema para dolor de espalda)">
+      <input type="text" id="clOld" class="full" placeholder="Producto del ganador (ej. cápsulas) — ayuda a detectarlo">
+      <select id="clVoz"><option value="juan_carlos">Voz: Juan Carlos</option><option value="kate">Voz: Kate</option></select>
+      <select id="clVert"><option value="true">9:16 vertical (blur)</option><option value="false">Dejar formato</option></select>
+    </div>
+    <div class="autoChk">
+      <label><input type="checkbox" id="clDoblar"> Doblar la voz a español colombiano (si no, deja la original)</label>
+    </div>
+
+    <button class="autoBtn" id="clGo" disabled onclick="cloneRun()">🎯 Clonar con mi producto</button>
+
+    <div class="autoProg hidden" id="clProg">
+      <div class="autoBarWrap"><div class="autoBar" id="clBar"></div></div>
+      <div class="autoMsg" id="clMsg">Iniciando…</div>
+    </div>
+    <div id="clResult"></div>
+  </div>
+
+  <script>
+    (function(){
+      function bind(inputId, nameId, label, multi){
+        const el=document.getElementById(inputId);
+        el.addEventListener('change',e=>{
+          const fs=e.target.files;
+          window['_'+inputId]=multi?Array.from(fs):fs[0];
+          document.getElementById(nameId).textContent = fs.length
+            ? (multi ? `${label} (${fs.length})` : '🏆 '+fs[0].name) : label;
+          if(inputId==='clWinner') document.getElementById('clGo').disabled=!fs.length;
+        });
+      }
+      bind('clWinner','clWinnerName','🏆 Elige el creativo GANADOR a clonar',false);
+      bind('clPhotos','clPhotosName','📸 Foto(s) de TU producto',true);
+      bind('clVideos','clVideosName','🎥 Clips de TU producto (opcional)',true);
+    })();
+    async function cloneRun(){
+      const w=window._clWinner; if(!w) return;
+      const fd=new FormData();
+      fd.append('winner',w);
+      (window._clPhotos||[]).forEach(f=>fd.append('photos',f));
+      (window._clVideos||[]).forEach(f=>fd.append('videos',f));
+      fd.append('product_desc',document.getElementById('clDesc').value);
+      fd.append('old_desc',document.getElementById('clOld').value);
+      fd.append('voz',document.getElementById('clVoz').value);
+      fd.append('verticalizar',document.getElementById('clVert').value);
+      fd.append('doblar',document.getElementById('clDoblar').checked);
+      document.getElementById('clGo').disabled=true;
+      document.getElementById('clResult').innerHTML='';
+      document.getElementById('clProg').classList.remove('hidden');
+      document.getElementById('clBar').style.width='0%';
+      try{ const r=await fetch('/api/clone',{method:'POST',body:fd}); const j=await r.json(); clonePoll(j.job_id); }
+      catch(e){ document.getElementById('clMsg').textContent='Error: '+e; document.getElementById('clGo').disabled=false; }
+    }
+    async function clonePoll(id){
+      const r=await fetch('/api/status/'+id); const j=await r.json();
+      document.getElementById('clBar').style.width=(j.progress||0)+'%';
+      document.getElementById('clMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>clonePoll(id),1300); return; }
+      document.getElementById('clGo').disabled=false;
+      if(j.status==='error'){ document.getElementById('clMsg').innerHTML='<span style="color:var(--warn)">'+(j.message||'Error')+'</span>'; return; }
+      cloneRender(j.result);
+    }
+    function cloneRender(res){
+      if(!res) return; const box=document.getElementById('clResult'); let h='';
+      if(res.resumen) document.getElementById('clMsg').textContent='✅ '+res.resumen;
+      (res.pasos||[]).forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${p.paso}${p.detalle?` <span>· ${p.detalle}</span>`:''}</div>`; });
+      if(res.decisiones && res.decisiones.length){
+        h+='<div class="autoSteps" style="margin-top:10px">';
+        res.decisiones.forEach(d=>{ h+=`<div class="autoStep"><b>${d.rango}</b> · mov ${d.movimiento} · <span>${d.accion}</span></div>`; });
+        h+='</div>';
+      }
+      if(res.video){
+        const u='/api/file?path='+encodeURIComponent(res.video), dl='/api/download?path='+encodeURIComponent(res.video)+'&name=clon';
+        h+=`<video src="${u}" controls playsinline style="width:100%;border-radius:14px;margin-top:16px"></video>`;
+        h+=`<a class="autoBtn" style="margin-top:12px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${dl}" download>⬇️ Descargar clon</a>`;
+      }
+      box.innerHTML=h;
+    }
+  </script>
+
   <!-- Gemini key -->
   <div class="card" id="keyCard">
     <h2>Motor inteligente (Gemini) <span id="keyPill" class="pill off">sin configurar</span></h2>

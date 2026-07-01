@@ -696,3 +696,10 @@ mucho movimiento/manos→corta a toma propia; si no hay buena toma→deja el ori
   del scout+descargador). Cuando quieras, cableamos ese puente.
 - **v2 (lo más difícil):** reemplazo automático PERFECTO in-place sobre producto en movimiento. Hoy la
   estrategia es "corta a toma propia / deja original" donde el in-place quedaría falso (natural > forzado).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⏳ AVISO: motor de subtítulos/estilos (Poppins, auto-fit, 10 estilos)
+Juan, arranco `backend/pipeline/caption_styles.py` (mi terreno) para arreglar el texto FEO: auto-ajuste
+(nunca se corta, safe zone 120px), **Poppins** (copié a `assets/fonts/`), 10 estilos seleccionables y fix
+del tapado. **Tocaré `text_translate.py` y `auto_studio.py`/`winner_clone.py`** (para usar el motor) — si
+hay choque conservo lo tuyo. El selector en la UI lo coordino contigo (veo que estás con las pestañas).
+Dejo entrada "hecho" con screenshots de cada estilo.

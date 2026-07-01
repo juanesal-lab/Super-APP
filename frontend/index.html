@@ -100,6 +100,16 @@
     <p class="pmsg" style="margin:10px 0 0">Solo se necesita si activas la voz en off. La sacas gratis en elevenlabs.io → perfil → API key.</p>
   </div>
 
+  <!-- Anthropic key (capitán / supervisor de calidad) -->
+  <div class="card" id="anthropicCard">
+    <h2>🧭 Capitán de calidad · Claude <span id="anthropicPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow">
+      <input type="password" id="anthropicInput" placeholder="Pega tu API key de Claude (sk-ant-...)">
+      <button class="btn sec" id="anthropicSave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, Claude (Opus 4.8) revisa la calidad de cada paso y corrige (ej. el tapado de textos: aprueba o manda a re-tapar). Sin key, todo funciona igual pero sin supervisión. La sacas en console.anthropic.com → API Keys.</p>
+  </div>
+
   <!-- Upload -->
   <div class="card">
     <h2>1 · Tus videos</h2>
@@ -255,13 +265,14 @@
 const API = "";
 let files = [];
 
-// --- API keys (Gemini + ElevenLabs) ---
+// --- API keys (Gemini + ElevenLabs + Claude) ---
 async function refreshConfig(){
   const r = await fetch("/api/config"); const j = await r.json();
   const setPill=(id,ok)=>{const p=document.getElementById(id);
     p.textContent=ok?"configurada ✓":"sin configurar"; p.className=ok?"pill":"pill off";};
   setPill("keyPill", j.has_gemini_key);
   setPill("elevenPill", j.has_eleven_key);
+  setPill("anthropicPill", j.has_anthropic_key);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
   if(vs && !vs.dataset.loaded && j.voices){
@@ -288,6 +299,7 @@ async function saveKey(provider, inputId){
 }
 document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
 document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
+document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
 refreshConfig();
 
 // --- Voz en off toggle ---

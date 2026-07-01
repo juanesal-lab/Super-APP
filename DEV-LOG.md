@@ -959,3 +959,13 @@ Loop autónomo de test/error (12 videos reales de TikTok × 5 rondas = 60 observ
 - **Resultado:** ~10/12 correctos. Falla el caso raro de subtítulo de 5 líneas sobre escena llena de
   texto de producto. Antes: blur gigante SIEMPRE (42-55%). Ahora: nada si no hay subtítulo, y banda
   tight si lo hay. Montaje de pruebas: ~/Downloads/prueba/PRUEBAS_deteccion_subtitulos.png
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✏️ Subtítulos más pequeños y con líneas JUNTAS
+Jack: los subtítulos salían muy grandes y con mucho espacio entre la línea de arriba y la de abajo.
+- **caption_styles `_fit`:** el interlineado usaba `asc+desc+0.18*size` (Poppins tiene métricas ~1.5×
+  el tamaño → líneas muy separadas). Ahora `line_h = 1.18*size` → líneas JUNTAS.
+- **`_render_wordgroup`:** fuente H*0.052→0.046 y max_h 0.20→0.165 (más pequeño).
+- Verificado con render local (sin API): 1 línea y 2 líneas quedan chicas y juntas, acentos OK.
+  Demo: ~/Downloads/prueba/SUBS_juntos_chicos.png
+- Nota: el file(3) que mostró Jack es output de una versión ANTERIOR (por eso el subtítulo viejo se
+  asomaba). La detección/blur ya se afinó (híbrido Gemini+EAST). Falta que pruebe con un ORIGINAL limpio.

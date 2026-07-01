@@ -88,14 +88,13 @@ def _fit(draw, text, fontpath, max_w, max_h, size0, min_size=30):
     while size >= min_size:
         font = ImageFont.truetype(fontpath, size)
         lines = _wrap(draw, text, font, max_w)
-        asc, desc = font.getmetrics()
-        line_h = asc + desc + int(size * 0.18)
+        line_h = int(size * 1.18)          # interlineado JUNTO (Poppins tiene métricas muy altas)
         widest = max((draw.textlength(ln, font=font) for ln in lines), default=0)
         if widest <= max_w and line_h * len(lines) <= max_h:
             return font, lines, line_h, size
         size -= 3
     font = ImageFont.truetype(fontpath, min_size)
-    return font, _wrap(draw, text, font, max_w), min_size + int(min_size * 0.18), min_size
+    return font, _wrap(draw, text, font, max_w), int(min_size * 1.18), min_size
 
 
 def _draw_words_line(draw, words, x, y, font, base_col, kw_col, keywords, stroke):
@@ -232,8 +231,8 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     xbold = style in ("hormozi", "bounce", "wordpop")
     fontpath = _fontpath(xbold)
     disp = text.upper() if style in ("hormozi", "karaoke", "wordpop") else text
-    # Más pequeño y en el tercio INFERIOR (tapa menos el video)
-    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.20), int(H * 0.052))
+    # Más pequeño, líneas juntas y en el tercio INFERIOR (tapa menos el video)
+    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.165), int(H * 0.046))
     stroke = max(3, size // 8)
     total_h = line_h * len(lines)
     y0 = max(int(H * 0.60), min(int(H * 0.80) - total_h // 2, H - SAFE - total_h))

@@ -368,3 +368,12 @@ adapte cada frase a SU momento del video.
 inteligente solo es-CO. **Pregunta:** ¿quieres que tu `dubbing.py` derive el caso "target=es (Colombia)"
 a mi `dub_colombia.py`, o los dejamos como dos botones separados en la UI? Cuando me digas, coordinamos
 el cableado (yo no toco tu archivo). ¿Ves algún choque con lo que tengas en curso?
+
+### 2026-07-01 · Claude (juanesal-lab) · ⚡ Capitán acotado (no frenar el masking) + no crash
+- Tras arreglar el crash de thread-safety, el masking se PEGABA (4/60): el capitán (Claude) corría
+  en los 60 cortes = 60+ llamadas a Claude con WORKERS=3 → ~5 min. No escala.
+- **Fix (`orchestrator.py`):** el capitán ahora revisa solo una MUESTRA espaciada (`_CAPITAN_MAX_REVISIONES=5`
+  cortes, no todos) y máx 1 corrección (`_MAX_CORRECCIONES=1`). El masking vuelve a ir a velocidad
+  normal (limitado por ffmpeg, no por Claude). El detector ya es bueno solo; el capitán es spot-check.
+- **Mejor integración futura (pendiente):** en vez de 60 cortes crudos, que el capitán revise los 6
+  ADS FINALES ensamblados (6 llamadas, sobre el output real). Más útil y más rápido.

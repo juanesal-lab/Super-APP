@@ -19,7 +19,10 @@ from . import supervisor
 
 
 # Cuántas veces el capitán (Claude) puede mandar a re-tapar un corte hasta aprobarlo
-_MAX_CORRECCIONES = 2
+_MAX_CORRECCIONES = 1
+# El capitán es LENTO (1 llamada a Claude por corte). Con muchos cortes no se pueden revisar
+# todos sin frenar el pipeline: se revisa solo una MUESTRA espaciada (spot-check).
+_CAPITAN_MAX_REVISIONES = 5
 
 
 # Umbral de similitud visual: firmas con distancia < este valor se consideran el mismo plano
@@ -174,7 +177,10 @@ def render_versions(
         # frames y en paralelo.
         report("Tapando textos del proveedor (frame por frame)...", 56)
         done = [0]
-        capitan = supervisor.available()   # ¿hay ANTHROPIC_API_KEY? -> el capitán supervisa
+        # El capitán (Claude) es lento: revisa solo una MUESTRA espaciada de los cortes,
+        # no todos (si no, con 60 cortes serían 60+ llamadas a Claude y se traba).
+        capitan = supervisor.available()
+        cap_cada = max(1, len(selected) // _CAPITAN_MAX_REVISIONES) if capitan else 0
 
         def _mask_seg(item):
             idx, seg = item
@@ -188,9 +194,9 @@ def render_versions(
                 final = mask_video_text(raw, masked)   # == masked (tapó algo) o == raw (nada)
 
                 # ── Capitán (Claude): revisa el tapado y corrige si hace falta ──
-                # Prueba y error acotado: si tapó de más (falsos positivos) sube la
-                # precisión; si tapó de menos (texto sin tapar) la baja, y re-tapa.
-                if capitan and final == masked and os.path.exists(masked):
+                # Solo en una muestra (cada `cap_cada` cortes) para no frenar el pipeline.
+                revisar = capitan and (idx % cap_cada == 0)
+                if revisar and final == masked and os.path.exists(masked):
                     mw = cf = None
                     for _ in range(_MAX_CORRECCIONES):
                         v = supervisor.revisar_blur(raw, masked)

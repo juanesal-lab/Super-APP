@@ -1,4 +1,4 @@
-"""Servidor web local del Cortador de Clips."""
+"""Servidor web local de CreativeMaxing."""
 from __future__ import annotations
 
 import hashlib
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Cortador de Clips", lifespan=lifespan)
+app = FastAPI(title="CreativeMaxing", lifespan=lifespan)
 
 
 # Estado de trabajos en memoria

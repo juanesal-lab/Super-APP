@@ -585,3 +585,11 @@ Un solo botón: video ganador (cualquier idioma) → creativo terminado en espa�
   caso real (ganador en inglés). Se pule agrandando caja/usando fuente con emojis.
 - **Para ti:** el botón ya llama `/api/auto`. Si quieres moverlo de lugar en la UI o cambiar textos,
   es todo `auto*` (aislado). ¿Lo dejamos así o lo reubicamos?
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🐛 Fix UI del Modo Automático + 🏷️ REBRAND a "CreativeMaxing"
+- **Bug arreglado:** el `<label>` de subir video (`.autoDrop`) salía INLINE y se encimaba con el texto
+  de arriba. Le puse `display:block` → ahora es un bloque completo, limpio. Verificado con screenshot.
+- **REBRAND (lo pidió jack): "Cortador de Clips" → "CreativeMaxing".** Cambié: `frontend` h1
+  (`Creative<span>Maxing</span>`) + `<title>`, `app.py` (docstring + `FastAPI(title=...)`), `run.sh`
+  (comentario + echo). Aviso porque toca archivos compartidos; es solo texto/marca, sin lógica.
+  La API de FastAPI (title) es interna, no afecta endpoints.

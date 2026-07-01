@@ -1,7 +1,7 @@
 #!/bin/bash
-# Lanzador del Cortador de Clips
+# Lanzador de CreativeMaxing
 cd "$(dirname "$0")"
-echo "🎬  Cortador de Clips · Vidaria"
+echo "🎬  CreativeMaxing · Vidaria"
 # Cierra cualquier server anterior atascado en el puerto 8420 (evita "puerto ocupado"
 # y que quede corriendo código viejo). Solo mata si hay algo escuchando.
 OLD_PIDS=$(lsof -ti:8420 2>/dev/null)

@@ -293,3 +293,29 @@ HOY, no de plantillas genéricas.
   cambias/pulleas código a mitad de un procesamiento). `watchfiles` ya viene con `uvicorn[standard]`.
 - **Para que agarre esto:** hay que reiniciar el server UNA vez (Ctrl+C + `./run.sh`); de ahí en
   adelante es automático.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📥 Capa de INGESTA lista (descubrir → descargar → gusanito)
+Juan, mapeé las herramientas de descubrimiento/ingesta que viven FUERA del repo (en el Mac de jack)
+y que alimentan al gusanito con ganadores ACTUALES (ver REGLA DEL PROYECTO). Ninguna toca el repo aún;
+esto es para coordinar el enganche.
+
+**Las 3 piezas de ingesta (se complementan, NO son redundantes):**
+- `sonar-auto` (~/Desktop) → **descubre en Meta/Facebook Ad Library**: parte de una imagen, hace
+  búsqueda inversa, filtra con visión (Claude) y lista ads pagados ganadores (máx 1-2 por marca). App web.
+- `tiktok-creative-scout` (~/Downloads) → **descubre en TikTok** (orgánico/UGC): dual-layer → Capa A
+  (producto) + Capa B (dolor/B-roll para Frankenstein → conecta con tu `product_swap.py`). Devuelve un
+  Sheet con URLs. Es una skill (navega con Chrome).
+- `descargar-videos-tiktok` (~/Downloads) → **el descargador**. LO MEJORÉ hoy a modo automático:
+  un solo comando (`scripts/descargar.sh TEMA`) que lee links del portapapeles/archivo/args, dedup,
+  instala yt-dlp, descarga, **reintenta solo los fallidos con --impersonate**, y verifica. Salida:
+  `~/Downloads/TEMA/*.mp4`. Probado con yt-dlp simulado (dedup, reintento, resumen OK).
+
+**Flujo completo de ingesta:**
+`sonar-auto (Meta) + tiktok-scout (TikTok)  →  descargar-videos-tiktok (.mp4)  →  gusanito
+(narrative.py → phase_effects.py → guiones/efectos/música/orden)`.
+
+**Propuesta de enganche (para cuando quieras, coordinamos):** que el descubrimiento vuelque los URLs
+a un `.txt`, el descargador los baje a una carpeta `incoming/`, y Super-APP la lea como fuente de
+videos (o como el ad de REFERENCIA que ya alimenta a `narrative.py`). Esto cumple la REGLA: el gusanito
+clona lo que convierte HOY. ¿Arranco por un puente `incoming/ → /api/scripts (reference_ad)` o
+prefieres definir tú el punto de entrada en el orchestrator?

@@ -71,3 +71,44 @@ Lee esto (con `git pull`) antes de empezar. Agrega entradas AL FINAL. Formato:
   y llámalo con la ruta del video + `gemini_key` (o `GEMINI_API_KEY` en el entorno). Aún NO tiene
   endpoint en `app.py` (lo dejé como módulo puro para que decidamos juntos dónde engancharlo en el flujo).
   Ojo: cada análisis = 1 request a Gemini (recuerda el límite gratis de 20/día).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📌 NOTA PARA JUAN: cómo llamar a narrative.py
+Juan, `narrative.py` es la BASE de las siguientes estaciones (guion/música/efectos/subtítulos),
+así que lo dejo SIN conectar para que tú decidas cómo integrarlo en el `orchestrator` (es tu terreno).
+
+**Qué expone (una sola función):**
+```python
+from .narrative import analyze_narrative
+res = analyze_narrative(video_path, gemini_key=<key>, product_desc=<opcional>, progress=<opcional>)
+```
+
+**Qué devuelve** (dict). Si sale bien:
+```json
+{
+  "ok": true,
+  "duration": 41.9,
+  "segments": [
+    {
+      "inicio": "00:00", "fin": "00:03",
+      "etiqueta": "HOOK",                // una de: HOOK · DOLOR · SOLUCIÓN · DESEO/RESULTADO · CTA
+      "que_se_ve": "descripción visual (Gemini visión)",
+      "que_se_dice": "transcripción del audio en ese tramo (multimodal, sin Whisper)",
+      "por_que": "razón corta de la etiqueta (para auditar)"
+    }
+    // ...tramos consecutivos que cubren TODO el video, en orden temporal
+  ]
+}
+```
+Si falla: `{"ok": false, "error": "..."}` (nunca lanza excepción; no rompe el pipeline).
+
+**Preguntas para ti (cómo quieres integrarlo en el flujo):**
+1. ¿En qué punto del `orchestrator` lo llamo? Mi idea: DESPUÉS de tener el video pero ANTES de
+   `render_versions`, para que el JSON alimente al guion/música/efectos. ¿Estás de acuerdo o
+   prefieres otro punto?
+2. ¿Sobre qué video corre? ¿El ad ganador de referencia, o cada video fuente? (Hoy recibe UN
+   `video_path`; si necesitas varios lo adapto.)
+3. ¿Guardamos el JSON en el `work_dir` del job (ej. `narrative.json`) para que las otras estaciones
+   lo lean, o lo pasas en memoria entre funciones? Como prefieras, yo lo ajusto.
+4. Timestamps en mm:ss (texto). Si el orchestrator los necesita en segundos (float) para cortar
+   con FFmpeg, te agrego un helper `to_seconds()`. ¿Lo quieres?
+Cuando me digas, lo conecto siguiendo tu diseño. No lo toco hasta entonces.

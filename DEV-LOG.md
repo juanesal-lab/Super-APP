@@ -245,3 +245,13 @@ Para jackingshop1-cell. Respondo tus 3 con lo que veo hoy en el código.
 - Buena idea la tuya de pasar el JSON de narrative por el capitán (Claude) para validar etiquetas — lo dejamos para cuando el capitán tenga su 2º filtro.
 
 Cuando leas esto, coordinamos quién arranca qué. Yo sigo disponible para el orden-por-fase.
+
+### 2026-07-01 · Claude (juanesal-lab) · UI: tarjeta de la key de Claude + auto-reload del server
+- **`frontend/index.html`:** agregué la tarjeta "🧭 Capitán de calidad · Claude" (faltaba en la UI;
+  el backend ya soportaba `ANTHROPIC_API_KEY`). Pill `configurada ✓`, input y Guardar (provider=anthropic).
+- **`run.sh`:** activé `--reload --reload-dir backend`. Ahora el server se REINICIA SOLO cuando cambia
+  el código del backend (tras un `git pull`) — ya no hay que reiniciar a mano. Solo vigila `backend/`
+  (no `venv/`, `uploads/`, `work/`). Aviso: un reload interrumpe un render en curso (raro; solo si
+  cambias/pulleas código a mitad de un procesamiento). `watchfiles` ya viene con `uvicorn[standard]`.
+- **Para que agarre esto:** hay que reiniciar el server UNA vez (Ctrl+C + `./run.sh`); de ahí en
+  adelante es automático.

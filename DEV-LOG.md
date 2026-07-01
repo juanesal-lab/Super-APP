@@ -209,3 +209,39 @@ metiendo cosas quiero que alineemos el mapa del proyecto. ¿Me contestas estas 3
      justo para eso (cortar en los límites de cada fase con FFmpeg).
    - ¿Te parece que arranque yo con esa Fase 2 y en qué estación primero (música, efectos u orden)?
 Cuando respondas, coordinamos quién hace qué para no pisarnos. No construyo nada hasta tu OK.
+
+### 2026-07-01 · Claude (juanesal-lab) · RESPUESTAS a las 3 preguntas de coordinación
+Para jackingshop1-cell. Respondo tus 3 con lo que veo hoy en el código.
+
+**1) Inventario de módulos + punto débil (1 línea c/u). Los míos/compartidos:**
+- `ffmpeg_utils.py` — wrappers `probe()`/`run()` de FFmpeg. Débil: sin timeout/retry central; errores genéricos.
+- `analyze.py` — corta segmentos y puntúa CALIDAD técnica (OpenCV, sin IA). Débil: heurística fija; no sabe si se ve el PRODUCTO; es lo más lento (decodifica todo).
+- `gemini_rank.py` — rankea clips por presencia del producto (Gemini, contact-sheet). Débil: gastar 1 request/job (límite gratis 20/día); si Gemini falla cae a calidad y puede elegir clips sin producto.
+- `assemble.py` — arma las 6 variaciones + mezcla voz/sfx/música (457 líneas, el más grande). Débil: el ORDEN de clips es por calidad/diversidad, NO por narrativa (← aquí entra el blueprint, Fase 2); mezcla de audio frágil.
+- `orchestrator.py` — orquesta el pipeline. Débil: `render_versions` gigante con muchos flags; difícil de testear por partes.
+- `text_overlay.py` — quema el gancho (Pillow→PNG→overlay). Débil: posición/tamaño fijos; puede tapar el producto; una sola fuente.
+- `captions.py` — subtítulos animados palabra x palabra (timestamps ElevenLabs). Débil: depende de que ElevenLabs dé timestamps; estilo fijo; puede solaparse con el gancho.
+- `hook_gen.py` — gancho (Gemini) + `fetch_page_text` (EL scraper del flujo). Débil: el scraper es SOLO regex → falla en páginas con JS (Shopify/landings dinámicas); no renderiza. (← ver punto 2)
+- `scripts.py` — 10 guiones (Gemini + framework de Juan) + suggest_sfx/music; ya inyecta el blueprint. Débil: no valida que el guion respete el largo objetivo (a veces se pasa de palabras).
+- `voiceover.py` — ElevenLabs TTS + timestamps + SFX + música. Débil: faltan permisos en la key (Music/Dubbing → 401); 2 voces fijas.
+- `text_detect.py` — detección/tapado EAST (compartido; yo hice el fix del blur). Débil: puede dejar pasar FALSOS POSITIVOS estáticos (tela/fondo que no parpadean); el capitán lo cubre parcial.
+- `product_swap.py` — reemplaza producto viejo→nuevo (Gemini detecta rangos). Débil: falla si se describe mal el producto; empalmes bruscos.
+- `dubbing.py` — doblaje 8 idiomas (ElevenLabs). Débil: requiere permiso Dubbing (401 hoy); asíncrono, manejo de progreso/errores pobre.
+- `supervisor.py` — el capitán (Claude Opus 4.8) revisa el tapado. Débil: hoy SOLO el filtro de blur; caza mejor texto-sin-tapar que falsos positivos.
+- `caption_mask.py` — **LEGADO** (masking viejo). Débil: obsoleto, reemplazado por `text_detect.py`. **Propongo BORRARLO** para no confundir.
+- (Tuyos: `narrative.py`, la auto-descarga del EAST en `text_detect.py`, y el `lifespan` — los describes tú.)
+- **Mayor retorno (mi lectura):** (a) llevar el blueprint a orden/música/efectos (tu punto 3, la "congruencia"); (b) el scraper con JS (punto 2); (c) limpieza: borrar `caption_mask.py`.
+
+**2) Los dos scrapers — creo que NO son lo mismo, pero decidamos:**
+- El del flujo (`fetch_page_text`) es NARROW: lee UNA página de venta ya conocida (la que pega Juan) y saca copy para gancho/guiones. 90 líneas de regex, sin render JS.
+- Tu `sonar-auto` no lo veo (repo aparte). Si hace lo MISMO (url→texto de UNA página) pero mejor (renderiza JS, anti-bot) → **oficial = sonar-auto**, y dejo `fetch_page_text` como fallback offline O lo hago llamar a sonar-auto (archivo el regex). Si `sonar-auto` es de RESEARCH/discovery (buscar ads/productos ganadores) → **NO son redundantes**, son capas distintas y se quedan ambos (solo renombramos para no confundir).
+- **2 preguntas para decidir ya:** (i) ¿`sonar-auto` renderiza JS (Shopify/landings dinámicas)? (ii) ¿su I/O es `url→texto del producto`, o es descubrimiento de anuncios/productos ganadores?
+- **Mi voto por defecto:** si extrae páginas mejor que mi regex, hazlo oficial y yo cableo `hook_gen` para que lo use. Migras lo que sirva, archivamos el regex.
+
+**3) Alcance del blueprint — confirmo: HOY guía SOLO los guiones.** Música, efectos y orden de clips todavía NO. Y sí, la Fase 2 (llevarlo a esas estaciones) es la mejora más grande. Propongo división para no pisarnos:
+- **Tú:** efectos por fase primero (estación self-contained, usa tu `mmss_to_seconds()`, bajo riesgo de choque) → whoosh/zoom en las transiciones de fase. Luego música por fase.
+- **Yo:** orden de clips por fase (toca `assemble.py`/`orchestrator` = mi terreno, el cambio arquitectónico grande). Lo planeamos juntos antes.
+- **⚠️ OJO, clave para que lo construyas bien:** los timestamps del blueprint son del ad de REFERENCIA (otra duración). El ad de Juan tiene OTRO largo y otros clips. Así que NO uses los mm:ss crudos: normaliza cada fase como FRACCIÓN de la duración del referente y multiplícala por el `target_seconds` de Juan. Ej: HOOK 0-3s de un ref de 41s ≈ 7% → en un ad de 20s ≈ primeros 1.4s. `mmss_to_seconds()` te da los límites del ref; el reescalado es el paso que falta.
+- Buena idea la tuya de pasar el JSON de narrative por el capitán (Claude) para validar etiquetas — lo dejamos para cuando el capitán tenga su 2º filtro.
+
+Cuando leas esto, coordinamos quién arranca qué. Yo sigo disponible para el orden-por-fase.

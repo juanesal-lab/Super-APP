@@ -22,6 +22,7 @@ from pipeline.voiceover import (synthesize, synthesize_with_timestamps, sound_ef
 from pipeline.hook_gen import fetch_page_text
 from pipeline.product_swap import detect_product_ranges, find_new_clips, swap_product
 from pipeline.dubbing import dub_video, LANGS as DUB_LANGS
+from pipeline.auto_studio import generar_creativo_auto
 from pipeline.narrative import analyze_narrative
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -230,6 +231,60 @@ def status(job_id: str):
         "status": job["status"], "progress": job["progress"],
         "message": job["message"], "result": job.get("result"),
     }
+
+
+# ---- MODO AUTOMÁTICO: un video ganador -> creativo terminado (cadena completa) ----
+
+def _run_auto_job(job_id: str, video_path: str, settings: dict):
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        result = generar_creativo_auto(
+            video_path,
+            gemini_key=_load_env_key(),
+            eleven_key=_load_eleven_key(),
+            anthropic_key=_load_anthropic_key(),
+            product_desc=settings.get("product_desc", ""),
+            voz=settings.get("voz", "juan_carlos"),
+            oferta_2x1=settings.get("oferta_2x1", False),
+            verticalizar=settings.get("verticalizar", True),
+            work_dir=os.path.join(WORK_DIR, job_id),
+            progress=progress,
+        )
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "Error desconocido")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+
+
+@app.post("/api/auto")
+async def auto(
+    file: UploadFile = File(...),
+    product_desc: str = Form(""),
+    voz: str = Form("juan_carlos"),
+    oferta_2x1: bool = Form(False),
+    verticalizar: bool = Form(True),
+):
+    if not file:
+        raise HTTPException(400, "Sube un video ganador")
+    job_id, paths = _save_uploads([file])
+    JOBS[job_id] = {"status": "running", "progress": 0,
+                    "message": "Iniciando...", "result": None, "created": time.time()}
+    settings = {
+        "product_desc": product_desc.strip(),
+        "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
+        "oferta_2x1": bool(oferta_2x1),
+        "verticalizar": bool(verticalizar),
+    }
+    threading.Thread(target=_run_auto_job, args=(job_id, paths[0], settings), daemon=True).start()
+    return {"job_id": job_id}
 
 
 # ---- Proceso por pasos para VOZ EN OFF ----

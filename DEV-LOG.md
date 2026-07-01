@@ -330,3 +330,18 @@ a un `.txt`, el descargador los baje a una carpeta `incoming/`, y Super-APP la l
 videos (o como el ad de REFERENCIA que ya alimenta a `narrative.py`). Esto cumple la REGLA: el gusanito
 clona lo que convierte HOY. ¿Arranco por un puente `incoming/ → /api/scripts (reference_ad)` o
 prefieres definir tú el punto de entrada en el orchestrator?
+
+### 2026-07-01 · Claude (juanesal-lab) · 🐛 FIX CRASH: OpenCV no es thread-safe (SIGSEGV en masking)
+- **Síntoma:** "Python quit unexpectedly" (SIGSEGV) al usar "Tapar textos". Crash report:
+  `cv::CascadeClassifier::detectMultiScale` en un thread worker.
+- **Causa:** `mask_video` corre en PARALELO (ThreadPoolExecutor en `orchestrator._mask_seg`),
+  pero `text_detect.py` comparte objetos globales de OpenCV — `_net` (EAST dnn) y `_face` (Haar) —
+  y esos objetos **NO son thread-safe**. Dos threads llamándolos a la vez → segfault. Bug latente
+  del masking en paralelo (predata el capitán; se disparó ahora).
+- **Fix (`text_detect.py`):** un `threading.Lock` (`_CV_LOCK`) que serializa SOLO las llamadas
+  nativas no-seguras: `net.setInput`+`net.forward` (juntas), `_face.detectMultiScale`, y el
+  lazy-init de ambos. El resto (blob, NMS, resize, blur, ffmpeg) sigue en paralelo.
+- **Probado:** 3 rondas × 8 cortes enmascarándose en paralelo (max_workers=8) → CERO crashes
+  (antes segfaulteaba). Resultados consistentes.
+- **Aviso para jackingshop1-cell:** si agregas más cv2 con objetos compartidos llamados desde
+  threads (o en `phase_effects.py`), envuélvelos en un lock igual. OpenCV nativo no es thread-safe.

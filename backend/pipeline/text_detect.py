@@ -7,12 +7,18 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import urllib.request
 
 import cv2
 import numpy as np
 
 from .ffmpeg_utils import run
+
+# Los objetos de OpenCV compartidos (_net EAST, _face Haar) NO son thread-safe.
+# El masking corre en paralelo (varios cortes a la vez), así que serializamos las
+# llamadas nativas no-seguras con este lock (si no, dos threads a la vez -> SIGSEGV).
+_CV_LOCK = threading.Lock()
 
 _MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "models", "east.pb")
@@ -66,7 +72,9 @@ def available() -> bool:
 def _load():
     global _net
     if _net is None:
-        _net = cv2.dnn.readNet(_MODEL_PATH)
+        with _CV_LOCK:                       # evita doble-init desde varios threads
+            if _net is None:
+                _net = cv2.dnn.readNet(_MODEL_PATH)
     return _net
 
 
@@ -74,11 +82,14 @@ def _faces(frame):
     """Detecta caras (para NO taparlas aunque EAST se confunda)."""
     global _face
     if _face is None:
-        _face = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        with _CV_LOCK:
+            if _face is None:
+                _face = cv2.CascadeClassifier(
+                    cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     try:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        return _face.detectMultiScale(gray, 1.1, 5, minSize=(60, 60))
+        with _CV_LOCK:                       # CascadeClassifier NO es thread-safe -> serializar
+            return _face.detectMultiScale(gray, 1.1, 5, minSize=(60, 60))
     except Exception:
         return []
 
@@ -100,8 +111,11 @@ def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH) -> list[tuple]:
     rW, rH = W / float(_INW), H / float(_INH)
     blob = cv2.dnn.blobFromImage(frame, 1.0, (_INW, _INH),
                                  (123.68, 116.78, 103.94), swapRB=True, crop=False)
-    net.setInput(blob)
-    scores, geo = net.forward(_LAYERS)
+    # setInput + forward tocan el estado del net compartido: deben ir juntos bajo el lock
+    # (si otro thread hace setInput entremedio, este forward usaría la entrada equivocada -> crash).
+    with _CV_LOCK:
+        net.setInput(blob)
+        scores, geo = net.forward(_LAYERS)
     nR, nC = scores.shape[2:4]
     rects, confs = [], []
     for y in range(nR):

@@ -661,8 +661,10 @@ function renderResults(res){
       const prod = s.product_visible ? '<span style="color:var(--accent2)">●&nbsp;producto</span>' : '';
       const use = s.shows_use ? '<span style="color:var(--accent)">●&nbsp;en uso</span>' : '';
       const tag = s.tag ? `<div class="sc" style="color:var(--txt)">${s.tag}</div>` : '';
+      const gifName = c.gif ? c.gif.split('/').pop() : 'clip.webp';
+      const gif = c.gif ? `<a href="/api/file?path=${enc(c.gif)}" download="${gifName}" style="display:block;text-align:center;margin-top:4px;color:var(--accent2);font-size:12px;font-weight:600;text-decoration:none">⬇️ GIF (WebP)</a>` : '';
       html += `<div class="clip" style="aspect-ratio:${ar}"><video src="${file}" controls muted loop style="aspect-ratio:${ar}"></video>
-        ${tag}<div class="sc">score ${s.score} · ${s.duration}s ${prod} ${use}</div></div>`;
+        ${tag}<div class="sc">score ${s.score} · ${s.duration}s ${prod} ${use}</div>${gif}</div>`;
     });
     html += `</div></div>`;
   }

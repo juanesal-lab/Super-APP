@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cortador de Clips · Vidaria</title>
+<title>CreativeMaxing · Vidaria</title>
 <style>
   :root{
     --bg:#0d0f14; --card:#161a23; --card2:#1e2430; --line:#2a313f;
@@ -77,8 +77,141 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Cortador de <span>Clips</span></h1>
+  <h1>Creative<span>Maxing</span></h1>
   <p class="sub">Sube videos de proveedor → la IA encuentra los mejores cortes, los recorta a 1:1 (&lt;3s) y arma varias versiones para tu landing.</p>
+
+  <!-- ✨ MODO AUTOMÁTICO (sección nueva, autocontenida) -->
+  <style>
+    .autoHero{position:relative;border-radius:20px;padding:26px;margin:0 0 30px;
+      background:linear-gradient(135deg,#1b1830,#12212b);
+      border:1px solid transparent;background-clip:padding-box;overflow:hidden}
+    .autoHero::before{content:"";position:absolute;inset:0;border-radius:20px;padding:1px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+      -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+    .autoHero h2{font-size:22px;margin:0 0 4px;font-weight:800;letter-spacing:-.3px}
+    .autoHero h2 span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+      -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    .autoHero .lead{color:var(--muted);font-size:13.5px;margin:0 0 18px}
+    .autoDrop{display:block;border:2px dashed var(--line);border-radius:14px;padding:26px;
+      text-align:center;cursor:pointer;transition:.2s;background:rgba(255,255,255,.02);margin-top:4px}
+    .autoDrop:hover,.autoDrop.over{border-color:var(--accent2);background:rgba(0,210,168,.06)}
+    .autoDrop b{font-size:15px}.autoDrop .s{color:var(--muted);font-size:12.5px;margin-top:6px}
+    .autoOpts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+    .autoOpts input,.autoOpts select{width:100%;padding:11px 12px;border-radius:10px;
+      background:var(--card2);border:1px solid var(--line);color:var(--txt);font-size:13.5px}
+    .autoOpts .full{grid-column:1 / -1}
+    .autoChk{display:flex;gap:16px;align-items:center;color:var(--muted);font-size:13px;margin-bottom:16px}
+    .autoBtn{width:100%;padding:15px;border:0;border-radius:13px;cursor:pointer;
+      font-size:16px;font-weight:800;color:#fff;
+      background:linear-gradient(90deg,var(--accent),var(--accent2));
+      box-shadow:0 8px 24px rgba(108,92,231,.35);transition:.15s}
+    .autoBtn:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(0,210,168,.35)}
+    .autoBtn:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none}
+    .autoProg{margin-top:18px}
+    .autoBarWrap{height:10px;background:var(--card2);border-radius:99px;overflow:hidden}
+    .autoBar{height:100%;width:0;border-radius:99px;transition:width .4s;
+      background:linear-gradient(90deg,var(--accent),var(--accent2))}
+    .autoMsg{color:var(--txt);font-size:13.5px;margin-top:10px;font-weight:600}
+    .autoSteps{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+    .autoStep{font-size:13px;padding:9px 12px;border-radius:10px;background:var(--card2);
+      border-left:3px solid var(--ok)}
+    .autoStep.bad{border-left-color:var(--warn);color:var(--muted)}
+    .autoStep span{color:var(--muted)}
+    .hidden{display:none}
+  </style>
+  <div class="autoHero">
+    <h2>✨ <span>Generar Creativo</span> — Modo Automático</h2>
+    <p class="lead">Sube UN creativo ganador (en cualquier idioma) y la IA hace TODO en cadena:
+      doblaje colombiano → traduce el texto en pantalla → música y efectos por fase → subtítulos →
+      9:16 → audio normalizado. Sale listo para subir.</p>
+
+    <input type="file" id="autoFile" accept="video/*" class="hidden">
+    <label class="autoDrop" id="autoDrop" for="autoFile">
+      <b id="autoName">🎬 Suelta o elige tu video ganador</b>
+      <div class="s">MP4/MOV · un solo video · el ángulo/guion se conserva, cambia a español y a tu estilo</div>
+    </label>
+
+    <div class="autoOpts">
+      <input type="text" id="autoDesc" class="full" placeholder="¿Qué producto es? (ej. crema para dolor de espalda)">
+      <select id="autoVoz">
+        <option value="juan_carlos">Voz: Juan Carlos</option>
+        <option value="kate">Voz: Kate</option>
+      </select>
+      <select id="autoVert">
+        <option value="true">Formato: 9:16 (vertical)</option>
+        <option value="false">Formato: dejar como está</option>
+      </select>
+    </div>
+    <div class="autoChk">
+      <label><input type="checkbox" id="auto2x1"> Oferta 2x1</label>
+    </div>
+
+    <button class="autoBtn" id="autoGo" disabled onclick="autoRun()">✨ Generar Creativo</button>
+
+    <div class="autoProg hidden" id="autoProg">
+      <div class="autoBarWrap"><div class="autoBar" id="autoBar"></div></div>
+      <div class="autoMsg" id="autoMsg">Iniciando…</div>
+    </div>
+    <div id="autoResult"></div>
+  </div>
+
+  <script>
+    (function(){
+      const fileEl=document.getElementById('autoFile'), drop=document.getElementById('autoDrop');
+      function pick(f){ if(!f) return; window._autoFile=f;
+        document.getElementById('autoName').textContent='🎬 '+f.name;
+        document.getElementById('autoGo').disabled=false; }
+      fileEl.addEventListener('change',e=>pick(e.target.files[0]));
+      ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+      ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+      drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]); });
+    })();
+    async function autoRun(){
+      const f=window._autoFile; if(!f) return;
+      const fd=new FormData();
+      fd.append('file',f);
+      fd.append('product_desc',document.getElementById('autoDesc').value);
+      fd.append('voz',document.getElementById('autoVoz').value);
+      fd.append('oferta_2x1',document.getElementById('auto2x1').checked);
+      fd.append('verticalizar',document.getElementById('autoVert').value);
+      document.getElementById('autoGo').disabled=true;
+      document.getElementById('autoResult').innerHTML='';
+      document.getElementById('autoProg').classList.remove('hidden');
+      document.getElementById('autoBar').style.width='0%';
+      try{
+        const r=await fetch('/api/auto',{method:'POST',body:fd});
+        const j=await r.json(); autoPoll(j.job_id);
+      }catch(e){ document.getElementById('autoMsg').textContent='Error: '+e; document.getElementById('autoGo').disabled=false; }
+    }
+    async function autoPoll(id){
+      const r=await fetch('/api/status/'+id); const j=await r.json();
+      document.getElementById('autoBar').style.width=(j.progress||0)+'%';
+      document.getElementById('autoMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>autoPoll(id),1200); return; }
+      document.getElementById('autoGo').disabled=false;
+      if(j.status==='error'){ document.getElementById('autoMsg').innerHTML='<span style="color:var(--warn)">'+(j.message||'Error')+'</span>'; return; }
+      autoRender(j.result);
+    }
+    function autoRender(res){
+      if(!res){ return; }
+      const box=document.getElementById('autoResult');
+      let h='';
+      if(res.resumen){ document.getElementById('autoMsg').textContent='✅ '+res.resumen; }
+      if(res.pasos && res.pasos.length){
+        h+='<div class="autoSteps">';
+        res.pasos.forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${p.paso}${p.detalle?` <span>· ${p.detalle}</span>`:''}</div>`; });
+        h+='</div>';
+      }
+      if(res.video){
+        const u='/api/file?path='+encodeURIComponent(res.video);
+        const d='/api/download?path='+encodeURIComponent(res.video)+'&name=creativo';
+        h+=`<video src="${u}" controls playsinline style="width:100%;border-radius:14px;margin-top:16px"></video>`;
+        h+=`<a class="autoBtn" style="margin-top:12px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${d}" download>⬇️ Descargar creativo terminado</a>`;
+      }
+      box.innerHTML=h;
+    }
+  </script>
 
   <!-- Gemini key -->
   <div class="card" id="keyCard">

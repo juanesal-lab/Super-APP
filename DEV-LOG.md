@@ -574,3 +574,51 @@ lo resuelvo conservando lo tuyo. Dejo la entrada de "hecho" al terminar.
   render de los clips sueltos del frontend. Cuando termines/pushees tu sección, lo agrego yo en el
   bloque de resultados (o dime si lo metes tú). El `.webp` YA es descargable por `/api/file?path=`.
 - Probado: WebP animado válido (720px, 20fps, loop) verificado con Pillow.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ MODO AUTOMÁTICO ("Generar Creativo") HECHO
+Un solo botón: video ganador (cualquier idioma) → creativo terminado en español. Todo aditivo.
+- **NUEVO `backend/pipeline/auto_studio.py`** (mi terreno): `generar_creativo_auto(video, *, gemini_key,
+  eleven_key, anthropic_key, product_desc, voz, oferta_2x1, verticalizar, work_dir, progress)`.
+  Encadena: Narrativa → Doblaje CO → Traducir texto → Música+SFX por fase → Subtítulos por fase →
+  9:16 → Normalizar audio → (Supervisor opcional). **Cada paso AISLADO en try/except**: si uno falla,
+  conserva el video anterior y sigue. Devuelve `{ok, video, pasos:[{paso,ok,detalle}], resumen}`.
+  Reusa TODO (tuyo y mío) sin editarlo; los pasos ffmpeg nuevos (music+sfx mix, subs por fase con
+  Pillow, verticalizar cover, loudnorm) viven en mi módulo.
+- **TOQUÉ `app.py`** (aditivo, avisado): import + `POST /api/auto` + `_run_auto_job` (usa el patrón de
+  jobs/estado existente y `_save_uploads`). NO modifiqué tus endpoints.
+- **TOQUÉ `frontend/index.html`** (aditivo, avisado): sección nueva "✨ Generar Creativo" arriba, con
+  su propio `<style>`/`<script>` (ids `auto*`), sin tocar tus secciones ni tu `poll()`.
+- **Probado:** cadena end-to-end (sin doblaje para no chocar con rate-limit de ElevenLabs de hoy) →
+  6/7 pasos OK, video final **1080×1920, audio normalizado, subtítulos por fase, SFX** (demo en
+  `~/Downloads/prueba/AUTO_creativo_demo.mp4`). La resiliencia funciona: el doblaje se saltó sin tumbar
+  la cadena. Las piezas pesadas (dub, translate, narrative, phase_effects) ya estaban probadas aparte.
+- **⚠️ Aviso de rendimiento:** el paso de **doblaje** es el cuello de botella (ElevenLabs TTS ~6 llamadas
+  secuenciales, 90s timeout c/u). Hoy con rate-limit tardó >9 min. Está aislado (no rompe), pero para
+  producción conviene: paralelizar los TTS o cachear. Lo dejo anotado; si quieres lo optimizo.
+- **Cosmético menor:** en `text_translate`, sobre un video que YA está en español, a veces asoma un
+  pedacito del texto original arriba + emojis salen como cuadrito (la fuente no los tiene). No afecta el
+  caso real (ganador en inglés). Se pule agrandando caja/usando fuente con emojis.
+- **Para ti:** el botón ya llama `/api/auto`. Si quieres moverlo de lugar en la UI o cambiar textos,
+  es todo `auto*` (aislado). ¿Lo dejamos así o lo reubicamos?
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🐛 Fix UI del Modo Automático + 🏷️ REBRAND a "CreativeMaxing"
+- **Bug arreglado:** el `<label>` de subir video (`.autoDrop`) salía INLINE y se encimaba con el texto
+  de arriba. Le puse `display:block` → ahora es un bloque completo, limpio. Verificado con screenshot.
+- **REBRAND (lo pidió jack): "Cortador de Clips" → "CreativeMaxing".** Cambié: `frontend` h1
+  (`Creative<span>Maxing</span>`) + `<title>`, `app.py` (docstring + `FastAPI(title=...)`), `run.sh`
+  (comentario + echo). Aviso porque toca archivos compartidos; es solo texto/marca, sin lógica.
+  La API de FastAPI (title) es interna, no afecta endpoints.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🎯 Verticalizado INTELIGENTE (fondo desenfocado, no recorta)
+- **Bug que reportó jack:** un ganador CUADRADO, al verticalizar, se AGRANDABA y RECORTABA los lados
+  → cortaba banners/textos del creativo (se veía "a las Plagas Sin Quím[ico]" cortado, etc.).
+- **Fix en `auto_studio._verticalize` (mi terreno):** ahora es format-smart:
+  - Si ya es ~9:16 → solo ajusta tamaño, no toca la composición.
+  - Si es cuadrado/horizontal → **FONDO DESENFOCADO**: copia ampliada+borrosa (gblur) llena las
+    barras y el video ORIGINAL COMPLETO va centrado encima. NO se pierde nada del creativo.
+  - Probado: cuadrado con texto pegado a los bordes → izq/der se conservan 100%, fondo borroso OK.
+- **Para ti, Juan:** si tu flujo normal (`assemble` aspect) también recorta al verticalizar, te sirve la
+  misma técnica (`split` → bg cover+gblur → fg contain → overlay). Puedo pasártela si quieres.
+- **Pendientes que jack también señaló (los tomo enseguida):** (a) los **subtítulos por fase salen
+  feos/encimados** en videos reales (texto largo/solapado); (b) revisar **cómo se genera el copy/guion**;
+  (c) el **tapado de texto** se ve mal en algunos casos. Voy por esos.

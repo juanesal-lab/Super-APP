@@ -49,6 +49,71 @@ _UPLOAD_TIMEOUT = 120   # s máx esperando a que Gemini procese el video subido
 _POLL_EVERY = 2         # s entre consultas de estado
 
 
+# --- Helpers de timestamps (para que el orchestrator corte con FFmpeg) ---------
+
+def mmss_to_seconds(ts) -> float:
+    """Convierte un timestamp de texto a SEGUNDOS en float.
+
+    Acepta "mm:ss" y también "hh:mm:ss" (por si aparecen videos de más de 1 hora),
+    o solo segundos ("7"). Admite fracciones de segundo ("00:03.5" -> 3.5).
+
+    Ejemplos:
+        mmss_to_seconds("01:23")    -> 83.0
+        mmss_to_seconds("00:05")    -> 5.0
+        mmss_to_seconds("1:02:30")  -> 3750.0
+        mmss_to_seconds("7")        -> 7.0
+        mmss_to_seconds(12.5)       -> 12.5     (si ya es número, lo respeta)
+        mmss_to_seconds("basura")   -> 0.0      (robusto: NO lanza excepción)
+
+    Devuelve 0.0 ante cualquier formato inválido, para no tumbar el pipeline.
+    """
+    if ts is None:
+        return 0.0
+    # Si ya viene como número, lo devolvemos tal cual
+    if isinstance(ts, (int, float)):
+        return float(ts)
+
+    partes = str(ts).strip().split(":")
+    # mm:ss = 2 partes, hh:mm:ss = 3, solo segundos = 1. Más de 3 = formato raro.
+    if not partes or len(partes) > 3:
+        return 0.0
+    try:
+        total = 0.0
+        # De derecha a izquierda: segundos (60^0), minutos (60^1), horas (60^2)
+        for i, parte in enumerate(reversed(partes)):
+            total += float(parte) * (60 ** i)
+        return round(total, 3)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def seconds_to_mmss(seconds, *, force_hours: bool = False) -> str:
+    """Convierte SEGUNDOS (float/int) a un timestamp de texto (función inversa).
+
+    Devuelve "mm:ss" normalmente, o "hh:mm:ss" si pasa de una hora (o si se fuerza
+    con force_hours=True).
+
+    Ejemplos:
+        seconds_to_mmss(83)     -> "01:23"
+        seconds_to_mmss(5)      -> "00:05"
+        seconds_to_mmss(3750)   -> "01:02:30"
+        seconds_to_mmss(-3)     -> "00:00"      (robusto: negativos/basura -> 00:00)
+
+    Devuelve "00:00" ante cualquier valor inválido, para no tumbar el pipeline.
+    """
+    try:
+        total = int(round(float(seconds)))
+    except (ValueError, TypeError):
+        return "00:00"
+    if total < 0:
+        total = 0
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h or force_hours:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
 def _prompt(product_desc: str, duration: float) -> str:
     prod = product_desc.strip()
     contexto = (

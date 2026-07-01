@@ -30,8 +30,12 @@ from .ffmpeg_utils import run, probe
 
 _MODEL = "gemini-2.5-flash"
 
-# Mismas fuentes que usa text_overlay.py (con fallback multiplataforma)
+# Poppins (marca de la app) primero; luego fallback multiplataforma
+_ASSETS_FONTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "assets", "fonts")
 _FONTS = [
+    os.path.join(_ASSETS_FONTS, "Poppins-ExtraBold.ttf"),
+    os.path.join(_ASSETS_FONTS, "Poppins-Bold.ttf"),
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/Library/Fonts/Arial.ttf",

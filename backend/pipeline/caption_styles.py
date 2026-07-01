@@ -127,14 +127,14 @@ def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Im
     xbold = style in ("hormozi", "bounce")
     fontpath = _fontpath(xbold)
     disp = text.upper() if style in ("hormozi",) else text
-    size0 = int(H * (0.075 if style in ("hormozi", "bounce") else 0.058))
+    size0 = int(H * (0.066 if style in ("hormozi", "bounce") else 0.05))
     font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, max_h, size0)
     stroke = max(2, size // 9)
     keywords = _keywords(text)
 
     total_h = line_h * len(lines)
-    y0 = int(H * 0.70) - total_h // 2          # centro del bloque en el tercio inferior-medio
-    y0 = max(int(H * 0.45), min(y0, H - SAFE - total_h))
+    y0 = int(H * 0.80) - total_h // 2          # bloque en el tercio INFERIOR (tapa menos)
+    y0 = max(int(H * 0.55), min(y0, H - SAFE - total_h))
 
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
 
@@ -232,10 +232,11 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     xbold = style in ("hormozi", "bounce", "wordpop")
     fontpath = _fontpath(xbold)
     disp = text.upper() if style in ("hormozi", "karaoke", "wordpop") else text
-    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.28), int(H * 0.072))
+    # Más pequeño y en el tercio INFERIOR (tapa menos el video)
+    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.20), int(H * 0.052))
     stroke = max(3, size // 8)
     total_h = line_h * len(lines)
-    y0 = max(int(H * 0.5), min(int(H * 0.70) - total_h // 2, H - SAFE - total_h))
+    y0 = max(int(H * 0.60), min(int(H * 0.80) - total_h // 2, H - SAFE - total_h))
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
     accent = red if style == "red_highlight" else yellow
     boxed = style in ("pill", "highlight_box", "karaoke")

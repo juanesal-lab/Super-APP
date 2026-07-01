@@ -809,3 +809,16 @@ encuentra los 2-3 ganadores (juzga mejor) y pega los links; la máquina hace TOD
   (JSON inválido) pero la cadena SIGUIÓ sin romperse (resiliencia OK). Demo:
   `~/Downloads/prueba/FINAL_creativo_completo.mp4`.
 - Solo mis módulos. La velocidad ahora la manda la IA externa (Gemini/ElevenLabs), no el código.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔧 Orden correcto del pipeline + subtítulos que tapan menos + pestañas más claras
+Jack reportó: subtítulos tapan mucho, el texto viejo se asoma, y las pestañas no se entendían. Arreglos:
+- **ORDEN del pipeline (auto_studio y winner_clone):** ahora VERTICALIZA TEMPRANO — después de tapar/
+  traducir el texto viejo y ANTES de música/subtítulos/oferta. Beneficios: (1) las bandas del blur salen
+  limpias (el texto viejo ya se tapó antes), (2) los subtítulos/oferta se ponen sobre el lienzo 9:16 FINAL
+  → bien posicionados, sin re-escalarse ni desubicarse. Este era el origen de los "errores" que veías.
+- **Subtítulos tapan menos:** fuente más pequeña (H*0.052) y en el TERCIO INFERIOR (y≈0.80), no al centro.
+- **AVISO Juan (toqué tu frontend):** solo renombré las 8 pestañas para que se entiendan (mismo orden y
+  paneles, solo el texto): "✨ Crear creativo (automático)", "🔄 Clonar con mi producto", "✂️ Cortar
+  videos en clips", "📦 De mi producto a clips", "📥 Descargar de TikTok", "🎙️ Doblar a español",
+  "🔑 Mis claves (API)", "📚 Guía y ayuda". Si prefieres otros nombres, cámbialos; no toqué la lógica JS.
+- Todo compila, la app arranca, pestañas renderizan.

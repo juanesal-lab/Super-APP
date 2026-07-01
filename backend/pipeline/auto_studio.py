@@ -312,6 +312,18 @@ def generar_creativo_auto(
     except Exception as e:  # noqa: BLE001
         paso("Traducir texto", False, str(e))
 
+    # 3b) VERTICALIZAR 9:16 (TEMPRANO — fija el lienzo final): el texto viejo ya se tapó, así las
+    #     bandas del blur salen limpias, y lo que sigue (subtítulos/oferta) se pone sobre el 9:16 final
+    #     y queda bien posicionado (no se re-escala después).
+    if verticalizar:
+        report("📱 Verticalizando a 9:16...", 52)
+        try:
+            out = os.path.join(work_dir, "vertical.mp4")
+            current = _verticalize(current, out)
+            paso("Vertical 9:16", True)
+        except Exception as e:  # noqa: BLE001
+            paso("Vertical 9:16", False, str(e))
+
     # 4) MÚSICA + SFX POR FASE ----------------------------------------------
     report("🎵 Poniendo música y efectos por fase...", 58)
     if blueprint:
@@ -369,16 +381,6 @@ def generar_creativo_auto(
             paso("Oferta", True, oferta.strip())
         except Exception as e:  # noqa: BLE001
             paso("Oferta", False, str(e))
-
-    # 6) VERTICALIZAR 9:16 ---------------------------------------------------
-    report("📱 Verticalizando a 9:16...", 84)
-    if verticalizar:
-        try:
-            out = os.path.join(work_dir, "vertical.mp4")
-            current = _verticalize(current, out)
-            paso("Vertical 9:16", True)
-        except Exception as e:  # noqa: BLE001
-            paso("Vertical 9:16", False, str(e))
 
     # 7) NORMALIZAR AUDIO ----------------------------------------------------
     report("🔊 Normalizando el audio...", 92)

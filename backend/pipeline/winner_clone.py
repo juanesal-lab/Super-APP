@@ -229,6 +229,16 @@ def clonar_ganador(
     except Exception as e:  # noqa: BLE001
         paso("Traducir texto", False, str(e))
 
+    # 6b) Verticalizar 9:16 TEMPRANO: el texto viejo ya se tapó → bandas limpias, y los subtítulos
+    #     luego van sobre el lienzo final (bien posicionados, sin re-escalarse).
+    if verticalizar:
+        report("📱 Verticalizando 9:16 (fondo desenfocado)...", 82)
+        try:
+            out = os.path.join(work_dir, "vertical.mp4")
+            current = A._verticalize(current, out); paso("Vertical 9:16", True)
+        except Exception as e:  # noqa: BLE001
+            paso("Vertical 9:16", False, str(e))
+
     # 7) Música + SFX por fase
     report("🎵 Música y efectos por fase...", 85)
     if blueprint:
@@ -261,14 +271,7 @@ def clonar_ganador(
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))
 
-    # 9) Verticalizar 9:16 (blur, nunca estirar) + normalizar audio
-    if verticalizar:
-        report("📱 Verticalizando 9:16 (fondo desenfocado)...", 94)
-        try:
-            out = os.path.join(work_dir, "vertical.mp4")
-            current = A._verticalize(current, out); paso("Vertical 9:16", True)
-        except Exception as e:  # noqa: BLE001
-            paso("Vertical 9:16", False, str(e))
+    # 9) Normalizar audio
     if A._has_audio(current):
         report("🔊 Normalizando audio...", 97)
         try:

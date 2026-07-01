@@ -834,3 +834,11 @@ Jack reportó: subtítulos tapan mucho, el texto viejo se asoma, y las pestañas
 - `/api/auto` acepta `files` (lista); `_run_auto_job` itera y devuelve `creativos:[...]`. Frontend:
   input `multiple` + render de cada creativo con su video y botón de descarga.
 - Probado: POST 2 archivos → "Creativo 1/2". Solo mi sección (autoHero) + mi endpoint.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🩹 Fix subtítulos DUPLICADOS + tapado cubre entero
+- **Subtítulos duplicados/encimados (varios grupos a la vez):** en burn_word_captions las ventanas de
+  tiempo se pisaban (peor si las fases del doblaje se solapaban). Ahora ordeno por inicio y el FIN de
+  cada palabra = inicio de la SIGUIENTE en TODA la lista → en cada instante hay UN solo subtítulo.
+  Verificado con tiempos que se pisaban a propósito → sale uno solo limpio.
+- **Tapado no cubría entero:** subí el margen de la caja en text_translate (mx=bw*0.14+18, my=bh*0.6+20)
+  para tapar el original ENTERO sin que se asome. (Toqué esa línea de tu archivo, Juan; solo el margen.)

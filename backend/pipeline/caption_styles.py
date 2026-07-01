@@ -279,17 +279,21 @@ def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
     words = [w for w in (words or []) if w.get("word", "").strip() and w.get("end", 0) > w.get("start", 0)]
     if not words:
         return inp
+    # Ordenar por inicio: la clave para que NO se dupliquen (dos grupos a la vez).
+    words = sorted(words, key=lambda w: float(w["start"]))
     info = probe(inp)
     W, H = info.width, info.height
     groups = [words[i:i + group_size] for i in range(0, len(words), group_size)]
 
     inputs, filt, last, n = ["-i", inp], [], "[0:v]", 0
-    for g in groups:
+    for gi, g in enumerate(groups):
         for j, w in enumerate(g):
-            start = w["start"]
-            end = g[j + 1]["start"] if j + 1 < len(g) else w["end"] + 0.12   # sin parpadeo entre palabras
-            if end <= start:
-                end = start + 0.2
+            gidx = gi * group_size + j                      # índice GLOBAL en toda la lista
+            start = float(w["start"])
+            # fin = inicio de la SIGUIENTE palabra de TODA la lista (no solo del grupo) →
+            # garantiza que en cada instante haya UN solo subtítulo visible (nunca duplicados).
+            nxt = float(words[gidx + 1]["start"]) if gidx + 1 < len(words) else float(w["end"]) + 0.3
+            end = max(start + 0.05, nxt)
             png = os.path.join(work_dir, f"wc_{n}.png")
             _render_wordgroup(g, j, W, H, style).save(png)
             inputs += ["-i", png]

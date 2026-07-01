@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .assemble import (build_variations, render_clip, export_resolution, dims_for,
                        add_voiceover, add_voiceover_and_sfx, WORKERS)
 from .text_detect import mask_video as mask_video_text, available as east_available
+from .text_translate import traducir_texto_pantalla as translate_screen_text
 from .text_overlay import burn_hook
 from .hook_gen import generate_hook, fetch_page_text
 from .captions import add_captions
@@ -150,6 +151,7 @@ def render_versions(
     sfx_paths: list | None = None,
     music_path: str | None = None,
     blur_captions: bool = False,
+    text_mode: str = "tapar",   # "tapar" (blur) | "traducir" (reescribe el texto en español)
     caption_pos: str = "abajo",
     captions: bool = False,
     word_timings: list | None = None,
@@ -171,7 +173,33 @@ def render_versions(
 
     # Tapar textos del proveedor: Gemini DETECTA las cajas y se enmascara la FUENTE
     # (antes de cortar), para que la mascara quede justo donde esta cada caption.
-    if blur_captions and east_available():
+    if blur_captions and text_mode == "traducir" and gemini_key:
+        # Modo TRADUCIR: en vez de tapar con blur, leer el texto en pantalla y reescribirlo en
+        # español (text_translate.py). Se traduce cada FUENTE única UNA vez (1 llamada a Gemini
+        # por fuente, NO por corte) -> no revienta el límite de Gemini ni frena. Los cortes
+        # conservan sus tiempos (la traducción respeta inicio/fin de cada bloque de texto).
+        report("Traduciendo el texto en pantalla a español...", 56)
+        fuentes = list({seg.video for seg in selected})
+        trad, done_t = {}, [0]
+
+        def _translate_src(src):
+            out = os.path.join(work_dir, "es_" + os.path.basename(src))
+            try:
+                r = translate_screen_text(src, api_key=gemini_key, out_path=out)
+                done_t[0] += 1
+                report(f"Traduciendo textos en pantalla ({done_t[0]}/{len(fuentes)})...", 56)
+                if r.get("ok"):
+                    return src, r.get("video", src)   # el video traducido (o el mismo si no había texto)
+            except Exception:
+                pass
+            return src, src
+
+        with ThreadPoolExecutor(max_workers=2) as ex:   # poca concurrencia por el límite de Gemini
+            for src, tv in ex.map(_translate_src, fuentes):
+                trad[src] = tv
+        for seg in selected:
+            seg.video = trad.get(seg.video, seg.video)   # remapea cada corte a su fuente traducida
+    elif blur_captions and east_available():
         # OPTIMIZADO: enmascara SOLO los cortes que se usan (2s c/u), no los videos
         # completos. Antes con 40 videos tardaba muchísimo; ahora procesa poquísimos
         # frames y en paralelo.
@@ -343,6 +371,7 @@ def process_job(
     enhance: bool = False,
     effects: bool = False,
     blur_captions: bool = False,
+    text_mode: str = "tapar",
     caption_pos: str = "abajo",
     voiceover_path: str | None = None,
     gemini_key: str | None = None,
@@ -359,6 +388,6 @@ def process_job(
         aspect=aspect, enhance=enhance, hook_text=hook_text, hook_pos=hook_pos,
         auto_hook=auto_hook, page_url=page_url, product_desc=product_desc,
         gemini_key=gemini_key, voiceover_path=voiceover_path, effects=effects,
-        blur_captions=blur_captions, caption_pos=caption_pos,
+        blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds, progress=progress)

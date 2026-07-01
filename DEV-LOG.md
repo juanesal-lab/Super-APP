@@ -421,3 +421,19 @@ español, no solo la voz. Clave para pegarle al colombiano.
   "texto del proveedor: [Tapar] / [Traducir a español]". Si eliges Traducir, se llama a
   `text_translate.traducir_texto_pantalla` en vez del blur. El cableado (UI + orchestrator) toca TUS
   archivos, así que ese paso lo hacemos juntos cuando puedas — yo no los toco. ¿Lo ves bien así?
+
+### 2026-07-01 · Claude (juanesal-lab) · ✅ CABLEADO: text_translate (Tapar/Traducir) + validación de keys
+- **Para jackingshop1-cell:** cablé tu `text_translate.py` como pediste. Selector "Textos del proveedor:
+  [🟦 Tapar con blur] / [🇨🇴 Traducir a español]" en la UI. Si "Traducir" → llama a
+  `traducir_texto_pantalla` en vez del blur.
+- **Clave (para no reventar Gemini):** NO se traduce por-corte (serían 60 llamadas). Se traduce cada
+  FUENTE única UNA vez y los cortes se remapean a la fuente traducida (conservan tiempos). En
+  `orchestrator.render_versions`: rama `if text_mode=="traducir"` (max_workers=2 por el límite de Gemini).
+- **Cableado (mi terreno):** `orchestrator` (import + rama + `text_mode` en render_versions/process_job),
+  `app.py` (`text_mode` form en /api/process y /api/scripts + threading), `frontend` (selector).
+- **Validación de keys (`app.py::save_key`):** ahora rechaza pegar un key en el campo equivocado
+  (Gemini=AIza/AQ., Eleven=sk_, Anthropic=sk-ant-). **Porque encontré un bug gordo:** el
+  `GEMINI_API_KEY` de Juan estaba sobrescrito con el key de Anthropic (alguien lo pegó en el campo
+  de Gemini) → por eso fallaba TODO lo de Gemini. Limpié el valor malo; Juan debe re-pegar su key real.
+- **Probado:** import/sintaxis OK; el módulo corre vía mi alias (falló solo por el key malo de Gemini,
+  no por el cableado). Degrada: sin `text_mode` o sin key → sigue el flujo normal (blur).

@@ -176,7 +176,14 @@
       <label class="toggle"><input type="checkbox" id="effects"> ✨ Efectos (zoom + whoosh)</label>
     </div>
     <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Tapar textos del proveedor <span style="color:var(--accent2)">(la IA los detecta y enmascara)</span></label>
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Textos del proveedor</label>
+      <span id="textModeWrap" style="display:none;align-items:center;gap:8px">
+        <select id="textMode" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+          <option value="tapar">🟦 Tapar con blur</option>
+          <option value="traducir">🇨🇴 Traducir a español</option>
+        </select>
+        <span class="pmsg" style="margin:0;color:var(--accent2)">la IA los detecta</span>
+      </span>
     </div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useVO"> 🎙️ Voz en off (genera 10 guiones y narra)</label>
@@ -302,6 +309,12 @@ document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInpu
 document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
 refreshConfig();
 
+// --- Textos del proveedor: mostrar selector Tapar/Traducir al activar ---
+const blurCaptions = document.getElementById("blurCaptions");
+blurCaptions.onchange = ()=>{
+  document.getElementById("textModeWrap").style.display = blurCaptions.checked ? "inline-flex" : "none";
+};
+
 // --- Voz en off toggle ---
 const useVO = document.getElementById("useVO");
 useVO.onchange = ()=>{
@@ -364,6 +377,7 @@ function buildForm(){
   fd.append("enhance", document.getElementById("enhance").checked);
   fd.append("effects", document.getElementById("effects").checked);
   fd.append("blur_captions", document.getElementById("blurCaptions").checked);
+  fd.append("text_mode", document.getElementById("textMode").value);
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);
   return fd;

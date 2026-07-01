@@ -95,6 +95,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             enhance=settings["enhance"],
             effects=settings.get("effects", False),
             blur_captions=settings.get("blur_captions", False),
+            text_mode=settings.get("text_mode", "tapar"),
             caption_pos=settings.get("caption_pos", "abajo"),
             gemini_key=_load_env_key(),
             progress=progress,
@@ -134,6 +135,12 @@ def get_config():
 
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY"}
+# Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
+# (fue lo que pasó: un key de Anthropic terminó en GEMINI_API_KEY y rompió todo lo de Gemini).
+_KEY_PREFIX = {"gemini": ("AIza", "AQ."), "eleven": ("sk_",), "anthropic": ("sk-ant-",)}
+_KEY_LABEL = {"gemini": "Gemini (empieza con AIza o AQ.)",
+              "eleven": "ElevenLabs (empieza con sk_)",
+              "anthropic": "Claude/Anthropic (empieza con sk-ant-)"}
 
 
 @app.post("/api/save-key")
@@ -142,6 +149,10 @@ def save_key(key: str = Form(...), provider: str = Form("gemini")):
     env_name = _KEY_ENV.get(provider, "GEMINI_API_KEY")
     if not key:
         raise HTTPException(400, "Key vacia")
+    pref = _KEY_PREFIX.get(provider)
+    if pref and not key.startswith(pref):
+        raise HTTPException(400, f"Esa key no parece de {_KEY_LABEL[provider]}. "
+                                 "¿La pegaste en el campo correcto?")
     # Conservar otras lineas del .env
     lines = []
     if os.path.exists(ENV_FILE):
@@ -168,6 +179,7 @@ async def process(
     enhance: bool = Form(False),
     effects: bool = Form(False),
     blur_captions: bool = Form(False),
+    text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
 ):
     if not files:
@@ -202,6 +214,7 @@ async def process(
         "enhance": bool(enhance),
         "effects": bool(effects),
         "blur_captions": bool(blur_captions),
+        "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
     }
     threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
@@ -301,6 +314,7 @@ async def scripts(
     enhance: bool = Form(False),
     effects: bool = Form(False),
     blur_captions: bool = Form(False),
+    text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
     use_music: bool = Form(False),
     use_captions: bool = Form(False),
@@ -327,6 +341,7 @@ async def scripts(
         "hook_pos": hook_pos if hook_pos in ("arriba", "centro", "abajo") else "arriba",
         "auto_hook": bool(auto_hook), "page_url": page_url.strip(), "enhance": bool(enhance),
         "effects": bool(effects), "blur_captions": bool(blur_captions),
+        "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "use_music": bool(use_music), "captions": bool(use_captions),
         "reference_ad": ref_path,
@@ -386,7 +401,8 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             product_desc=s["product_desc"], gemini_key=_load_env_key(),
             version_vos=version_vos, effects=s.get("effects", False), sfx_paths=sfx_paths,
             music_path=music_path,
-            blur_captions=s.get("blur_captions", False), caption_pos=s.get("caption_pos", "abajo"),
+            blur_captions=s.get("blur_captions", False), text_mode=s.get("text_mode", "tapar"),
+            caption_pos=s.get("caption_pos", "abajo"),
             captions=s.get("captions", False),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],

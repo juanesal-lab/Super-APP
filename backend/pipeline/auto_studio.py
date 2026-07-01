@@ -144,20 +144,35 @@ def _sub_png(text: str, W: int, out: str) -> int:
 
 
 def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str) -> str:
-    """Quema subtítulos por fase (texto es_colombia) en el tercio inferior (safe zone 120px)."""
+    """Quema subtítulos por fase en el tercio inferior (safe zone 120px), SIN solaparse.
+
+    Blindado contra los 2 bugs que causaban el garabato: (1) dos subtítulos a la vez si sus
+    tiempos se pisaban -> aquí se recorta el fin de cada uno al inicio del siguiente; (2)
+    desalineación input↔tiempo -> aquí se valida ANTES de agregar el input.
+    """
     info = probe(inp)
     W, H = info.width, info.height
-    inputs, filt, last, n = ["-i", inp], [], "[0:v]", 0
+
+    # 1) recolectar tramos válidos (texto + tiempos), ordenados por inicio
+    items = []
     for s in segments:
         txt = (s.get("es_colombia") or s.get("que_se_dice") or "").strip()
-        if not txt:
+        ini, fin = mmss_to_seconds(s.get("inicio", 0)), mmss_to_seconds(s.get("fin", 0))
+        if txt and fin > ini:
+            items.append([ini, fin, txt])
+    items.sort(key=lambda x: x[0])
+    # 2) evitar solape temporal: el fin de cada uno no pasa del inicio del siguiente
+    for i in range(len(items) - 1):
+        if items[i][1] > items[i + 1][0]:
+            items[i][1] = items[i + 1][0]
+
+    inputs, filt, last, n = ["-i", inp], [], "[0:v]", 0
+    for ini, fin, txt in items:
+        if fin - ini < 0.15:                        # quedó muy corto tras el recorte
             continue
         png = os.path.join(work_dir, f"sub_{n}.png")
         strip_h = _sub_png(txt, W, png)
-        inputs += ["-i", png]
-        ini, fin = mmss_to_seconds(s.get("inicio", 0)), mmss_to_seconds(s.get("fin", 0))
-        if fin <= ini:
-            continue
+        inputs += ["-i", png]                       # el input se agrega SOLO si es válido
         y = H - strip_h - 120                       # safe zone inferior de TikTok
         tag = f"[v{n}]"
         filt.append(f"{last}[{n + 1}:v]overlay=(W-w)/2:{y}:enable='between(t,{ini:.2f},{fin:.2f})'{tag}")

@@ -622,3 +622,13 @@ Un solo botón: video ganador (cualquier idioma) → creativo terminado en espa�
 - **Pendientes que jack también señaló (los tomo enseguida):** (a) los **subtítulos por fase salen
   feos/encimados** en videos reales (texto largo/solapado); (b) revisar **cómo se genera el copy/guion**;
   (c) el **tapado de texto** se ve mal en algunos casos. Voy por esos.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🐛 Fix subtítulos garabateados del Modo Automático
+- **Bug (lo vio jack en file.mp4):** los subtítulos por fase salían ENCIMADOS/garabateados
+  ("DilidianTodco... venénôs" = dos textos superpuestos). Causa doble en `auto_studio._burn_subs`:
+  (1) si dos fases se pisaban en el tiempo, se renderizaban 2 subtítulos a la vez; (2) un `continue`
+  después de agregar el input desalineaba la relación input↔tiempo (subtítulo en el momento equivocado).
+- **Fix:** ahora ordena los tramos por inicio, **recorta el fin de cada uno al inicio del siguiente**
+  (nunca 2 a la vez) y valida ANTES de agregar el input. Probado con fases que se pisan a propósito:
+  en el solape ahora se ve UN solo subtítulo limpio (blanco con borde, en la safe zone).
+- Solo toqué `auto_studio.py` (mi terreno). Sigue lo del copy (lo reviso ahora).

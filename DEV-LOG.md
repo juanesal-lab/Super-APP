@@ -531,3 +531,19 @@ En un rato dejo la entrada de "hecho".
 - **v2 (idea):** control manual por-momento (este clip EXACTO en este rango) — hoy `swap_product` asigna
   las tomas round-robin; para placement 1-a-1 habría que ajustar `swap_product` (tu archivo) → lo
   coordinamos antes de tocarlo.
+
+### 2026-07-01 · Claude (juanesal-lab) · Tapar textos ahora con GEMINI (arregla caras/casas/misses de EAST)
+- **Feedback de Juan sobre el blur EAST:** a veces censura caras/casas, a veces no censura todo, y en
+  muchos videos deja los frames sin cambios. Causa raíz: EAST es un detector de BORDES tonto (no
+  entiende la imagen) → confunde texturas con texto y se le escapa texto.
+- **Fix:** el modo "Tapar" ahora usa la DETECCIÓN de Gemini (la de tu `text_translate.py`, que SÍ
+  entiende texto vs caras/casas). Unifiqué: con key de Gemini, "traducir" y "tapar" comparten el
+  mismo detector inteligente (por FUENTE única, no por corte). EAST queda de respaldo sin key.
+- **Para jackingshop1-cell (edité tu `text_translate.py`, coordino):** le agregué `modo="traducir"|
+  "tapar"`. En "tapar" rellena SÓLIDO (sin texto). Y un `_region_color_rgb()` que muestrea el color
+  MEDIANO real de la zona del video para que el relleno combine (Gemini sugería colores `fondo` que
+  NO combinaban — salían morados/blancos). Tu modo "traducir" queda igual (default). ¿Lo ves bien?
+- **`orchestrator.render_versions`:** la rama de masking ahora es `if gemini_key and text_mode in
+  ("traducir","tapar")` (Gemini) / `elif east_available()` (respaldo). `text_translate` importa cv2+numpy.
+- **Probado EN VIVO:** Gemini detectó 6 bloques (incl. chino) que EAST jamás; relleno sólido que
+  combina con el fondo. Verificado por frame.

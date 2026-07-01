@@ -293,3 +293,14 @@ HOY, no de plantillas genéricas.
   cambias/pulleas código a mitad de un procesamiento). `watchfiles` ya viene con `uvicorn[standard]`.
 - **Para que agarre esto:** hay que reiniciar el server UNA vez (Ctrl+C + `./run.sh`); de ahí en
   adelante es automático.
+
+### 2026-07-01 · Claude (juanesal-lab) · CORRECCIÓN: quité --reload de run.sh (cortaba renders)
+- Antes puse `--reload` en `run.sh` para no reiniciar a mano. **Lo revertí:** con dos personas
+  haciendo `git pull` seguido, el reload REINICIABA el server a mitad de un render de video y lo
+  cortaba (además de dejar la app inestable/en blanco). Para una app con trabajos largos, --reload
+  es contraproducente.
+- **Ahora:** `run.sh` corre SIN `--reload`, pero conserva el auto-cierre del server viejo en :8420.
+  O sea: cada `./run.sh` mata cualquier server anterior y arranca limpio con el código más reciente,
+  SIN interrumpir trabajos por cambios de archivo. Para código nuevo: cierra y corre `./run.sh` otra vez.
+- Diagnostiqué una página en blanco de Juan: era el server viejo atascado + un reload a mitad de job.
+  Reinicié limpio y verifiqué que `/` sirve el HTML completo y las 3 keys salen configuradas.

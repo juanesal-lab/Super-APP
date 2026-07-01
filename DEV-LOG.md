@@ -903,3 +903,20 @@ Juan mostró una captura: el tapado quedaba como un PARCHE DE COLOR sólido feo.
 - Probado: frame con texto amarillo grande → queda ILEGIBLE y borroso, se mezcla con el fondo (no parche).
 - **AVISO:** toqué `text_translate.py` (tu terreno) pero solo el bloque de armado de overlays del modo tapar.
   Pull antes de push.
+
+### 2026-07-01 · Claude (juanesal-lab) · 🚀 UNIFICADO: "Mi producto" hace TODO en un botón (busca TikTok → descarga → clips)
+Juan pidió unificar el sueño en UNA pestaña y quitar redundancia. Convertí "📦 Mi producto" (p-producto) en
+el flujo completo, ENCADENANDO EN EL FRONTEND (sin tocar backend de nadie):
+1. **Fase 1 · scout** → TU `/api/tiktok-search` (nombre + foto) → links reales de TikTok.
+2. **Fase 2 · clips** → mi `/api/producto-clips` (baja + Gemini entiende el producto + corta) → 6 versiones
+   + clips + GIFs (con `renderResults`).
+- **Reusa endpoints existentes tal cual** (tu tiktok-search + mi producto-clips). **CERO cambios de backend
+  → cero choque.** Solo toqué mi panel `p-producto` (mío) y su JS.
+- UI nueva: nombre del producto + imagen + botón "🚀 Buscar en TikTok y crear mis clips". Los links manuales
+  se movieron a un `<details>` "Avanzado" (si los pegas, se salta la búsqueda).
+- **Probado EN VIVO (captura):** "faja reductora colombiana" → encontró 8 creativos → "Descargando 1/8" →
+  clips. El link del scout descarga OK con yt-dlp (probado aparte, 727KB).
+- **⚠️ REDUNDANCIA (tu decisión):** con esto, "📦 Mi producto" ya cubre scout+descarga+clips. Quedan como
+  herramientas sueltas: "🔎 Buscar TikTok" (tuya, solo scout) y "📥 Descargar" (mía, solo bajar). NO borré
+  ninguna. ¿Las dejamos como "avanzado" o las escondemos del nav para que quede más limpio? Dime y lo hago
+  (o hazlo tú). El scout de "Mi producto" usa TU tiktwm igual, así que si mejoras tiktok_search, mejora aquí también.

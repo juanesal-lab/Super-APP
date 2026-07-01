@@ -554,27 +554,20 @@
 
   <div class="panel" id="p-producto" style="display:none">
   <div class="autoHero">
-    <h2>🎯 <span>Producto → Clips</span> — de ganadores a tus clips, automático</h2>
-    <p class="lead">Tú encuentras 2-3 <b>creativos ganadores</b> en TikTok (el ojo humano juzga mejor) y
-      pegas los links. La app hace TODO lo demás sola: <b>descarga</b> los videos → <b>lee tu producto</b>
-      (imagen + página) → <b>crea los clips</b> priorizando donde se ve y se usa tu producto.</p>
+    <h2>🚀 <span>Producto → Anuncios</span> — todo automático</h2>
+    <p class="lead">Escribe el <b>nombre de tu producto</b> y sube su <b>imagen</b>. La app <b>busca creativos
+      ganadores en TikTok</b>, los <b>descarga</b> y te <b>crea los clips</b> — todo de corrido, en un clic.</p>
 
-    <div class="prodGrid">
-      <input type="text" id="prodUrl" class="full" placeholder="🔗 Link de tu producto (opcional — ej. tu página o AliExpress)">
-      <input type="text" id="prodDesc" class="full" placeholder="✏️ ¿Qué es el producto? (opcional si subes imagen/link)">
-    </div>
+    <input type="text" id="prodDesc" class="full" style="font-size:15px;padding:14px"
+      placeholder="✏️ Nombre del producto (ej. faja reductora colombiana, mini aspiradora de auto)">
 
     <input type="file" id="prodImg" accept="image/*" class="hidden">
     <label class="autoDrop" id="prodImgDrop" for="prodImg" style="margin-top:12px">
-      <b id="prodImgName">🖼️ Sube una imagen de tu producto (opcional)</b>
-      <div class="s">Ayuda a la IA a reconocer tu producto en los videos</div>
+      <b id="prodImgName">🖼️ Sube una imagen de tu producto (recomendado)</b>
+      <div class="s">Mejora la búsqueda y ayuda a la IA a reconocer tu producto en los videos</div>
     </label>
 
-    <label style="display:block;font-weight:700;margin:16px 0 6px;font-size:14px">🏆 Links de los creativos ganadores</label>
-    <textarea id="prodUrls" class="full" rows="5" spellcheck="false"
-      placeholder="Pega 2-3 links de videos ganadores (uno por línea):&#10;https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."></textarea>
-
-    <div class="autoOpts" style="margin-top:12px">
+    <div class="autoOpts" style="margin-top:14px">
       <select id="prodAspect">
         <option value="9:16">Formato: 9:16 (Reels/TikTok)</option>
         <option value="1:1">Formato: 1:1 (feed/landing)</option>
@@ -588,10 +581,17 @@
       </select>
     </div>
     <div class="autoChk">
-      <label><input type="checkbox" id="prodBlur" checked> Tapar/traducir el texto del video original</label>
+      <label><input type="checkbox" id="prodBlur" checked> Tapar (desenfocar) el texto del video original</label>
     </div>
 
-    <button class="autoBtn" id="prodGo" onclick="prodRun()">🎯 Crear clips de mi producto</button>
+    <details class="prodAdv">
+      <summary>⚙️ Avanzado — ¿ya tienes los links de ganadores?</summary>
+      <input type="text" id="prodUrl" class="full" style="margin:10px 0" placeholder="🔗 Link de tu producto (opcional — tu página o AliExpress)">
+      <textarea id="prodUrls" class="full" rows="4" spellcheck="false"
+        placeholder="Pega links de TikTok (uno por línea) y me salto la búsqueda automática:&#10;https://www.tiktok.com/@usuario/video/123..."></textarea>
+    </details>
+
+    <button class="autoBtn" id="prodGo" onclick="prodRun()">🚀 Buscar en TikTok y crear mis clips</button>
 
     <div class="autoProg hidden" id="prodProg">
       <div class="autoBarWrap"><div class="autoBar" id="prodBar"></div></div>
@@ -609,6 +609,9 @@
     .prodInfo{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
       font-size:13px;color:var(--muted);margin-bottom:8px}
     .prodInfo b{color:var(--txt)}
+    .prodAdv{margin-top:14px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+    .prodAdv summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--muted)}
+    .prodAdv summary:hover{color:var(--txt)}
   </style>
 
   <script>
@@ -619,31 +622,57 @@
         document.getElementById('prodImgName').textContent = f ? '🖼️ '+f.name : '🖼️ Sube una imagen de tu producto (opcional)';
       });
     })();
+    window._prodScout='';   // mensaje del scout, para no perderlo al pintar resultados
     async function prodRun(){
-      const urls=document.getElementById('prodUrls').value.trim();
-      const msg=document.getElementById('prodMsg'), prog=document.getElementById('prodProg');
-      if(!urls){ prog.classList.remove('hidden'); msg.textContent='Pega al menos un link de un ganador 👆'; return; }
-      const fd=new FormData();
-      fd.append('winner_urls',urls);
-      fd.append('product_url',document.getElementById('prodUrl').value);
-      fd.append('product_desc',document.getElementById('prodDesc').value);
-      fd.append('aspect',document.getElementById('prodAspect').value);
-      fd.append('target_seconds',document.getElementById('prodDur').value);
-      fd.append('blur_captions',document.getElementById('prodBlur').checked);
+      const nombre=document.getElementById('prodDesc').value.trim();
+      const manual=document.getElementById('prodUrls').value.trim();
       const img=document.getElementById('prodImg').files[0];
-      if(img) fd.append('product_image',img);
-      document.getElementById('prodGo').disabled=true;
+      const msg=document.getElementById('prodMsg'), prog=document.getElementById('prodProg');
+      const meta=document.getElementById('prodMeta'), go=document.getElementById('prodGo');
+      if(!manual && !nombre && !img){
+        prog.classList.remove('hidden'); msg.textContent='Escribe el nombre del producto o sube su imagen 👆'; return;
+      }
+      go.disabled=true;
       document.getElementById('productoResults').innerHTML='';
-      document.getElementById('prodMeta').innerHTML='';
+      meta.innerHTML=''; window._prodScout='';
       prog.classList.remove('hidden');
       document.getElementById('prodBar').style.width='0%';
       msg.textContent='Iniciando…';
       try{
+        let links=manual;
+        if(!links){
+          // FASE 1 · SCOUT: buscar creativos ganadores en TikTok (endpoint del amigo)
+          msg.textContent='🔎 Buscando creativos ganadores en TikTok...';
+          const sf=new FormData();
+          sf.append('nombre',nombre);
+          sf.append('count','8');
+          if(img) sf.append('foto',img);
+          const sr=await fetch('/api/tiktok-search',{method:'POST',body:sf});
+          const sj=await sr.json();
+          const found=(sj.links||[]).map(l=>l.url).filter(Boolean);
+          if(!found.length){
+            msg.innerHTML='<span style="color:var(--warn)">No encontré creativos en TikTok para eso. Prueba otro nombre, o pega links a mano en «Avanzado».</span>';
+            go.disabled=false; return;
+          }
+          links=found.join('\n');
+          window._prodScout=`<div class="prodInfo">🔎 Encontré <b>${found.length}</b> creativos en TikTok${sj.keywords?` (búsqueda: <b>${sj.keywords}</b>)`:''}.</div>`;
+          meta.innerHTML=window._prodScout;
+        }
+        // FASE 2 · DESCARGA + CLIPS (mi endpoint: baja + entiende el producto + corta)
+        msg.textContent='⬇️ Descargando y creando tus clips...';
+        const fd=new FormData();
+        fd.append('winner_urls',links);
+        fd.append('product_url',document.getElementById('prodUrl').value);
+        fd.append('product_desc',nombre);
+        fd.append('aspect',document.getElementById('prodAspect').value);
+        fd.append('target_seconds',document.getElementById('prodDur').value);
+        fd.append('blur_captions',document.getElementById('prodBlur').checked);
+        if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
         if(j.job_id){ prodPoll(j.job_id); }
-        else{ msg.textContent=j.detail||'Error'; document.getElementById('prodGo').disabled=false; }
-      }catch(e){ msg.textContent='Error: '+e; document.getElementById('prodGo').disabled=false; }
+        else{ msg.textContent=j.detail||'Error'; go.disabled=false; }
+      }catch(e){ msg.textContent='Error: '+e; go.disabled=false; }
     }
     async function prodPoll(id){
       const r=await fetch('/api/status/'+id); const j=await r.json();
@@ -653,9 +682,9 @@
       document.getElementById('prodGo').disabled=false;
       if(j.status==='error'){ document.getElementById('prodMsg').innerHTML='<span style="color:var(--warn)">'+(j.message||'Error')+'</span>'; return; }
       const res=j.result||{};
-      let info='';
+      let info=window._prodScout||'';
       if(res.producto_desc) info+=`<div class="prodInfo">🧠 La IA entendió tu producto como: <b>${res.producto_desc}</b></div>`;
-      if(typeof res.descargados!=='undefined') info+=`<div class="prodInfo">⬇️ ${res.descargados} ganador(es) descargado(s)${res.fallidos?` · ${res.fallidos} fallaron`:''}</div>`;
+      if(typeof res.descargados!=='undefined') info+=`<div class="prodInfo">⬇️ ${res.descargados} video(s) descargado(s)${res.fallidos?` · ${res.fallidos} fallaron`:''}</div>`;
       document.getElementById('prodMeta').innerHTML=info;
       renderResults(res,'productoResults');
     }

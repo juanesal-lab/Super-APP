@@ -263,7 +263,11 @@ def generar_dub(
         ms = int(ini * 1000)
         fc.append(f"[{k}:a]adelay={ms}|{ms}[a{k}]")
         labels.append(f"[a{k}]")
-    mix = "".join(labels) + f"amix=inputs={len(labels)}:normalize=0,apad[a]"
+    if len(labels) == 1:
+        # una sola fase: amix no aplica (necesita >=2). Solo colocar y rellenar.
+        mix = f"{labels[0]}apad[a]"
+    else:
+        mix = "".join(labels) + f"amix=inputs={len(labels)}:normalize=0,apad[a]"
     audio_out = os.path.join(work_dir, "dub_colombia.mp3")
     report("Uniendo la voz con el tiempo del video...", 92)
     dur_arg = ["-t", f"{vid_dur:.3f}"] if vid_dur > 0 else []

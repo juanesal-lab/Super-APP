@@ -421,3 +421,19 @@ español, no solo la voz. Clave para pegarle al colombiano.
   "texto del proveedor: [Tapar] / [Traducir a español]". Si eliges Traducir, se llama a
   `text_translate.traducir_texto_pantalla` en vez del blur. El cableado (UI + orchestrator) toca TUS
   archivos, así que ese paso lo hacemos juntos cuando puedas — yo no los toco. ¿Lo ves bien así?
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🛡️ Pasada de robustez (que no salgan problemas)
+Diagnóstico general de la app + endurecimiento (sin tocar tus archivos). Estado: sano.
+- **Diagnóstico:** todos los módulos COMPILAN e IMPORTAN; `import app` OK; server arranca y responde
+  200 en `/` y `/api/config`. ✅
+- **🔴→✅ Dependencia faltante:** `anthropic==0.75.0` estaba en `requirements.txt` pero NO instalada en
+  el venv (la agregaste con supervisor.py). La instalé. **Aviso para quien clone:** correr
+  `./venv/bin/pip install -r requirements.txt` tras `git pull` si aparece ModuleNotFoundError.
+- **🔴→✅ Bug en `dub_colombia.py`:** si el video tenía UNA sola fase con voz, `amix=inputs=1` podía
+  fallar. Ahora ese caso usa `apad` directo (probado con ffmpeg).
+- **🔴→✅ Mejora en `text_translate.py`:** la caja de tapado quedaba justa y asomaban bordes del texto
+  original. Le agregué margen de seguridad (clamp al frame). Reprobado en vivo: tapa completo y limpio.
+- **Observación (tu terreno, sin urgencia):** `supervisor.py` importa `anthropic`; ya degrada bien si
+  no está la key, pero conviene que el import de anthropic sea lazy/protegido por si alguien no instaló
+  la dep (hoy `import app` funciona, así que ya está OK — solo un heads-up).
+- Nada de esto toca tus archivos; solo mis módulos + la dep compartida.

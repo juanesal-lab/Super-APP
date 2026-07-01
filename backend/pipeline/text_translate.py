@@ -228,6 +228,11 @@ def traducir_texto_pantalla(
             continue
         bw, bh = int(float(b.get("w", 0.5)) * W), int(float(b.get("h", 0.1)) * H)
         bx, by = int(float(b.get("x", 0)) * W), int(float(b.get("y", 0)) * H)
+        # Margen de seguridad: agranda la caja para tapar bien el original (Gemini a veces
+        # la estima justa y asoman bordes). Se limita a los bordes del frame.
+        mx, my = int(bw * 0.08) + 8, int(bh * 0.35) + 8
+        bx, by = max(0, bx - mx), max(0, by - my)
+        bw, bh = min(W - bx, bw + 2 * mx), min(H - by, bh + 2 * my)
         bg = _hex(b.get("fondo"), (255, 255, 255))
         fg = _hex(b.get("texto_color"), (0, 0, 0))
         png = os.path.join(work, f"b{n}.png")

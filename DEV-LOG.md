@@ -453,3 +453,10 @@ Diagnóstico general de la app + endurecimiento (sin tocar tus archivos). Estado
   no está la key, pero conviene que el import de anthropic sea lazy/protegido por si alguien no instaló
   la dep (hoy `import app` funciona, así que ya está OK — solo un heads-up).
 - Nada de esto toca tus archivos; solo mis módulos + la dep compartida.
+
+### 2026-07-01 · Claude (juanesal-lab) · Blur sólido (feedback de Juan: el mosaico "se movía")
+- Juan: el relleno del "tapar textos" se veía "movido/pixelado" (el mosaico muestreaba el contenido
+  de abajo, que cambia frame a frame → parpadeaba). Pidió que sea SÓLIDO.
+- **Cambio (`text_detect.py::mask_video` pase 3):** en vez de mosaico+blur, relleno SÓLIDO con el
+  color MEDIANO de la zona (≈ el fondo detrás del texto; la mediana ignora el texto porque es minoría).
+  Tapa parejo, combina con el fondo y NO se mueve. Verificado por frame.

@@ -273,11 +273,11 @@ def mask_video(in_path: str, out_path: str,
             x1, y1 = min(W, x + w), min(H, y + h)
             if x1 > x0 and y1 > y0:
                 roi = frame[y0:y1, x0:x1]
-                # mosaico (downscale+upscale) + blur -> tapa el texto por completo
-                small = cv2.resize(roi, (max(1, (x1 - x0) // 14), max(1, (y1 - y0) // 14)),
-                                   interpolation=cv2.INTER_LINEAR)
-                roi = cv2.resize(small, (x1 - x0, y1 - y0), interpolation=cv2.INTER_NEAREST)
-                frame[y0:y1, x0:x1] = cv2.GaussianBlur(roi, (0, 0), sigmaX=14)
+                # Relleno SÓLIDO: el color MEDIANO de la zona (≈ el fondo detrás del texto; la
+                # mediana ignora los píxeles del texto porque son minoría). Tapa parejo y NO
+                # "se mueve" ni parpadea como el mosaico (que muestreaba el contenido de abajo).
+                color = np.median(roi.reshape(-1, 3), axis=0)
+                frame[y0:y1, x0:x1] = color.astype(np.uint8)
         writer.write(frame)
         i += 1
     writer.release()

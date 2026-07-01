@@ -227,6 +227,8 @@ async def process(
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
 
 def _run_links_job(job_id: str, links_text: str, settings: dict):
+    """Baja los links de TikTok y de UNA entrega: (1) las versiones de video cortadas y
+    (2) los guiones de voz en off. Ambos van en el mismo resultado (el poll renderiza los dos)."""
     job = JOBS[job_id]
 
     def progress(msg, pct):
@@ -245,7 +247,45 @@ def _run_links_job(job_id: str, links_text: str, settings: dict):
             job["status"] = "error"
             job["message"] = "No se pudo bajar ningún video (revisa los links o cierra Chrome para las cookies)"
             return
-        _run_job(job_id, paths, settings)   # reusa el flujo de "cortar clips" existente
+
+        # 1) Cortar en versiones de video
+        result = process_job(
+            paths, os.path.join(WORK_DIR, job_id),
+            target_seconds=settings["target_seconds"], max_clip_seconds=settings["max_clip_seconds"],
+            use_gemini=settings["use_gemini"], product_desc=settings["product_desc"],
+            aspect=settings["aspect"], hook_text=settings["hook_text"], hook_pos=settings["hook_pos"],
+            auto_hook=settings["auto_hook"], page_url=settings["page_url"], enhance=settings["enhance"],
+            effects=settings.get("effects", False), blur_captions=settings.get("blur_captions", False),
+            text_mode=settings.get("text_mode", "tapar"), caption_pos=settings.get("caption_pos", "abajo"),
+            gemini_key=_load_env_key(), progress=progress)
+        if not result.get("ok"):
+            job["result"] = result; job["status"] = "error"
+            job["message"] = result.get("error", "Error"); return
+
+        # 2) Generar los guiones de voz en off sobre los mismos videos (si falla, igual entregamos videos)
+        try:
+            progress("Generando los guiones de voz en off...", 88)
+            a = analyze_select(
+                paths, target_seconds=settings["target_seconds"],
+                max_clip_seconds=settings["max_clip_seconds"], use_gemini=settings["use_gemini"],
+                product_desc=settings["product_desc"], gemini_key=_load_env_key(),
+                progress=lambda m, p: progress("Generando los guiones de voz en off...", 90))
+            if a.get("ok"):
+                selected = a["selected"]
+                sample = max(selected, key=lambda s: (s.shows_use, s.score)) if selected else None
+                page_text = fetch_page_text(settings["page_url"]) if settings["page_url"] else ""
+                scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
+                                           settings["target_seconds"], sample, blueprint=None)
+                result["scripts"] = scripts
+                job.update({"selected": selected, "has_audio_by_src": a["has_audio_by_src"],
+                            "used_gemini": a["used_gemini"], "n_sources": a["n_sources"],
+                            "settings": settings, "work_dir": os.path.join(WORK_DIR, job_id)})
+        except Exception:  # noqa: BLE001
+            pass
+
+        job["result"] = result
+        job["status"] = "done"; job["progress"] = 100
+        job["message"] = "Listo · videos + guiones" if result.get("scripts") else "Listo"
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"; job["message"] = f"Error: {e}"
 

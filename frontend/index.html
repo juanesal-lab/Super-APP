@@ -453,10 +453,10 @@
 
     <!-- O pegar links de TikTok (en vez de subir archivos) -->
     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
-      <label class="lbl">…o pega links de TikTok (uno por línea) y la app los baja y los corta</label>
+      <label class="lbl">…o pega links de TikTok (uno por línea): la app los baja, los corta en versiones Y te genera los guiones de voz en off — todo de una</label>
       <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
-      <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="cortarDesdeLinks()">📥✂️ Bajar y cortar desde links</button>
+      <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="cortarDesdeLinks()">📥✂️🎙️ Bajar → cortar + guiones</button>
     </div>
   </div>
 
@@ -1009,8 +1009,10 @@ async function poll(id){
     return;
   }
   document.getElementById("progCard").classList.add("hidden");
-  if(j.result && j.result.scripts){ renderScripts(id, j.result.scripts); }
-  else { renderResults(j.result); }
+  if(j.result){
+    if(j.result.versions){ renderResults(j.result); }        // videos cortados (si hay)
+    if(j.result.scripts){ renderScripts(id, j.result.scripts); }  // guiones (si hay) — pueden venir AMBOS
+  }
 }
 
 // Genera y reproduce el audio de un guion (bajo demanda)

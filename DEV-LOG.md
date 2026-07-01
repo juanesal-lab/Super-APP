@@ -877,3 +877,13 @@ Jack pidió: en "Cortar clips", además de subir videos, poder PEGAR links de Ti
   "Bajar y cortar desde links" → `cortarDesdeLinks()` que reusa tu `buildForm()` y tu `poll()`.
 - **Probado end-to-end (con captura):** pegué 1 link real de TikTok → bajó (3.1MB) → analizó → armó
   2 versiones → done. La descarga real de TikTok funciona (yt-dlp).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🎙️ Links de TikTok → videos + GUIONES de una
+Jack: del flujo de links, que también genere los guiones de voz en off (no solo cortar).
+- **`app.py` `_run_links_job`**: tras bajar y cortar (process_job), AHORA también corre analyze_select +
+  generate_scripts sobre los mismos videos y mete `scripts` en el MISMO resultado. Si los guiones fallan,
+  igual entrega los videos. Guarda el estado (selected, etc.) para la fase 2 de narración.
+- **`frontend` (TOQUÉ tu poll, Juan — aviso):** el poll usaba if/else (si había guiones NO mostraba los
+  videos). Lo cambié a: si hay `versions` → renderResults; si hay `scripts` → renderScripts. Así se ven
+  AMBOS cuando vienen juntos (y no rompe /api/process ni /api/scripts). Botón: "Bajar → cortar + guiones".
+- **Verificado EN VIVO (capturas):** 1 link real → 6 versiones + 10 guiones (con ángulos y "▶️ Escuchar").

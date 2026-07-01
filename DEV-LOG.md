@@ -724,3 +724,24 @@ La armé DENTRO de la app (yt-dlp ya está instalado, v2026.03.17) — no depend
 - **🔌 Puente futuro (tu ingesta):** este downloader complementa tu scout/descargador externo. Si quieres,
   cableamos: el scout vuelca URLs a un `.txt` → esta pestaña (o un modo "pegar muchas") las baja a
   `incoming/` y quedan como material para Crear clips. Avísame y lo hago.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ Motor de subtítulos/textos: Poppins + auto-fit + 10 estilos
+Arreglé el texto FEO (los 5 problemas de jack). NUEVO `backend/pipeline/caption_styles.py` (Pillow,
+porque este ffmpeg NO tiene libass/drawtext):
+- **P1 (crítico) NO se corta:** `_fit()` hace word-wrap + baja el tamaño de fuente hasta caber en el
+  área segura (ancho = frame − 2*120px). Probado con frase larga → 5 líneas, todo dentro del frame.
+- **P2 Poppins:** copié `assets/fonts/Poppins-Bold/ExtraBold.ttf` (de adapta). ExtraBold hooks/hormozi,
+  Bold subtítulos. También se lo puse a `text_translate` (todo el texto en Poppins).
+- **P3 10 estilos** (`ESTILOS`): bold_outline, hormozi (MAYÚS + keyword amarilla), yellow_highlight,
+  red_highlight, highlight_box, pill (cápsula), clean_minimal, karaoke, bounce, typewriter. Con detección
+  de keyword. Screenshots: `~/Downloads/prueba/ESTILOS_subtitulos_10.png` (grilla) y `ESTILO_hormozi_demo.png`.
+  *(Honesto: sin libass ni word-timestamps, karaoke/bounce/typewriter van con look estático PRO; animación
+  real por-palabra = v2.)*
+- **P4 oferta:** `render_offer_pill()` (pill Poppins, arriba-centro, auto-fit). Param `oferta` en la cadena.
+- **P5 tapado:** `text_translate` ya auto-ajusta + clampa la caja al frame; le añadí Poppins. (Tú ya
+  habías mejorado el relleno sólido con muestreo de color — quedó bien.)
+- **Cableado:** `auto_studio._burn_subs(style=...)` usa el motor; `generar_creativo_auto` y `POST /api/auto`
+  aceptan `caption_style` + `oferta`. **winner_clone** hereda subs con estilo por defecto.
+- **Para ti, Juan (tu terreno = las pestañas nuevas):** falta el SELECTOR de estilo + oferta en la UI.
+  El backend ya lo soporta (`caption_style` ∈ ESTILOS, `oferta` texto). ¿Lo pones tú en las pestañas
+  Automático/Doblar o te dejo el `<select>` listo para pegar? No toqué tus pestañas para no chocar.

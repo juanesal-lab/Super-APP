@@ -1,0 +1,220 @@
+"""Motor de subtítulos/textos para los videos — Poppins, auto-ajuste y 10 estilos.
+
+Arregla lo FEO:
+  - AUTO-AJUSTE: el texto SIEMPRE cabe. Word-wrap + baja el tamaño de fuente hasta entrar en el
+    área segura (ancho = frame − 2*SAFE). NUNCA se corta.
+  - SAFE ZONE de 120px por borde (donde va la UI de TikTok). Texto en el tercio inferior-medio.
+  - POPPINS en todo (ExtraBold para hooks/títulos, Bold para subtítulos).
+  - 10 estilos seleccionables (ver ESTILOS).
+
+Como el ffmpeg de Super-APP NO trae libass ni drawtext, todo se dibuja con Pillow a un PNG
+transparente del tamaño del frame y se hace overlay (posición ya "horneada"). Sin dependencias nuevas.
+
+Nota v1: sin tiempos por-palabra, los estilos "animados" (karaoke/bounce/typewriter) se rinden con su
+look estático PRO; la animación real por-palabra queda para v2 (necesita word-timestamps).
+"""
+from __future__ import annotations
+
+import os
+from typing import Callable
+
+from PIL import Image, ImageDraw, ImageFont
+
+_FONTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "assets", "fonts")
+_POPPINS_BOLD = os.path.join(_FONTS_DIR, "Poppins-Bold.ttf")
+_POPPINS_XBOLD = os.path.join(_FONTS_DIR, "Poppins-ExtraBold.ttf")
+# Fallbacks por si faltara Poppins
+_FALLBACK = ["/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+
+SAFE = 120                      # margen seguro por borde (UI de TikTok)
+ESTILOS = ["bold_outline", "hormozi", "yellow_highlight", "red_highlight", "highlight_box",
+           "pill", "clean_minimal", "karaoke", "bounce", "typewriter"]
+
+# Palabras que NO son "clave" (para no resaltarlas)
+_STOP = set("de la el que y a en un una los las por con para su tu mi es se lo le al del "
+            "o u ni si no me te nos ¿ ? ¡ ! yo".split())
+
+
+def _fontpath(bold_x: bool) -> str:
+    p = _POPPINS_XBOLD if bold_x else _POPPINS_BOLD
+    if os.path.exists(p):
+        return p
+    for f in _FALLBACK:
+        if os.path.exists(f):
+            return f
+    return p
+
+
+def _keywords(text: str, n: int = 2) -> set:
+    """Elige hasta n palabras 'clave' (las más largas que no son stopwords) para resaltar."""
+    words = [w.strip(".,!?¡¿:;\"'()").upper() for w in text.split()]
+    cand = [w for w in words if len(w) >= 4 and w.lower() not in _STOP]
+    cand.sort(key=len, reverse=True)
+    return set(cand[:n])
+
+
+def _wrap(draw, text, font, max_w):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        t = (cur + " " + w).strip()
+        if draw.textlength(t, font=font) <= max_w or not cur:
+            cur = t
+        else:
+            lines.append(cur); cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _fit(draw, text, fontpath, max_w, max_h, size0, min_size=30):
+    """Devuelve (font, lines, line_h, size) que CABE en (max_w, max_h). Nunca se corta."""
+    size = size0
+    while size >= min_size:
+        font = ImageFont.truetype(fontpath, size)
+        lines = _wrap(draw, text, font, max_w)
+        asc, desc = font.getmetrics()
+        line_h = asc + desc + int(size * 0.18)
+        widest = max((draw.textlength(ln, font=font) for ln in lines), default=0)
+        if widest <= max_w and line_h * len(lines) <= max_h:
+            return font, lines, line_h, size
+        size -= 3
+    font = ImageFont.truetype(fontpath, min_size)
+    return font, _wrap(draw, text, font, max_w), min_size + int(min_size * 0.18), min_size
+
+
+def _draw_words_line(draw, words, x, y, font, base_col, kw_col, keywords, stroke):
+    """Dibuja una línea palabra por palabra, coloreando las keywords distinto."""
+    space = draw.textlength(" ", font=font)
+    for w in words:
+        clean = w.strip(".,!?¡¿:;\"'()").upper()
+        col = kw_col if clean in keywords else base_col
+        draw.text((x, y), w, font=font, fill=col,
+                  stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        x += draw.textlength(w, font=font) + space
+
+
+def _line_width(draw, words, font):
+    space = draw.textlength(" ", font=font)
+    return sum(draw.textlength(w, font=font) for w in words) + space * (len(words) - 1)
+
+
+def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Image.Image:
+    """Devuelve un PNG RGBA (W×H, transparente) con el subtítulo en el estilo pedido, auto-ajustado
+    dentro de la zona segura, en el tercio inferior-medio. Overlay directo en 0:0."""
+    text = (text or "").strip()
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if not text:
+        return img
+    draw = ImageDraw.Draw(img)
+    max_w = W - 2 * SAFE
+    max_h = int(H * 0.34)                       # alto máximo del bloque de texto
+    xbold = style in ("hormozi", "bounce")
+    fontpath = _fontpath(xbold)
+    disp = text.upper() if style in ("hormozi",) else text
+    size0 = int(H * (0.075 if style in ("hormozi", "bounce") else 0.058))
+    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, max_h, size0)
+    stroke = max(2, size // 9)
+    keywords = _keywords(text)
+
+    total_h = line_h * len(lines)
+    y0 = int(H * 0.70) - total_h // 2          # centro del bloque en el tercio inferior-medio
+    y0 = max(int(H * 0.45), min(y0, H - SAFE - total_h))
+
+    yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
+
+    def centered_x(ln_words, f):
+        return (W - _line_width(draw, ln_words, f)) // 2
+
+    # --- PILL / CÁPSULA: caja redondeada sólida detrás del texto (sin contorno) ---
+    if style == "pill":
+        pad = int(size * 0.4)
+        for i, ln in enumerate(lines):
+            w = draw.textlength(ln, font=font)
+            x = (W - w) // 2; y = y0 + i * line_h
+            draw.rounded_rectangle([x - pad, y - pad // 2, x + w + pad, y + line_h - int(line_h*0.2) + pad // 2],
+                                   radius=int(line_h * 0.4), fill=(255, 214, 10, 255))
+            draw.text((x, y), ln, font=font, fill=(20, 20, 20, 255))
+        return img
+
+    # --- CLEAN MINIMAL: blanco, sin contorno, sombra suave ---
+    if style == "clean_minimal":
+        for i, ln in enumerate(lines):
+            x = (W - draw.textlength(ln, font=font)) // 2; y = y0 + i * line_h
+            draw.text((x + 2, y + 2), ln, font=font, fill=(0, 0, 0, 120))    # sombra
+            draw.text((x, y), ln, font=font, fill=white)
+        return img
+
+    # --- BOUNCE (look estático "wordpop"): pocas palabras, grandes y centradas ---
+    if style == "bounce":
+        for i, ln in enumerate(lines):
+            x = (W - draw.textlength(ln, font=font)) // 2; y = y0 + i * line_h
+            draw.text((x, y), ln, font=font, fill=white, stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        return img
+
+    # --- HIGHLIGHT BOX: la keyword lleva una caja de color detrás ---
+    if style == "highlight_box":
+        for i, ln in enumerate(lines):
+            words = ln.split(); x = centered_x(words, font); y = y0 + i * line_h
+            space = draw.textlength(" ", font=font)
+            for w in words:
+                clean = w.strip(".,!?¡¿:;\"'()").upper(); ww = draw.textlength(w, font=font)
+                if clean in keywords:
+                    draw.rounded_rectangle([x - 6, y + 4, x + ww + 6, y + line_h - int(line_h*0.18)],
+                                           radius=10, fill=yellow)
+                    draw.text((x, y), w, font=font, fill=(20, 20, 20, 255))
+                else:
+                    draw.text((x, y), w, font=font, fill=white, stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+                x += ww + space
+        return img
+
+    # --- KARAOKE (look estático): blanco, con caja amarilla en la 1ª palabra (arranque del sweep) ---
+    if style == "karaoke":
+        for i, ln in enumerate(lines):
+            words = ln.split(); x = centered_x(words, font); y = y0 + i * line_h
+            space = draw.textlength(" ", font=font)
+            for j, w in enumerate(words):
+                ww = draw.textlength(w, font=font)
+                if i == 0 and j == 0:
+                    draw.rounded_rectangle([x - 6, y + 4, x + ww + 6, y + line_h - int(line_h*0.18)],
+                                           radius=10, fill=yellow)
+                    draw.text((x, y), w, font=font, fill=(20, 20, 20, 255))
+                else:
+                    draw.text((x, y), w, font=font, fill=white, stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+                x += ww + space
+        return img
+
+    # --- TYPEWRITER (look estático): blanco con cursor ▌ al final ---
+    if style == "typewriter":
+        for i, ln in enumerate(lines):
+            ln2 = ln + ("▌" if i == len(lines) - 1 else "")
+            x = (W - draw.textlength(ln2, font=font)) // 2; y = y0 + i * line_h
+            draw.text((x, y), ln2, font=font, fill=white, stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        return img
+
+    # --- HORMOZI / YELLOW / RED / BOLD_OUTLINE: palabra por palabra con keyword resaltada ---
+    kw_col = {"hormozi": yellow, "yellow_highlight": yellow, "red_highlight": red}.get(style, white)
+    kws = keywords if style in ("hormozi", "yellow_highlight", "red_highlight") else set()
+    for i, ln in enumerate(lines):
+        words = ln.split(); x = centered_x(words, font); y = y0 + i * line_h
+        _draw_words_line(draw, words, x, y, font, white, kw_col, kws, stroke)
+    return img
+
+
+def render_offer_pill(text: str, W: int, H: int) -> Image.Image:
+    """Pill pequeña de OFERTA (Poppins) arriba-centro, sin tapar la cara, auto-ajustada."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    text = (text or "").strip()
+    if not text:
+        return img
+    draw = ImageDraw.Draw(img)
+    size = int(H * 0.030)
+    font = ImageFont.truetype(_fontpath(False), size)
+    tw = draw.textlength(text.upper(), font=font)
+    padx, pady = int(size * 0.7), int(size * 0.45)
+    bw, bh = tw + 2 * padx, size + 2 * pady
+    x = (W - bw) // 2; y = int(H * 0.11)         # bajo la parte superior (evita el notch/UI)
+    draw.rounded_rectangle([x, y, x + bw, y + bh], radius=bh // 2, fill=(240, 60, 50, 255))
+    draw.text((x + padx, y + pady - int(size*0.05)), text.upper(), font=font, fill=(255, 255, 255, 255))
+    return img

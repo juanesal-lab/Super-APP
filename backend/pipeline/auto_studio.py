@@ -143,17 +143,18 @@ def _sub_png(text: str, W: int, out: str) -> int:
     return strip_h
 
 
-def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str) -> str:
-    """Quema subtítulos por fase en el tercio inferior (safe zone 120px), SIN solaparse.
+def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str,
+               style: str = "bold_outline") -> str:
+    """Quema subtítulos por fase con el MOTOR caption_styles (Poppins, auto-ajuste, estilo elegible),
+    SIN solaparse. Cada caption es un PNG del tamaño del frame (posición ya puesta) → overlay 0:0.
 
-    Blindado contra los 2 bugs que causaban el garabato: (1) dos subtítulos a la vez si sus
-    tiempos se pisaban -> aquí se recorta el fin de cada uno al inicio del siguiente; (2)
-    desalineación input↔tiempo -> aquí se valida ANTES de agregar el input.
+    Blindado contra el garabato: (1) recorta el fin de cada tramo al inicio del siguiente (nunca 2 a
+    la vez); (2) valida ANTES de agregar el input (índices alineados).
     """
+    from .caption_styles import render_caption
     info = probe(inp)
     W, H = info.width, info.height
 
-    # 1) recolectar tramos válidos (texto + tiempos), ordenados por inicio
     items = []
     for s in segments:
         txt = (s.get("es_colombia") or s.get("que_se_dice") or "").strip()
@@ -161,21 +162,19 @@ def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str) -> str:
         if txt and fin > ini:
             items.append([ini, fin, txt])
     items.sort(key=lambda x: x[0])
-    # 2) evitar solape temporal: el fin de cada uno no pasa del inicio del siguiente
     for i in range(len(items) - 1):
         if items[i][1] > items[i + 1][0]:
             items[i][1] = items[i + 1][0]
 
     inputs, filt, last, n = ["-i", inp], [], "[0:v]", 0
     for ini, fin, txt in items:
-        if fin - ini < 0.15:                        # quedó muy corto tras el recorte
+        if fin - ini < 0.15:
             continue
         png = os.path.join(work_dir, f"sub_{n}.png")
-        strip_h = _sub_png(txt, W, png)
-        inputs += ["-i", png]                       # el input se agrega SOLO si es válido
-        y = H - strip_h - 120                       # safe zone inferior de TikTok
+        render_caption(txt, W, H, style).save(png)   # PNG full-frame, auto-ajustado, Poppins
+        inputs += ["-i", png]
         tag = f"[v{n}]"
-        filt.append(f"{last}[{n + 1}:v]overlay=(W-w)/2:{y}:enable='between(t,{ini:.2f},{fin:.2f})'{tag}")
+        filt.append(f"{last}[{n + 1}:v]overlay=0:0:enable='between(t,{ini:.2f},{fin:.2f})'{tag}")
         last = tag; n += 1
     if n == 0:
         return inp
@@ -238,6 +237,8 @@ def generar_creativo_auto(
     voz: str = "juan_carlos",
     oferta_2x1: bool = False,
     verticalizar: bool = True,
+    caption_style: str = "bold_outline",
+    oferta: str = "",
     work_dir: str | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
@@ -332,13 +333,30 @@ def generar_creativo_auto(
     if subs:
         try:
             out = os.path.join(work_dir, "subs.mp4")
-            nc = _burn_subs(current, subs, work_dir, out)
+            nc = _burn_subs(current, subs, work_dir, out, style=caption_style)
             current = nc
-            paso("Subtítulos", nc != video_path, f"{len(subs)} fase(s)")
+            paso("Subtítulos", nc != video_path, f"{len(subs)} fase(s) · estilo {caption_style}")
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))
     else:
         paso("Subtítulos", False, "sin texto de guion")
+
+    # 5b) OFERTA (pill) ------------------------------------------------------
+    if oferta.strip():
+        report("🏷️ Poniendo la oferta...", 80)
+        try:
+            from .caption_styles import render_offer_pill
+            info = probe(current)
+            png = os.path.join(work_dir, "oferta.png")
+            render_offer_pill(oferta.strip(), info.width, info.height).save(png)
+            out = os.path.join(work_dir, "oferta.mp4")
+            run(["ffmpeg", "-y", "-i", current, "-i", png, "-filter_complex", "[0:v][1:v]overlay=0:0",
+                 "-map", "0:a?", "-c:a", "copy", "-c:v", "libx264", "-preset", "veryfast",
+                 "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
+            current = out
+            paso("Oferta", True, oferta.strip())
+        except Exception as e:  # noqa: BLE001
+            paso("Oferta", False, str(e))
 
     # 6) VERTICALIZAR 9:16 ---------------------------------------------------
     report("📱 Verticalizando a 9:16...", 84)

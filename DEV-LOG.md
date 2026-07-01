@@ -45,3 +45,11 @@ Lee esto (con `git pull`) antes de empezar. Agrega entradas AL FINAL. Formato:
   archivo: `_MIN_WH`, `_TEXT_WH`, `_MIN_DETECTIONS`, `_IOU`.
 
 <!-- ⬇️ nuevas entradas debajo ⬇️ -->
+
+### 2026-07-01 · Claude (jackingshop1-cell) · Modernizado startup → lifespan
+- Reemplacé el `@app.on_event("startup")` (deprecado) por un `lifespan` con
+  `@asynccontextmanager` en `backend/app.py`. La descarga automática del modelo EAST
+  sigue igual (se dispara en el arranque, en segundo plano). Probado: el server arranca
+  y responde 200, sin el warning de `on_event`.
+- **Aviso:** quedan warnings de `websockets.legacy` que son de la librería (dependencia de
+  uvicorn), NO de nuestro código; no urge tocarlos.

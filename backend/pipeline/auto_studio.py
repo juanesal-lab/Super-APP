@@ -266,6 +266,7 @@ def generar_creativo_auto(
     current = video_path            # el video va evolucionando paso a paso
     blueprint = None
     dub_segments: list[dict] = []
+    word_timings: list[dict] = []
 
     # 1) NARRATIVA -----------------------------------------------------------
     report("📖 Leyendo la estructura narrativa...", 8)
@@ -289,6 +290,7 @@ def generar_creativo_auto(
                             generar_video=True, work_dir=wd, blueprint=blueprint)
             if d.get("ok") and d.get("video"):
                 current = d["video"]; dub_segments = d.get("segments", [])
+                word_timings = d.get("word_timings", [])
                 paso("Doblaje CO", True, f"voz {d.get('voz')}")
             else:
                 paso("Doblaje CO", False, d.get("error", "sin video"))
@@ -328,15 +330,24 @@ def generar_creativo_auto(
     else:
         paso("Música + SFX", False, "sin blueprint")
 
-    # 5) SUBTÍTULOS POR FASE -------------------------------------------------
+    # 5) SUBTÍTULOS -----------------------------------------------------------
+    #   Si hay tiempos por-palabra (del doblaje) -> subtítulos PALABRA POR PALABRA sincronizados
+    #   (estilo adapta). Si no -> subtítulos por fase (bloque).
     report("💬 Poniendo subtítulos...", 70)
     subs = dub_segments or (blueprint.get("segments") if blueprint else [])
-    if subs:
+    if word_timings:
+        try:
+            from .caption_styles import burn_word_captions
+            out = os.path.join(work_dir, "subs.mp4")
+            current = burn_word_captions(current, word_timings, work_dir, out, style=caption_style)
+            paso("Subtítulos", True, f"palabra x palabra · {len(word_timings)} palabras · {caption_style}")
+        except Exception as e:  # noqa: BLE001
+            paso("Subtítulos", False, str(e))
+    elif subs:
         try:
             out = os.path.join(work_dir, "subs.mp4")
-            nc = _burn_subs(current, subs, work_dir, out, style=caption_style)
-            current = nc
-            paso("Subtítulos", nc != video_path, f"{len(subs)} fase(s) · estilo {caption_style}")
+            current = _burn_subs(current, subs, work_dir, out, style=caption_style)
+            paso("Subtítulos", True, f"{len(subs)} fase(s) · estilo {caption_style}")
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))
     else:

@@ -757,3 +757,18 @@ Dos cuellos de botella reales, arreglados (solo mis módulos):
 - El flujo de cortar clips (orchestrator/assemble) ya usaba GPU + paralelo (tuyo). Así toda la app va
   por GPU ahora.
 - **Nota:** VideoToolbox usa bitrate alto (12M) → rápido y con buena calidad; menos re-encodes CPU.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 💬 Subtítulos PALABRA POR PALABRA sincronizados (estilo adapta)
+Integré el estilo de subtítulos de adapta adaptado a Super-APP (sin libass, con Pillow, mi terreno).
+- **`dub_colombia`**: ahora usa `synthesize_with_timestamps` → captura el tiempo de CADA palabra,
+  lo reescala por el atempo del calce y lo ancla al inicio de su fase → tiempos ABSOLUTOS. Devuelve
+  `word_timings` en el resultado.
+- **`caption_styles.burn_word_captions()`**: muestra pocas palabras a la vez (grupos de 4) y RESALTA la
+  palabra que se está diciendo (karaoke). Poppins, auto-ajuste, safe zone. Soporta los estilos (karaoke,
+  hormozi, yellow/red, pill, box…).
+- **`auto_studio`**: si el doblaje dio `word_timings` → subtítulos palabra x palabra; si no → bloque por fase.
+- Probado con tiempos reales sintéticos: el resaltado se mueve palabra por palabra sincronizado
+  (frames en `~/Downloads/prueba/SUBS_palabra1/2.png`). Solo mis módulos.
+- **Nota:** solo aplica cuando hay doblaje (los tiempos vienen de ElevenLabs). Sin libass no hay sweep
+  interno de letra, pero el resaltado por palabra queda igual de pro. winner_clone usa por ahora el
+  bloque por fase; si quieres, le paso los word_timings también (rápido).

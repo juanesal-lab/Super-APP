@@ -20,6 +20,9 @@ from typing import Callable
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .ffmpeg_utils import run, probe
+from .assemble import venc
+
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "assets", "fonts")
 _POPPINS_BOLD = os.path.join(_FONTS_DIR, "Poppins-Bold.ttf")
@@ -200,6 +203,91 @@ def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Im
         words = ln.split(); x = centered_x(words, font); y = y0 + i * line_h
         _draw_words_line(draw, words, x, y, font, white, kw_col, kws, stroke)
     return img
+
+
+def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str) -> Image.Image:
+    """Dibuja un grupo corto de palabras (2-4) con la palabra ACTIVA resaltada (estilo adapta).
+
+    Palabra por palabra: se muestran pocas palabras a la vez y la que se está diciendo se resalta.
+    """
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    words = [w.get("word", "").strip() for w in group if w.get("word", "").strip()]
+    if not words:
+        return img
+    draw = ImageDraw.Draw(img)
+    text = " ".join(words)
+    max_w = W - 2 * SAFE
+    xbold = style in ("hormozi", "bounce", "wordpop")
+    fontpath = _fontpath(xbold)
+    disp = text.upper() if style in ("hormozi", "karaoke", "wordpop") else text
+    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.28), int(H * 0.072))
+    stroke = max(3, size // 8)
+    total_h = line_h * len(lines)
+    y0 = max(int(H * 0.5), min(int(H * 0.70) - total_h // 2, H - SAFE - total_h))
+    yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
+    accent = red if style == "red_highlight" else yellow
+    boxed = style in ("pill", "highlight_box", "karaoke")
+    kws = _keywords(text) if style in ("hormozi", "yellow_highlight", "red_highlight") else set()
+
+    # re-partir en líneas manteniendo el índice global de cada palabra
+    disp_words = disp.split()
+    idx = 0
+    y = y0
+    for ln in lines:
+        ln_words = ln.split()
+        wln = _line_width(draw, ln_words, font)
+        x = (W - wln) // 2
+        space = draw.textlength(" ", font=font)
+        for w in ln_words:
+            is_active = (idx == active)
+            clean = w.strip(".,!?¡¿:;\"'()").upper()
+            is_kw = clean in kws
+            ww = draw.textlength(w, font=font)
+            if is_active and boxed:
+                draw.rounded_rectangle([x - 8, y + 4, x + ww + 8, y + line_h - int(line_h * 0.18)],
+                                       radius=12, fill=accent)
+                draw.text((x, y), w, font=font, fill=(20, 20, 20, 255))
+            else:
+                col = accent if (is_active or is_kw) else white
+                draw.text((x, y), w, font=font, fill=col,
+                          stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+            x += ww + space
+            idx += 1
+        y += line_h
+    return img
+
+
+def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
+                       style: str = "karaoke", group_size: int = 4) -> str:
+    """Quema subtítulos PALABRA POR PALABRA sincronizados (usa tiempos reales de ElevenLabs).
+
+    Agrupa en bloques cortos (group_size) y resalta la palabra que se está diciendo. Estilo adapta.
+    """
+    words = [w for w in (words or []) if w.get("word", "").strip() and w.get("end", 0) > w.get("start", 0)]
+    if not words:
+        return inp
+    info = probe(inp)
+    W, H = info.width, info.height
+    groups = [words[i:i + group_size] for i in range(0, len(words), group_size)]
+
+    inputs, filt, last, n = ["-i", inp], [], "[0:v]", 0
+    for g in groups:
+        for j, w in enumerate(g):
+            start = w["start"]
+            end = g[j + 1]["start"] if j + 1 < len(g) else w["end"] + 0.12   # sin parpadeo entre palabras
+            if end <= start:
+                end = start + 0.2
+            png = os.path.join(work_dir, f"wc_{n}.png")
+            _render_wordgroup(g, j, W, H, style).save(png)
+            inputs += ["-i", png]
+            filt.append(f"{last}[{n + 1}:v]overlay=0:0:enable='between(t,{start:.2f},{end:.2f})'[v{n}]")
+            last = f"[v{n}]"; n += 1
+    if n == 0:
+        return inp
+    run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filt),
+         "-map", last, "-map", "0:a?", "-c:a", "copy", *venc(),
+         "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
+    return out
 
 
 def render_offer_pill(text: str, W: int, H: int) -> Image.Image:

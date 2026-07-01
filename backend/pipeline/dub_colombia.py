@@ -24,7 +24,7 @@ from typing import Callable
 
 from .ffmpeg_utils import run, probe
 from .narrative import analyze_narrative, mmss_to_seconds
-from .voiceover import synthesize, VOICES
+from .voiceover import synthesize, synthesize_with_timestamps, VOICES
 
 _MODEL = "gemini-2.5-flash"
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -184,22 +184,22 @@ def adaptar_guion(
     return {"ok": True, "duration": narr.get("duration", 0), "segments": out_segs}
 
 
-def _fit_audio(inp: str, target: float, out: str) -> float:
+def _fit_audio(inp: str, target: float, out: str) -> tuple[float, float]:
     """Estira/encoge el audio para acercarlo a `target` segundos (atempo, sin distorsionar).
 
     Solo acelera si la voz es más larga que la fase (hasta 1.5x). Si es más corta, la deja
-    natural (queda un pequeño silencio antes de la siguiente fase). Devuelve la duración final.
+    natural. Devuelve (duración_final, tempo) — el tempo sirve para reescalar los tiempos por palabra.
     """
     a = _dur(inp)
     if a <= 0 or target <= 0:
-        return a
+        return a, 1.0
     ratio = a / target
     tempo = min(_TEMPO_MAX, max(_TEMPO_MIN, ratio)) if ratio > 1.0 else 1.0
     if abs(tempo - 1.0) < 0.02:
         run(["ffmpeg", "-y", "-i", inp, "-c", "copy", out])
-    else:
-        run(["ffmpeg", "-y", "-i", inp, "-filter:a", f"atempo={tempo:.4f}", out])
-    return _dur(out)
+        return _dur(out), 1.0
+    run(["ffmpeg", "-y", "-i", inp, "-filter:a", f"atempo={tempo:.4f}", out])
+    return _dur(out), tempo
 
 
 def generar_dub(
@@ -257,14 +257,27 @@ def generar_dub(
         raw = os.path.join(work_dir, f"voz_{i:02d}.mp3")
         fit = os.path.join(work_dir, f"voz_{i:02d}_fit.mp3")
         try:
-            synthesize(eleven_key, texto, voz, raw)
-            _fit_audio(raw, dur, fit)
-            return (fit, ini)
+            # Con timestamps: capturamos el tiempo de CADA palabra (para subtítulos sincronizados)
+            words = synthesize_with_timestamps(eleven_key, texto, voz, raw)
+            _, tempo = _fit_audio(raw, dur, fit)
+            # Reescalar por el atempo y anclar al inicio de la fase -> tiempo ABSOLUTO en el video
+            palabras = []
+            for w in (words or []):
+                st, en = w.get("start"), w.get("end")
+                if st is None or en is None:
+                    continue
+                palabras.append({"word": w.get("word", ""),
+                                 "start": ini + st / tempo, "end": ini + en / tempo})
+            return (fit, ini, palabras)
         except Exception:  # noqa: BLE001
             return None
 
     with ThreadPoolExecutor(max_workers=min(6, max(1, total))) as ex:
-        clips = [r for r in ex.map(_voz, list(enumerate(segments))) if r]   # (ruta_fit, inicio_seg)
+        res = [r for r in ex.map(_voz, list(enumerate(segments))) if r]
+
+    clips = [(fit, ini) for (fit, ini, _w) in res]          # (ruta_fit, inicio_seg)
+    word_timings = [w for (_f, _i, ws) in res for w in ws]  # tiempos por palabra, absolutos
+    word_timings.sort(key=lambda w: w["start"])
 
     if not clips:
         return {"ok": False, "error": "No se pudo generar ninguna voz (revisa la key de ElevenLabs)."}
@@ -297,7 +310,8 @@ def generar_dub(
              "-t", f"{vid_dur:.3f}", "-movflags", "+faststart", video_out])
 
     report("Dub colombiano listo", 100)
-    return {"ok": True, "voz": voz, "segments": segments, "audio": audio_out, "video": video_out}
+    return {"ok": True, "voz": voz, "segments": segments, "audio": audio_out, "video": video_out,
+            "word_timings": word_timings}
 
 
 # --- CLI de prueba: python -m backend.pipeline.dub_colombia <video> [descripcion] ---

@@ -246,6 +246,44 @@ Para jackingshop1-cell. Respondo tus 3 con lo que veo hoy en el código.
 
 Cuando leas esto, coordinamos quién arranca qué. Yo sigo disponible para el orden-por-fase.
 
+---
+
+## 🧭 REGLA DEL PROYECTO (acordada — leer siempre)
+**Todo lo que arme el gusanito debe basarse en anuncios que están CONVIRTIENDO AHORA en
+TikTok/Meta, no en teoría vieja.** Por eso `sonar-auto` (el scraper) es pieza central: trae
+ganadores ACTUALES → `narrative.py` saca su patrón → el gusanito clona ESE patrón actual.
+**Prioridad:** conectar `sonar-auto` al flujo pronto (discovery de ganadores vigentes → blueprint
+→ guiones/efectos/música/orden). Cualquier estación nueva debe alimentarse de material que vende
+HOY, no de plantillas genéricas.
+
+---
+
+### 2026-07-01 · Claude (jackingshop1-cell) · Fase 2: efectos + música por fase (phase_effects.py) ✅
+- **Para Juan:** ya está listo `backend/pipeline/phase_effects.py` (mi terreno, **NO toqué
+  `assemble.py`**). Es el "cerebro" que decide efectos + SFX + **música** por fase narrativa.
+- **Funciones (puras, testeables):**
+  - `rescale_phases(blueprint, target_seconds)`: el paso que faltaba → normaliza cada fase como
+    FRACCIÓN del ad de referencia y la reescala a la duración del ad final. Fusiona tramos
+    consecutivos de la misma etiqueta. (Ej: HOOK 0-3s de un ref de 41.9s → 0-1.43s en un ad de 20s.)
+  - `phase_effect_plan(blueprint, target_seconds, sfx_paths)`: devuelve
+    `{"ok":True,"target_seconds":..,"phases":[{etiqueta,inicio_s,fin_s,efecto,sfx,musica,por_que}]}`.
+    - `efecto`: `{zoom, intensidad}` por fase (HOOK zoom in fuerte, SOLUCIÓN punch_in, DOLOR ninguno…).
+    - `sfx`: ruta elegida de `assets/sfx/` por fase (HOOK/CTA→whoosh, SOLUCIÓN→impact, DESEO→swoosh,
+      **DOLOR→None a propósito**, no se celebra el dolor).
+    - `musica`: `{estilo, energia 0-1}` por fase (HOOK media-alta enganchante · DOLOR baja/tensa ·
+      SOLUCIÓN sube · DESEO clímax · CTA cierre). ← lo nuevo que pidió jack.
+    - `por_que`: razón por fase (para auditar que efecto+música cuadran con la narrativa).
+  - `phase_cut_times(plan)`: helper que da los tiempos (s) de inicio de cada fase.
+- **CÓMO CONECTARLO (Juan, es el paso que roza tu `assemble.py`):**
+  `add_voiceover_and_sfx(..., cut_times=phase_cut_times(plan), sfx_paths=[...])` ya casi encaja:
+  esa función HOY asigna el sfx alternando (`i % len`). Para que cada fase use SU sfx del plan,
+  hay que pasarle el sfx alineado por posición (o que acepte una lista `sfx_por_corte`). Es un
+  cambio chico en tu archivo → lo hago yo si me das OK, o lo haces tú. **No lo toqué** como acordamos.
+  La música (`musica.estilo`) se la puedes pasar a `voiceover.gen_music` por fase cuando cableemos.
+- Reutilicé `mmss_to_seconds` (narrative.py). Probado con el blueprint de ejemplo (sin gastar API):
+  reescalado correcto, DOLOR sin sfx, SOLUCIÓN con impact, música por fase OK.
+- Ver también la **REGLA DEL PROYECTO** que dejé arriba (sonar-auto = ganadores actuales).
+
 ### 2026-07-01 · Claude (juanesal-lab) · UI: tarjeta de la key de Claude + auto-reload del server
 - **`frontend/index.html`:** agregué la tarjeta "🧭 Capitán de calidad · Claude" (faltaba en la UI;
   el backend ya soportaba `ANTHROPIC_API_KEY`). Pill `configurada ✓`, input y Guardar (provider=anthropic).

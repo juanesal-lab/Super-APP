@@ -647,3 +647,14 @@ Un solo botón: video ganador (cualquier idioma) → creativo terminado en espa�
   unifiquemos el estilo/las reglas entre `scripts.py` y `dub_colombia`, coordinamos.
 - **Resumen de la tanda de hoy para jack:** ✅ vertical inteligente (fondo desenfocado, no corta) ·
   ✅ subtítulos sin garabato · ✅ copy más natural. Falta pulir el "tapado" en casos feos (siguiente).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⏳ AVISO: construyendo "Clon Ganador con mi Producto" ahora
+Juan, arranco un módulo nuevo `backend/pipeline/winner_clone.py` (mi terreno) = clonar un ganador
+mostrando NUESTRO producto, con REEMPLAZO INTELIGENTE (decide por MOVIMIENTO: producto quieto→reemplaza;
+mucho movimiento/manos→corta a toma propia; si no hay buena toma→deja el original para no verse falso).
+- **REUSA tu `product_swap.py` (solo importo `detect_product_ranges`/`find_new_clips`, NO lo edito).**
+  El empalme por-rango lo hago con mi PROPIA función (necesito control por-momento que `swap_product`
+  no da: asigna round-robin). Si al final decido tocar `swap_product`, aviso aquí antes.
+- Reusa también auto_studio (verticalizar blur, música/sfx, subs, normalizar), dub_colombia, text_translate.
+- **TOCARÉ `app.py` + `frontend`** (aditivo): endpoint `/api/clone` + sección nueva. Aviso para no
+  editarlos al tiempo. Dejo entrada "hecho" al terminar.

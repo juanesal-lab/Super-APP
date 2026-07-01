@@ -920,3 +920,18 @@ el flujo completo, ENCADENANDO EN EL FRONTEND (sin tocar backend de nadie):
   herramientas sueltas: "🔎 Buscar TikTok" (tuya, solo scout) y "📥 Descargar" (mía, solo bajar). NO borré
   ninguna. ¿Las dejamos como "avanzado" o las escondemos del nav para que quede más limpio? Dime y lo hago
   (o hazlo tú). El scout de "Mi producto" usa TU tiktwm igual, así que si mejoras tiktok_search, mejora aquí también.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🧽 "Crear creativo" LIMPIO: tapar subs viejos con blur (no traducir/música/oferta)
+Jack: el creativo salía "repodrido" (subtítulos viejos asomándose + traducciones + capas de texto).
+Quería SOLO: voz en off + tapar los subtítulos originales con blur (detectados frame por frame) +
+NUESTROS subtítulos encima. Nada más.
+- **auto_studio (generar_creativo_auto):** reescribí la cadena. Ahora: narrativa → doblaje →
+  **TAPAR subtítulos viejos con BLUR** (reusa `caption_mask.detect_text_boxes_timed` que detecta SOLO
+  texto sobrepuesto, NO el de la escena + `assemble.blur_boxes`; arma la zona de abajo, tope 42% de alto
+  anclado abajo) → vertical → NUESTROS subtítulos palabra x palabra → normalizar.
+- **QUITÉ** de este flujo: traducir texto en pantalla, música/SFX y oferta pill (eso ensuciaba).
+- Probado en el video real de Jack (file (1).mp4): antes 3 capas de texto encimadas → ahora subs viejos
+  tapados y UN solo subtítulo limpio ("Absorben hasta 6 veces"). Demos en ~/Downloads/prueba/
+  ANTES_repodrido.png y DESPUES_limpio.png.
+- Nota: el tope de 42% se activó porque ese archivo ya venía con muchas capas; en un ORIGINAL limpio
+  tapa solo la banda real (~25-30%).

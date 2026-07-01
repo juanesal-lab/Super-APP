@@ -299,18 +299,33 @@ def generar_creativo_auto(
     else:
         paso("Doblaje CO", False, "falta ELEVENLABS_API_KEY")
 
-    # 3) TRADUCIR TEXTO EN PANTALLA -----------------------------------------
-    report("🔤 Traduciendo el texto en pantalla...", 40)
+    # 3) TAPAR (BLUR) LOS SUBTÍTULOS VIEJOS ----------------------------------
+    #   Detecta SOLO el texto SOBREPUESTO (subtítulos/captions del original, NO el texto real de la
+    #   escena: envases, letreros, logos), arma la ZONA donde viven y la tapa con blur CONTINUO — así
+    #   NUNCA se asoma el subtítulo viejo y encima quedan limpios NUESTROS subtítulos.
+    #   NO se traduce ni se agrega ningún otro texto (eso era lo que ensuciaba el creativo).
+    report("🧽 Detectando y tapando los subtítulos del original...", 40)
     try:
-        out = os.path.join(work_dir, "traducido.mp4")
-        t = traducir_texto_pantalla(current, api_key=gemini_key, out_path=out)
-        if t.get("ok"):
-            current = t["video"]
-            paso("Traducir texto", True, f"{len(t.get('bloques', []))} bloque(s)")
+        from .caption_mask import detect_text_boxes_timed
+        from .assemble import blur_boxes
+        cajas = detect_text_boxes_timed(gemini_key, current)
+        # nos quedamos con lo que está en la mitad de abajo (ahí viven los subtítulos)
+        bajas = [c for c in cajas if (c.get("y", 0) + c.get("h", 0) / 2) > 0.5]
+        if bajas:
+            y1 = min(1.0, max(c["y"] + c["h"] for c in bajas) + 0.02)   # borde inferior de los subs
+            y0 = min(c["y"] for c in bajas) - 0.02
+            y0 = max(0.0, max(y0, y1 - 0.42))     # tope: tapa como MÁXIMO el ~42% de abajo (anclado abajo)
+            x0 = max(0.0, min(c["x"] for c in bajas) - 0.03)
+            x1 = min(1.0, max(c["x"] + c["w"] for c in bajas) + 0.03)
+            zona = {"x": round(x0, 4), "y": round(y0, 4),
+                    "w": round(x1 - x0, 4), "h": round(y1 - y0, 4)}
+            out = os.path.join(work_dir, "sin_subs.mp4")
+            current = blur_boxes(current, out, [zona])
+            paso("Tapar subtítulos viejos", True, f"zona y={zona['y']:.2f} alto={zona['h']:.2f}")
         else:
-            paso("Traducir texto", False, t.get("error", ""))
+            paso("Tapar subtítulos viejos", True, "no detecté subtítulos sobrepuestos")
     except Exception as e:  # noqa: BLE001
-        paso("Traducir texto", False, str(e))
+        paso("Tapar subtítulos viejos", False, str(e))
 
     # 3b) VERTICALIZAR 9:16 (TEMPRANO — fija el lienzo final): el texto viejo ya se tapó, así las
     #     bandas del blur salen limpias, y lo que sigue (subtítulos/oferta) se pone sobre el 9:16 final
@@ -324,23 +339,8 @@ def generar_creativo_auto(
         except Exception as e:  # noqa: BLE001
             paso("Vertical 9:16", False, str(e))
 
-    # 4) MÚSICA + SFX POR FASE ----------------------------------------------
-    report("🎵 Poniendo música y efectos por fase...", 58)
-    if blueprint:
-        try:
-            plan = phase_effect_plan(blueprint, _dur(current), _sfx_files())
-            if plan.get("ok"):
-                out = os.path.join(work_dir, "musica_sfx.mp4")
-                nc = _add_music_sfx(current, plan, eleven_key, product_desc, work_dir, out)
-                changed = nc != current
-                current = nc
-                paso("Música + SFX", True, "aplicado" if changed else "sin cambios")
-            else:
-                paso("Música + SFX", False, plan.get("error", ""))
-        except Exception as e:  # noqa: BLE001
-            paso("Música + SFX", False, str(e))
-    else:
-        paso("Música + SFX", False, "sin blueprint")
+    # (Música/efectos y oferta se quitaron a propósito: el creativo queda LIMPIO — solo voz en off
+    #  + subtítulos viejos tapados + NUESTROS subtítulos encima. Nada de texto/audio adicional.)
 
     # 5) SUBTÍTULOS -----------------------------------------------------------
     #   Si hay tiempos por-palabra (del doblaje) -> subtítulos PALABRA POR PALABRA sincronizados
@@ -364,23 +364,6 @@ def generar_creativo_auto(
             paso("Subtítulos", False, str(e))
     else:
         paso("Subtítulos", False, "sin texto de guion")
-
-    # 5b) OFERTA (pill) ------------------------------------------------------
-    if oferta.strip():
-        report("🏷️ Poniendo la oferta...", 80)
-        try:
-            from .caption_styles import render_offer_pill
-            info = probe(current)
-            png = os.path.join(work_dir, "oferta.png")
-            render_offer_pill(oferta.strip(), info.width, info.height).save(png)
-            out = os.path.join(work_dir, "oferta.mp4")
-            run(["ffmpeg", "-y", "-i", current, "-i", png, "-filter_complex", "[0:v][1:v]overlay=0:0",
-                 "-map", "0:a?", "-c:a", "copy", *venc(),
-                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
-            current = out
-            paso("Oferta", True, oferta.strip())
-        except Exception as e:  # noqa: BLE001
-            paso("Oferta", False, str(e))
 
     # 7) NORMALIZAR AUDIO ----------------------------------------------------
     report("🔊 Normalizando el audio...", 92)

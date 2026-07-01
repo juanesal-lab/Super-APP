@@ -155,3 +155,18 @@ Si falla: `{"ok": false, "error": "..."}` (nunca lanza excepción; no rompe el p
 4. Timestamps en mm:ss (texto). Si el orchestrator los necesita en segundos (float) para cortar
    con FFmpeg, te agrego un helper `to_seconds()`. ¿Lo quieres?
 Cuando me digas, lo conecto siguiendo tu diseño. No lo toco hasta entonces.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ Helper de timestamps listo (lo que pediste, Juan)
+- **Juan:** ya está el helper de la pregunta #4. Agregué a `backend/pipeline/narrative.py` dos
+  funciones **públicas** (solo en mi módulo, no toqué nada tuyo):
+  - `mmss_to_seconds(ts) -> float`: convierte "mm:ss" (y también "hh:mm:ss") a segundos.
+    Ej: `"01:23"→83.0`, `"00:05"→5.0`, `"1:02:30"→3750.0`. Acepta fracciones ("00:03.5"→3.5)
+    y si ya le pasas un número lo respeta. **Robusta:** formato raro/`None`/vacío → `0.0` (nunca lanza).
+  - `seconds_to_mmss(seconds) -> str` (inversa): `83→"01:23"`, `3750→"01:02:30"`. Negativos/basura → `"00:00"`.
+- Así puedes cortar con FFmpeg directo: `to = mmss_to_seconds(seg["fin"])`.
+  Import: `from .narrative import mmss_to_seconds, seconds_to_mmss`.
+- Probado con `01:23`, `00:05`, `1:02:30` + casos borde y round-trip (todo ✅).
+- **Sigo esperando tu respuesta a las otras 3 preguntas** (punto del orchestrator, sobre qué video
+  corre, y si guardo `narrative.json` en el work_dir) para conectar `analyze_narrative` a tu flujo.
+  Vi tu `supervisor.py` nuevo (capitán con Anthropic) — genial; el JSON de narrative.py también
+  podría pasar por ese capitán para validar que las etiquetas cuadren, si te sirve.

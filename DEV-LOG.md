@@ -470,3 +470,30 @@ Diagnóstico general de la app + endurecimiento (sin tocar tus archivos). Estado
 - **Para ti (checklist del blueprint que toca TU terreno, cuando quieras):** subir de 6 a **≥8 variantes**,
   **duración objetivo 9-15s** en el corte principal, **CTA con corte duro** a producto en los últimos 3s,
   **safe zone 120px** para subtítulos/CTA, y **marcar elementos ganadores**. Yo sigo con lo mío.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔌 COORDINAR: faltan cablear 2 módulos (¿quién hace cuál?)
+Juan, gracias por cablear `narrative` (guiones) y `text_translate` (Tapar/Traducir) 🙌. Para que el
+gusanito quede completo de punta a punta, **faltan enganchar 2 módulos míos al orchestrator/UI**.
+Ambos ya están construidos, probados en vivo y no tocan tus archivos. Te dejo el punto de enganche
+exacto de cada uno y pregunto **quién cablea cada cual**:
+
+**1) `phase_effects.py` — música + efectos POR FASE (a partir del blueprint).**
+- Da: `phase_effect_plan(blueprint, target_seconds, sfx_paths)` → por fase `{inicio_s, fin_s, efecto,
+  sfx, musica, por_que}`; y `phase_cut_times(plan)` → tiempos para colocar el SFX.
+- Punto de enganche: en `render_versions`, cuando hay `blueprint` + efectos activos, pasar
+  `cut_times=phase_cut_times(plan)` y el `sfx` por fase a `assemble.add_voiceover_and_sfx`
+  (hoy asigna el sfx alternando `i%len`; para respetar la fase habría que aceptar sfx por-corte).
+  La `musica.estilo` por fase se la puedes pasar a `voiceover.gen_music`. **Esto toca `assemble.py`/
+  `orchestrator.py` (tu terreno).**
+- Antes ya lo hablamos: tú ibas con orden-de-clips por fase; esto es su gemelo (efectos/música por fase).
+
+**2) `dub_colombia.py` — doblaje colombiano congruente (con calce exacto al video).**
+- Da: `generar_dub(video, api_key, eleven_key, voz, oferta_2x1, generar_video, work_dir, blueprint,
+  progress)` → `{ok, voz, segments, audio, video}` (video ya doblado y sincronizado). También
+  `adaptar_guion(...)` si quieres solo el guion.
+- Punto de enganche: un botón/endpoint propio, O que tu `dubbing.py` derive el caso "target = es (CO)"
+  a `generar_dub`. **Esto toca `app.py`/`dubbing.py`/`frontend` (tu terreno).**
+
+**Pregunta concreta:** ¿cableas tú los dos (es todo tu terreno: orchestrator/assemble/app), o hago yo
+el "pegamento" del lado de mis módulos (ej. una función `plan_para_assemble()` que te deje los datos
+listos) y tú solo lo enchufas? Dime cuál prefieres para cada uno y arrancamos sin pisarnos.

@@ -377,3 +377,24 @@ el cableado (yo no toco tu archivo). ¿Ves algún choque con lo que tengas en cu
   normal (limitado por ffmpeg, no por Claude). El detector ya es bueno solo; el capitán es spot-check.
 - **Mejor integración futura (pendiente):** en vez de 60 cortes crudos, que el capitán revise los 6
   ADS FINALES ensamblados (6 llamadas, sobre el output real). Más útil y más rápido.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ dub_colombia.py CONSTRUIDO y probado en vivo
+- **Para Juan:** ya está `backend/pipeline/dub_colombia.py` (mi terreno; **NO toqué** `dubbing.py`,
+  `scripts.py`, `voiceover.py`, `assemble.py` — solo importo/leo assets). Dubbing inteligente a es-CO
+  congruente con el creativo. Con jack decidimos hacerlo COMPLETO (incluye el calce exacto ahora).
+- **Funciones:**
+  - `adaptar_guion(video|blueprint, api_key, product_desc, oferta_2x1, progress)` → guion doblado
+    colombiano por fase (barato, solo Gemini). Salida `{ok,duration,segments:[{etiqueta,inicio,fin,
+    que_se_ve,original,es_colombia,por_que}]}`.
+  - `generar_dub(video, api_key, eleven_key, voz, oferta_2x1, generar_video, work_dir, blueprint,
+    progress)` → COMPLETO: TTS (voz elegible) + **calce EXACTO por fase** (FFmpeg atempo, clamp
+    0.85–1.5x, coloca cada frase en el inicio de su fase) + monta la voz sobre el video → `.mp4` doblado.
+- **Reusa:** `narrative.analyze_narrative` + `mmss_to_seconds`, `voiceover.synthesize` + `VOICES`
+  (kate / juan_carlos), `assets/guion-framework.md`, `ffmpeg_utils.run/probe`. Gemini + ElevenLabs (no Anthropic).
+- **Opciones (pedidas por jack):** voz **elegible** (`voz=`), **oferta 2x1** activable, policy-safe.
+- **Probado EN VIVO** con un ad real de 22.47s: narrativa→guion colombiano (modismos, congruente con lo
+  que se ve, con `por_que`) → voz → video doblado de **22.467s EXACTO** (pista de audio = largo del video).
+  Degrada: sin ELEVENLABS_API_KEY devuelve solo el guion.
+- **Nota/coordinación:** el calce fino lo hago DENTRO de mi módulo con FFmpeg (no toqué tu ensamblado).
+  Sigue en pie mi pregunta: ¿tu `dubbing.py` deriva el caso es-CO a esto, o botones separados en la UI?
+  Cuando quieras lo cableo a un endpoint/UI contigo (no toco tus archivos sin OK).

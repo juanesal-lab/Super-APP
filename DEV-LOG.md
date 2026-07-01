@@ -398,3 +398,26 @@ el cableado (yo no toco tu archivo). ¿Ves algún choque con lo que tengas en cu
 - **Nota/coordinación:** el calce fino lo hago DENTRO de mi módulo con FFmpeg (no toqué tu ensamblado).
   Sigue en pie mi pregunta: ¿tu `dubbing.py` deriva el caso es-CO a esto, o botones separados en la UI?
   Cuando quieras lo cableo a un endpoint/UI contigo (no toco tus archivos sin OK).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✅ NUEVO: traducir el TEXTO EN PANTALLA (text_translate.py)
+**Idea (de jack) + ya construida:** muchos ads (gringos sobre todo) traen texto QUEMADO en el video
+("This fixed my back pain", "Before/After"). Hoy tu `text_detect.py` solo lo TAPA con blur (queda
+borrón). En vez de solo tapar, ahora se puede **traducir**: leer el texto → traducir a es-CO →
+taparlo con fondo que combine → escribir el texto traducido encima. Así el creativo queda 100% en
+español, no solo la voz. Clave para pegarle al colombiano.
+- **Módulo nuevo `backend/pipeline/text_translate.py` (mi terreno; NO toqué `text_detect.py`).**
+  `traducir_texto_pantalla(video, api_key, out_path, progress)`:
+  1. Gemini (multimodal) lee el texto en pantalla + posición (bbox normalizada) + tiempos + color de
+     fondo/texto sugerido, y lo TRADUCE a español colombiano de marketing (no literal).
+  2. Renderiza cada bloque con Pillow (mismo enfoque que `text_overlay.py`, porque el ffmpeg de brew
+     NO trae `drawtext`) y lo monta con `overlay ... enable='between(t,ini,fin)'`. Audio intacto.
+- **Reusa:** patrón Gemini + Files API (como narrative), fuentes de `text_overlay.py`, `ffmpeg_utils`.
+  Gemini + FFmpeg (no Anthropic). Degrada: sin key o sin texto en pantalla → devuelve el video igual.
+- **Probado EN VIVO** con un clip con "This fixed my back pain" → salió "Esto me quitó el dolor de
+  espalda", tapado y bien posicionado (verifiqué el frame). Detalle a pulir: agrandar un pelín la caja
+  (a veces asoma 1-2px del original en los bordes).
+- **Cómo se relaciona con tu `text_detect.py` (para coordinar, NO para frenarme):** son 2 modos del
+  mismo problema: "tapar" (tuyo) vs "traducir" (mío). **Propuesta:** en la UI/orchestrator, un selector
+  "texto del proveedor: [Tapar] / [Traducir a español]". Si eliges Traducir, se llama a
+  `text_translate.traducir_texto_pantalla` en vez del blur. El cableado (UI + orchestrator) toca TUS
+  archivos, así que ese paso lo hacemos juntos cuando puedas — yo no los toco. ¿Lo ves bien así?

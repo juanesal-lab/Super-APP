@@ -345,3 +345,26 @@ prefieres definir tú el punto de entrada en el orchestrator?
   (antes segfaulteaba). Resultados consistentes.
 - **Aviso para jackingshop1-cell:** si agregas más cv2 con objetos compartidos llamados desde
   threads (o en `phase_effects.py`), envuélvelos en un lock igual. OpenCV nativo no es thread-safe.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📌 PLAN (por aprobar): dubbing colombiano congruente
+Juan, voy a construir un módulo NUEVO `dub_colombia.py` (mi terreno). Te aviso para coordinar y
+NO pisar tu `dubbing.py`. Aún NO lo construyo (espero OK de jack); esto es el plan.
+
+**Problema:** tu `dubbing.py` (ElevenLabs Dubbing) traduce literal manteniendo la voz, pero no
+colombianiza ni entiende la narrativa. Idea: un dubbing es-CO que suene colombiano natural Y que
+adapte cada frase a SU momento del video.
+
+**Cómo (todo REUSANDO, no duplico):**
+- `analyze_narrative()` (mi `narrative.py`) → qué se dice / qué se ve / etiqueta por fase.
+- 1 llamada a Gemini con el framework colombiano de `assets/guion-framework.md` + reglas policy-safe
+  → reescribe cada línea a su función (HOOK potente, DOLOR emotivo, SOLUCIÓN clara, DESEO, CTA COD),
+  congruente con `que_se_ve` y respetando el largo de la fase.
+- `voiceover.synthesize()` (voz Juan Carlos) para el audio (opcional).
+- Salida JSON por fase: `{etiqueta, inicio, fin, que_se_ve, original, es_colombia, por_que}` + audio opc.
+
+**NO toco** `dubbing.py`, `scripts.py`, `voiceover.py` (solo los importo/leo assets). Degrada sin keys.
+
+**Posición vs tu `dubbing.py`:** coexisten. El tuyo = doblaje literal a 8 idiomas. El mío = doblaje
+inteligente solo es-CO. **Pregunta:** ¿quieres que tu `dubbing.py` derive el caso "target=es (Colombia)"
+a mi `dub_colombia.py`, o los dejamos como dos botones separados en la UI? Cuando me digas, coordinamos
+el cableado (yo no toco tu archivo). ¿Ves algún choque con lo que tengas en curso?

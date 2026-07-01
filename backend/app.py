@@ -22,6 +22,7 @@ from pipeline.voiceover import (synthesize, synthesize_with_timestamps, sound_ef
 from pipeline.hook_gen import fetch_page_text
 from pipeline.product_swap import detect_product_ranges, find_new_clips, swap_product
 from pipeline.dubbing import dub_video, LANGS as DUB_LANGS
+from pipeline.narrative import analyze_narrative
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -247,19 +248,39 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
             product_desc=settings["product_desc"], gemini_key=_load_env_key(), progress=progress)
         if not a["ok"]:
             job["status"] = "error"; job["message"] = a.get("error", "Error"); return
-        progress("Generando 10 guiones de voz en off...", 70)
         selected = a["selected"]
         sample = max(selected, key=lambda s: (s.shows_use, s.score)) if selected else None
         page_text = fetch_page_text(settings["page_url"]) if settings["page_url"] else ""
+        wd = os.path.join(WORK_DIR, job_id)
+
+        # Anuncio de referencia (opcional): la IA lee su estructura narrativa (narrative.py) y
+        # los guiones COPIAN ese arco ganador (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA) con su ritmo.
+        blueprint = None
+        ref = settings.get("reference_ad")
+        if ref and os.path.exists(ref):
+            progress("Analizando la estructura del anuncio de referencia (IA)...", 62)
+            try:
+                bp = analyze_narrative(ref, api_key=_load_env_key(),
+                                       product_desc=settings["product_desc"], progress=progress)
+                if bp.get("ok"):
+                    blueprint = bp
+                    os.makedirs(wd, exist_ok=True)
+                    import json as _json
+                    with open(os.path.join(wd, "blueprint.json"), "w", encoding="utf-8") as bf:
+                        _json.dump(bp, bf, ensure_ascii=False, indent=2)
+            except Exception:  # noqa: BLE001
+                blueprint = None
+
+        progress("Generando 10 guiones de voz en off...", 70)
         scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
-                                   settings["target_seconds"], sample)
+                                   settings["target_seconds"], sample, blueprint=blueprint)
         # Guardar estado para la fase 2 (renderizado con voz)
         job.update({
             "selected": selected, "has_audio_by_src": a["has_audio_by_src"],
             "used_gemini": a["used_gemini"], "n_sources": a["n_sources"],
-            "settings": settings, "work_dir": os.path.join(WORK_DIR, job_id),
+            "settings": settings, "work_dir": wd,
         })
-        job["result"] = {"ok": True, "scripts": scripts}
+        job["result"] = {"ok": True, "scripts": scripts, "blueprint": blueprint}
         job["status"] = "done"; job["message"] = "Guiones listos"; job["progress"] = 100
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"; job["message"] = f"Error: {e}"
@@ -283,10 +304,18 @@ async def scripts(
     caption_pos: str = Form("abajo"),
     use_music: bool = Form(False),
     use_captions: bool = Form(False),
+    reference_ad: UploadFile | None = File(None),
 ):
     if not files:
         raise HTTPException(400, "Sube al menos un video")
     job_id, paths = _save_uploads(files)
+    # Anuncio de referencia (opcional) para clonar su estructura narrativa
+    ref_path = None
+    if reference_ad is not None and reference_ad.filename:
+        ref_path = os.path.join(UPLOAD_DIR, job_id,
+                                "reference_" + os.path.basename(reference_ad.filename))
+        with open(ref_path, "wb") as rf:
+            shutil.copyfileobj(reference_ad.file, rf)
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     settings = {
@@ -300,6 +329,7 @@ async def scripts(
         "effects": bool(effects), "blur_captions": bool(blur_captions),
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "use_music": bool(use_music), "captions": bool(use_captions),
+        "reference_ad": ref_path,
     }
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}

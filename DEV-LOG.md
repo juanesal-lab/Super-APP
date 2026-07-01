@@ -65,6 +65,28 @@ Lee esto (con `git pull`) antes de empezar. Agrega entradas AL FINAL. Formato:
 - **Avisos:** costo ~$0.02-0.03/revisión (Opus 4.8), sólo en cortes que SÍ se taparon. Próximos filtros
   a construir con el mismo patrón: selección de clips, gancho, guiones, subtítulos, producto, ad final.
 
+### 2026-07-01 · Claude (juanesal-lab) · Cableado blueprint → guiones (usa narrative.py) ✅
+- **Para jackingshop1-cell:** conecté tu `narrative.py` al flujo de guiones, como quedamos. Decisión de
+  diseño (respondí tus 4 preguntas en detalle en el chat con Juan): NO corre en medio del ensamblado
+  (ahí sólo hay un pool de clips de 2s, sin narrativa); corre sobre un **anuncio de REFERENCIA que Juan
+  sube** para CLONAR su estructura ganadora. Ese es el uso donde tu JSON "manda todo".
+- **Qué hice (mi terreno):**
+  - `app.py` `/api/scripts`: acepta un `reference_ad` (UploadFile opcional). Si viene, corre
+    `analyze_narrative(ref, api_key=gemini, product_desc, progress)`, guarda `blueprint.json` en el
+    `work_dir` (para auditar) y lo pasa a los guiones. El resultado incluye `blueprint`.
+  - `scripts.py` `generate_scripts(..., blueprint=None)` + `_blueprint_text()`: si hay blueprint,
+    inyecta el arco (fases + tiempos + qué se dice) al prompt y ordena clonar esa estructura y ritmo.
+  - `frontend/index.html`: input opcional "📐 Clonar estructura de un ad ganador" dentro del bloque de
+    voz en off (`voiceWrap`), sólo visible cuando la voz en off está activa.
+- **Probado EN VIVO** con un ad real: narrative → blueprint → 3 guiones que siguen el arco, en la voz
+  de Juan (COD, ancla de precio, modismos). Todo importa/compila. Degrada bien: sin referente o si el
+  análisis falla, los guiones se generan igual que siempre.
+- **Falta tu parte:** `to_seconds()` en `narrative.py` (para la Fase 2: efectos/música en los límites
+  de cada fase con FFmpeg). El guion NO lo necesita (usa los mm:ss como texto), así que no bloquea.
+- **Para probar juntos:** activá "🎙️ Voz en off", subí un **anuncio GANADOR limpio** como referencia
+  (con las 5 fases claras) y mirá cómo los 10 guiones copian su arco. El `blueprint.json` queda en el
+  `work_dir` del job para revisar qué entendió la IA (tu campo `por_que`).
+
 <!-- ⬇️ nuevas entradas debajo ⬇️ -->
 
 ### 2026-07-01 · Claude (jackingshop1-cell) · Modernizado startup → lifespan

@@ -33,6 +33,38 @@ def _load_framework() -> str:
     return _FRAMEWORK_FALLBACK
 
 
+def _blueprint_text(blueprint: dict | None) -> str:
+    """Formatea el arco narrativo de un ad de referencia (de narrative.py) para el prompt.
+
+    Devuelve "" si no hay blueprint válido -> el guion se genera igual que siempre.
+    """
+    if not blueprint or not blueprint.get("ok") or not blueprint.get("segments"):
+        return ""
+    lines = []
+    for s in blueprint["segments"]:
+        et = s.get("etiqueta", "")
+        ini, fin = s.get("inicio", ""), s.get("fin", "")
+        dice = (s.get("que_se_dice") or "").strip()
+        ve = (s.get("que_se_ve") or "").strip()
+        parte = f"- [{et}] {ini}-{fin}"
+        if dice:
+            parte += f' · dice: "{dice[:160]}"'
+        elif ve:
+            parte += f" · se ve: {ve[:120]}"
+        lines.append(parte)
+    try:
+        dur = int(float(blueprint.get("duration", 0)))
+    except Exception:
+        dur = 0
+    return (
+        "\n=== ESTRUCTURA DE UN ANUNCIO GANADOR DE REFERENCIA (CLÓNALA) ===\n"
+        f"Este anuncio de ~{dur}s ya funciona. Copia su MISMO arco narrativo, el ORDEN de sus "
+        "fases y su RITMO (cuánto dura cada fase). Adapta el mensaje al producto de Juan y usa "
+        "SU voz, pero respeta esta estructura y estos tiempos:\n" + "\n".join(lines) +
+        "\n=== FIN DE LA REFERENCIA ===\n"
+    )
+
+
 def _frame_bytes(seg: Segment) -> bytes | None:
     cap = cv2.VideoCapture(seg.video)
     if not cap.isOpened():
@@ -52,8 +84,12 @@ def _frame_bytes(seg: Segment) -> bytes | None:
 
 def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str = "",
                      target_seconds: float = 15.0, sample_seg: Segment | None = None,
-                     n: int = 10) -> list[dict]:
-    """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}]. [] si falla."""
+                     n: int = 10, blueprint: dict | None = None) -> list[dict]:
+    """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}]. [] si falla.
+
+    `blueprint`: opcional, el análisis narrativo (narrative.py) de un ANUNCIO GANADOR de
+    referencia. Si viene, los guiones copian su arco (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA) y ritmo.
+    """
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return []
@@ -74,15 +110,20 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         info += f"\nInfo de la pagina de venta: {page_text.strip()[:2500]}"
 
     framework = _load_framework()
+    bp = _blueprint_text(blueprint)
+    arco = ("Cada guion debe SEGUIR el arco narrativo del anuncio de referencia de arriba "
+            "(mismas fases, mismo orden, ritmo parecido). " if bp else "")
     prompt = (
         "Eres el copywriter de Juan para ads de dropshipping (Colombia, COD). Escribes guiones "
         "de VOZ EN OFF que NO suenan a anuncio, usando SU voz real y SUS fórmulas ganadoras.\n\n"
         "=== BANCO REAL DE HOOKS, FÓRMULAS Y VOZ DE JUAN (úsalo, no inventes genérico) ===\n"
         + framework[:13000] +
-        "\n=== FIN DEL BANCO ===\n\n"
+        "\n=== FIN DEL BANCO ===\n"
+        + bp +
+        "\n"
         f"TAREA: escribe {n} guiones DISTINTOS para la voz en off de un video de TikTok/Reels de "
-        f"~{int(target_seconds)} segundos. Cada uno usando una FÓRMULA o tipo de HOOK distinto del "
-        "banco de arriba. OBLIGATORIO: pasa el test anti-anuncio (la 1ra frase es opinión/mala "
+        f"~{int(target_seconds)} segundos. " + arco + "Cada uno usando una FÓRMULA o tipo de HOOK "
+        "distinto del banco de arriba. OBLIGATORIO: pasa el test anti-anuncio (la 1ra frase es opinión/mala "
         "noticia/pregunta incómoda, NO el producto; el producto aparece DESPUÉS del gancho); usa la "
         "voz colombiana real de Juan (modismos: 'Y señores', 'Oiga', '¡Ojo!', 'Le tengo malas "
         "noticias', 'es físico y ya', 'No te voy a mentir', 'es extrañamente satisfactorio'); ancla "

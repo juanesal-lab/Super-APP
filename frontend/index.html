@@ -175,6 +175,7 @@
         <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useCaptions" checked> 💬 Subtítulos animados</label>
+        <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
       </span>
     </div>
   </div>
@@ -325,10 +326,20 @@ function renderFiles(){
 const dur = document.getElementById("dur");
 dur.oninput = ()=>document.getElementById("durVal").textContent = dur.value+"s";
 
+// --- Anuncio de referencia (opcional, para clonar su estructura) ---
+let refFile = null;
+const refInput = document.getElementById("refInput");
+refInput.onchange = e=>{
+  refFile = e.target.files[0] || null;
+  document.getElementById("refName").textContent =
+    refFile ? ("📐 "+refFile.name) : "Clonar estructura de un ad ganador";
+};
+
 // --- Process ---
 function buildForm(){
   const fd = new FormData();
   files.forEach(f=>fd.append("files", f));
+  if(refFile && useVO.checked) fd.append("reference_ad", refFile);
   fd.append("target_seconds", dur.value);
   fd.append("max_clip", document.getElementById("maxClip").value);
   fd.append("use_gemini", document.getElementById("useGemini").checked);

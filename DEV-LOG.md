@@ -822,3 +822,8 @@ Jack reportó: subtítulos tapan mucho, el texto viejo se asoma, y las pestañas
   videos en clips", "📦 De mi producto a clips", "📥 Descargar de TikTok", "🎙️ Doblar a español",
   "🔑 Mis claves (API)", "📚 Guía y ayuda". Si prefieres otros nombres, cámbialos; no toqué la lógica JS.
 - Todo compila, la app arranca, pestañas renderizan.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🩹 Fix: pestañas se encimaban (nombres muy largos)
+- Mis nombres largos rompían el layout de las pestañas (se solapaban). Los dejé CORTOS y claros:
+  Cortar clips · Mi producto · Descargar · Crear creativo · Clonar ganador · Doblar · Claves · Guía.
+- Verificado con screenshot: se ven limpias, sin encimarse. Solo texto, no toqué tu lógica/CSS.

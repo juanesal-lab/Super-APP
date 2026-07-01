@@ -833,6 +833,17 @@ Jack reportó: subtítulos tapan mucho, el texto viejo se asoma, y las pestañas
   terminado por CADA uno, en lote, con progreso global ("Creativo 1/2...").
 - `/api/auto` acepta `files` (lista); `_run_auto_job` itera y devuelve `creativos:[...]`. Frontend:
   input `multiple` + render de cada creativo con su video y botón de descarga.
+
+### 2026-07-01 · Claude (juanesal-lab) · 🐛 FIX: crash al concatenar clips cuando un video fuente NO tiene audio
+Juan hizo "Generar guiones de voz" con Efectos y reventó ffmpeg (234): `[6:a]...acrossfade matches no
+streams. Error binding filtergraph inputs/outputs`. **Causa:** uno de los videos fuente no tenía audio →
+`render_clip(has_audio=False)` lo corta con `-an` (sin pista) → `concat_clips_xfade` arma `[i:a]acrossfade`
+para TODOS los clips → el clip mudo no tiene `:a` → crash. (También afectaba a `concat_clips` normal con
+clips mezclados.) **Fix (en `assemble.py`, tu terreno — cambio aditivo):** nuevo helper `_ensure_audio(path,
+work_dir)` que usa `probe(path).has_audio` y, si el clip no tiene audio, le remuxea una pista de SILENCIO
+(anullsrc, `-c:v copy` rápido). Lo llamo al inicio de `concat_clips` y `concat_clips_xfade`. Los clips que
+YA tienen audio pasan intactos. Probado: 3 clips (con/SIN/con audio) → antes crasheaba, ahora sale el video
+con audio ✓. No toqué `render_clip` ni tu `venc()`/word-subs.
 - Probado: POST 2 archivos → "Creativo 1/2". Solo mi sección (autoHero) + mi endpoint.
 
 ### 2026-07-01 · Claude (jackingshop1-cell) · 🩹 Fix subtítulos DUPLICADOS + tapado cubre entero

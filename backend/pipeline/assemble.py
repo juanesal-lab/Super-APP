@@ -135,8 +135,30 @@ def _normalized_clip(seg: Segment, out_path: str, dims: tuple[int, int],
     return out_path
 
 
+def _ensure_audio(path: str, work_dir: str) -> str:
+    """Garantiza que el clip tenga pista de audio (agrega silencio si la fuente no tiene).
+
+    Sin esto, un clip de un video FUENTE sin audio se renderiza con `-an` (sin pista) y rompe
+    el concat/acrossfade con "[i:a] matches no streams". Devuelve la ruta lista para concatenar."""
+    from .ffmpeg_utils import probe
+    info = probe(path)
+    if info.has_audio:
+        return path
+    out = os.path.join(work_dir, "_sil_" + os.path.basename(path))
+    dur = max(0.4, info.duration)
+    run([
+        "ffmpeg", "-y", "-i", path,
+        "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+        "-map", "0:v:0", "-map", "1:a:0", "-shortest",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+        out,
+    ])
+    return out
+
+
 def concat_clips(clip_paths: list[str], out_path: str, work_dir: str) -> str:
     """Une clips ya normalizados usando el demuxer concat."""
+    clip_paths = [_ensure_audio(p, work_dir) for p in clip_paths]
     list_file = os.path.join(work_dir, f"_concat_{os.path.basename(out_path)}.txt")
     with open(list_file, "w") as f:
         for p in clip_paths:
@@ -166,6 +188,8 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
         return concat_clips(clip_paths, out_path, work_dir)
 
     from .ffmpeg_utils import probe
+    # Todos los clips deben tener pista de audio o el acrossfade falla ("[i:a] matches no streams").
+    clip_paths = [_ensure_audio(p, work_dir) for p in clip_paths]
     durs = [max(0.4, probe(p).duration) for p in clip_paths]
 
     inputs = []

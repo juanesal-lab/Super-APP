@@ -156,14 +156,14 @@
   <div class="panel" id="p-auto" style="display:none">
   <div class="autoHero">
     <h2>✨ <span>Generar Creativo</span> — Modo Automático</h2>
-    <p class="lead">Sube UN creativo ganador (en cualquier idioma) y la IA hace TODO en cadena:
-      doblaje colombiano → traduce el texto en pantalla → música y efectos por fase → subtítulos →
-      9:16 → audio normalizado. Sale listo para subir.</p>
+    <p class="lead">Sube UNO O VARIOS creativos ganadores y la IA hace un creativo terminado por cada uno,
+      en cadena: doblaje colombiano → traduce el texto en pantalla → música y efectos por fase →
+      subtítulos → 9:16 → audio normalizado. Salen listos para subir.</p>
 
-    <input type="file" id="autoFile" accept="video/*" class="hidden">
+    <input type="file" id="autoFile" accept="video/*" multiple class="hidden">
     <label class="autoDrop" id="autoDrop" for="autoFile">
-      <b id="autoName">🎬 Suelta o elige tu video ganador</b>
-      <div class="s">MP4/MOV · un solo video · el ángulo/guion se conserva, cambia a español y a tu estilo</div>
+      <b id="autoName">🎬 Suelta o elige tus videos ganadores</b>
+      <div class="s">MP4/MOV · uno o VARIOS a la vez · hace un creativo por cada video</div>
     </label>
 
     <div class="autoOpts">
@@ -193,18 +193,18 @@
   <script>
     (function(){
       const fileEl=document.getElementById('autoFile'), drop=document.getElementById('autoDrop');
-      function pick(f){ if(!f) return; window._autoFile=f;
-        document.getElementById('autoName').textContent='🎬 '+f.name;
+      function pick(files){ const arr=Array.from(files||[]); if(!arr.length) return; window._autoFiles=arr;
+        document.getElementById('autoName').textContent = arr.length===1 ? '🎬 '+arr[0].name : `🎬 ${arr.length} videos elegidos`;
         document.getElementById('autoGo').disabled=false; }
-      fileEl.addEventListener('change',e=>pick(e.target.files[0]));
+      fileEl.addEventListener('change',e=>pick(e.target.files));
       ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
       ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
-      drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]); });
+      drop.addEventListener('drop',e=>{ if(e.dataTransfer.files.length) pick(e.dataTransfer.files); });
     })();
     async function autoRun(){
-      const f=window._autoFile; if(!f) return;
+      const arr=window._autoFiles||[]; if(!arr.length) return;
       const fd=new FormData();
-      fd.append('file',f);
+      arr.forEach(f=>fd.append('files',f));
       fd.append('product_desc',document.getElementById('autoDesc').value);
       fd.append('voz',document.getElementById('autoVoz').value);
       fd.append('oferta_2x1',document.getElementById('auto2x1').checked);
@@ -230,20 +230,21 @@
     function autoRender(res){
       if(!res){ return; }
       const box=document.getElementById('autoResult');
-      let h='';
       if(res.resumen){ document.getElementById('autoMsg').textContent='✅ '+res.resumen; }
-      if(res.pasos && res.pasos.length){
-        h+='<div class="autoSteps">';
-        res.pasos.forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${p.paso}${p.detalle?` <span>· ${p.detalle}</span>`:''}</div>`; });
-        h+='</div>';
-      }
-      if(res.video){
-        const u='/api/file?path='+encodeURIComponent(res.video);
-        const d='/api/download?path='+encodeURIComponent(res.video)+'&name=creativo';
-        h+=`<video src="${u}" controls playsinline style="width:100%;border-radius:14px;margin-top:16px"></video>`;
-        h+=`<a class="autoBtn" style="margin-top:12px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${d}" download>⬇️ Descargar creativo terminado</a>`;
-      }
-      box.innerHTML=h;
+      // Uno o varios creativos (compatible con el formato viejo de un solo video)
+      const lista = res.creativos || (res.video ? [res] : []);
+      let h='';
+      lista.forEach((c,i)=>{
+        h+=`<div style="margin-top:18px;font-weight:700;font-size:15px">🎬 Creativo ${i+1}${c.nombre?' · '+c.nombre:''}</div>`;
+        (c.pasos||[]).forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${p.paso}${p.detalle?` <span>· ${p.detalle}</span>`:''}</div>`; });
+        if(c.video){
+          const u='/api/file?path='+encodeURIComponent(c.video);
+          const d='/api/download?path='+encodeURIComponent(c.video)+'&name=creativo_'+(i+1);
+          h+=`<video src="${u}" controls playsinline style="width:100%;border-radius:14px;margin-top:10px"></video>`;
+          h+=`<a class="autoBtn" style="margin-top:8px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${d}" download>⬇️ Descargar creativo ${i+1}</a>`;
+        }
+      });
+      box.innerHTML=h || '<div class="autoMsg">Sin resultados.</div>';
     }
   </script>
   </div><!-- /p-auto -->

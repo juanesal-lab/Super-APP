@@ -827,3 +827,10 @@ Jack reportó: subtítulos tapan mucho, el texto viejo se asoma, y las pestañas
 - Mis nombres largos rompían el layout de las pestañas (se solapaban). Los dejé CORTOS y claros:
   Cortar clips · Mi producto · Descargar · Crear creativo · Clonar ganador · Doblar · Claves · Guía.
 - Verificado con screenshot: se ven limpias, sin encimarse. Solo texto, no toqué tu lógica/CSS.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ✨ "Crear creativo" ahora acepta VARIOS videos (lote)
+- La sección Automático ya NO es 1 por 1: subes UNO O VARIOS videos ganadores y hace un creativo
+  terminado por CADA uno, en lote, con progreso global ("Creativo 1/2...").
+- `/api/auto` acepta `files` (lista); `_run_auto_job` itera y devuelve `creativos:[...]`. Frontend:
+  input `multiple` + render de cada creativo con su video y botón de descarga.
+- Probado: POST 2 archivos → "Creativo 1/2". Solo mi sección (autoHero) + mi endpoint.

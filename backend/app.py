@@ -237,32 +237,40 @@ def status(job_id: str):
 
 # ---- MODO AUTOMÁTICO: un video ganador -> creativo terminado (cadena completa) ----
 
-def _run_auto_job(job_id: str, video_path: str, settings: dict):
+def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
+    """Procesa VARIOS videos: un creativo terminado por cada uno (en lote)."""
     job = JOBS[job_id]
-
-    def progress(msg, pct):
-        job["message"] = msg
-        job["progress"] = pct
+    n = max(1, len(video_paths))
 
     try:
-        result = generar_creativo_auto(
-            video_path,
-            gemini_key=_load_env_key(),
-            eleven_key=_load_eleven_key(),
-            anthropic_key=_load_anthropic_key(),
-            product_desc=settings.get("product_desc", ""),
-            voz=settings.get("voz", "juan_carlos"),
-            oferta_2x1=settings.get("oferta_2x1", False),
-            verticalizar=settings.get("verticalizar", True),
-            caption_style=settings.get("caption_style", "bold_outline"),
-            oferta=settings.get("oferta", ""),
-            work_dir=os.path.join(WORK_DIR, job_id),
-            progress=progress,
-        )
-        job["result"] = result
-        job["status"] = "done" if result.get("ok") else "error"
-        if not result.get("ok"):
-            job["message"] = result.get("error", "Error desconocido")
+        creativos = []
+        for i, vp in enumerate(video_paths):
+            def progress(msg, pct, _i=i):
+                job["message"] = f"Creativo {_i + 1}/{n}: {msg}"
+                job["progress"] = int((_i * 100 + pct) / n)   # progreso global del lote
+
+            r = generar_creativo_auto(
+                vp,
+                gemini_key=_load_env_key(),
+                eleven_key=_load_eleven_key(),
+                anthropic_key=_load_anthropic_key(),
+                product_desc=settings.get("product_desc", ""),
+                voz=settings.get("voz", "juan_carlos"),
+                oferta_2x1=settings.get("oferta_2x1", False),
+                verticalizar=settings.get("verticalizar", True),
+                caption_style=settings.get("caption_style", "bold_outline"),
+                oferta=settings.get("oferta", ""),
+                work_dir=os.path.join(WORK_DIR, job_id, f"c{i}"),
+                progress=progress,
+            )
+            r["nombre"] = os.path.basename(vp)
+            creativos.append(r)
+
+        ok_n = sum(1 for c in creativos if c.get("ok") and c.get("video"))
+        job["result"] = {"ok": True, "creativos": creativos,
+                         "resumen": f"{ok_n}/{n} creativo(s) listo(s)"}
+        job["status"] = "done"
+        job["progress"] = 100
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"
         job["message"] = f"Error: {e}"
@@ -270,7 +278,7 @@ def _run_auto_job(job_id: str, video_path: str, settings: dict):
 
 @app.post("/api/auto")
 async def auto(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     product_desc: str = Form(""),
     voz: str = Form("juan_carlos"),
     oferta_2x1: bool = Form(False),
@@ -278,9 +286,9 @@ async def auto(
     caption_style: str = Form("bold_outline"),
     oferta: str = Form(""),
 ):
-    if not file:
-        raise HTTPException(400, "Sube un video ganador")
-    job_id, paths = _save_uploads([file])
+    if not files:
+        raise HTTPException(400, "Sube al menos un video ganador")
+    job_id, paths = _save_uploads(files)
     JOBS[job_id] = {"status": "running", "progress": 0,
                     "message": "Iniciando...", "result": None, "created": time.time()}
     settings = {
@@ -291,7 +299,7 @@ async def auto(
         "caption_style": caption_style,
         "oferta": oferta.strip(),
     }
-    threading.Thread(target=_run_auto_job, args=(job_id, paths[0], settings), daemon=True).start()
+    threading.Thread(target=_run_auto_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
 
 

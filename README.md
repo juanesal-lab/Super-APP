@@ -25,14 +25,12 @@ Todo corre en tu Mac. Web local en http://127.0.0.1:8420
 python3.12 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
-# 2. Modelo de detección de texto (EAST, ~92 MB — no viene en el repo)
-mkdir -p models
-curl -L -o models/east.pb \
-  https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb
-
-# 3. Tus API keys — copia el ejemplo y edítalo (o pégalas desde la web)
+# 2. Tus API keys — copia el ejemplo y edítalo (o pégalas desde la web)
 cp .env.example .env   # y pon tus keys
 ```
+
+> El modelo de detección de texto (EAST, ~92 MB) **se descarga solo** la primera vez
+> que arrancas la app. No tienes que hacer nada manual.
 
 ## ▶️ Correr
 ```bash

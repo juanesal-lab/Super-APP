@@ -283,3 +283,13 @@ HOY, no de plantillas genéricas.
 - Reutilicé `mmss_to_seconds` (narrative.py). Probado con el blueprint de ejemplo (sin gastar API):
   reescalado correcto, DOLOR sin sfx, SOLUCIÓN con impact, música por fase OK.
 - Ver también la **REGLA DEL PROYECTO** que dejé arriba (sonar-auto = ganadores actuales).
+
+### 2026-07-01 · Claude (juanesal-lab) · UI: tarjeta de la key de Claude + auto-reload del server
+- **`frontend/index.html`:** agregué la tarjeta "🧭 Capitán de calidad · Claude" (faltaba en la UI;
+  el backend ya soportaba `ANTHROPIC_API_KEY`). Pill `configurada ✓`, input y Guardar (provider=anthropic).
+- **`run.sh`:** activé `--reload --reload-dir backend`. Ahora el server se REINICIA SOLO cuando cambia
+  el código del backend (tras un `git pull`) — ya no hay que reiniciar a mano. Solo vigila `backend/`
+  (no `venv/`, `uploads/`, `work/`). Aviso: un reload interrumpe un render en curso (raro; solo si
+  cambias/pulleas código a mitad de un procesamiento). `watchfiles` ya viene con `uvicorn[standard]`.
+- **Para que agarre esto:** hay que reiniciar el server UNA vez (Ctrl+C + `./run.sh`); de ahí en
+  adelante es automático.

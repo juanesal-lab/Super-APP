@@ -25,6 +25,7 @@ from pipeline.dubbing import dub_video, LANGS as DUB_LANGS
 from pipeline.auto_studio import generar_creativo_auto
 from pipeline.narrative import analyze_narrative
 from pipeline.downloader import download_urls
+from pipeline.producto_clips import producto_a_clips
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -738,6 +739,73 @@ async def download_videos(urls: str = Form(...)):
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_download_job, args=(job_id, links), daemon=True).start()
+    return {"job_id": job_id}
+
+
+def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
+                      image_path: str | None, product_desc: str, settings: dict):
+    """Producto → Clips: descarga ganadores → entiende el producto → crea clips."""
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        result = producto_a_clips(
+            winner_urls, os.path.join(WORK_DIR, job_id),
+            product_url=product_url, image_path=image_path,
+            product_desc=product_desc, settings=settings,
+            gemini_key=_load_env_key(), progress=progress,
+        )
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "Error desconocido")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+
+
+@app.post("/api/producto-clips")
+async def producto_clips(
+    winner_urls: str = Form(...),
+    product_url: str = Form(""),
+    product_desc: str = Form(""),
+    product_image: UploadFile | None = File(None),
+    aspect: str = Form("9:16"),
+    target_seconds: float = Form(15.0),
+    max_clip: float = Form(3.0),
+    blur_captions: bool = Form(True),
+    text_mode: str = Form("tapar"),
+):
+    """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
+    links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
+    if not links:
+        raise HTTPException(400, "Pega al menos un link de un creativo ganador")
+
+    job_id = uuid.uuid4().hex[:12]
+    image_path = None
+    if product_image and product_image.filename:
+        up = os.path.join(UPLOAD_DIR, job_id)
+        os.makedirs(up, exist_ok=True)
+        image_path = os.path.join(up, "producto_" + os.path.basename(product_image.filename))
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(product_image.file, f)
+
+    settings = {
+        "aspect": aspect,
+        "target_seconds": float(target_seconds),
+        "max_clip": min(5.0, max(1.0, float(max_clip))),
+        "blur_captions": bool(blur_captions),
+        "text_mode": text_mode,
+        "use_gemini": True,
+    }
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_producto_job,
+                     args=(job_id, links, product_url.strip(), image_path,
+                           product_desc.strip(), settings), daemon=True).start()
     return {"job_id": job_id}
 
 

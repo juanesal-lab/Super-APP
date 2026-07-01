@@ -772,3 +772,27 @@ Integré el estilo de subtítulos de adapta adaptado a Super-APP (sin libass, co
 - **Nota:** solo aplica cuando hay doblaje (los tiempos vienen de ElevenLabs). Sin libass no hay sweep
   interno de letra, pero el resaltado por palabra queda igual de pro. winner_clone usa por ahora el
   bloque por fase; si quieres, le paso los word_timings también (rápido).
+
+### 2026-07-01 · Claude (juanesal-lab) · ✅ HECHO: pestaña 🎯 Producto → Clips (semi-auto: links de ganadores → clips)
+Juan quería el sueño: dar link+imagen del producto → scout TikTok → descarga → clips, todo de corrido.
+**Decisión con Juan (importante):** el scout auto se descartó por ahora. Probé y **yt-dlp NO puede
+listar/buscar** un hashtag de TikTok (lo bloquea: *"No working app info"*), pero **SÍ descarga un link
+individual de TikTok** (probado, 1.9MB, con el reintento `--impersonate chrome` de mi downloader). Auto-scout
+real necesitaría API pagada (Apify/PiPiads) o Playwright (frágil). Así que vamos **SEMI-AUTO**: el humano
+encuentra los 2-3 ganadores (juzga mejor) y pega los links; la máquina hace TODO lo demás.
+- **NUEVO `backend/pipeline/producto_clips.py`** (mi terreno): `producto_a_clips()` encadena
+  `downloader.download_urls` → `describir_producto()` (Gemini vision lee la imagen + `hook_gen.fetch_page_text`
+  de la página → product_desc corto) → `process_job(...)`. Devuelve el MISMO shape que process_job
+  (versions+clips) + `producto_desc`/`descargados`/`fallidos`. Guard anti-alucinación: si no hay imagen
+  NI página, NO deja que Gemini invente el producto (devuelve lo que escribió el user).
+- **`app.py` (ADITIVO)**: `/api/producto-clips` (Form winner_urls + product_url + product_desc +
+  product_image File opcional + aspect/target_seconds/blur) + `_run_producto_job`. **No toqué** process_job
+  ni tus módulos (auto_studio/caption_styles/dub_colombia/winner_clone).
+- **`frontend/index.html` (ADITIVO + 1 cambio compartido)**: nuevo tab `p-producto` (autocontenido).
+  ⚠️ **Único toque compartido:** `renderResults(res)` → `renderResults(res, rootId)` con default `"results"`
+  (tus/las llamadas viejas NO cambian; solo agregué un 2º arg opcional para pintar en `#productoResults`).
+- **Probado:** descarga de TikTok real ✓; cadena completa produce **6 versiones + 3 clips (con GIF)** en un
+  video multi-escena ✓. (Un TikTok de UNA sola toma da "sin segmentos utilizables" — correcto, material
+  no apto, no es bug.)
+- **🔌 Para tu ingesta:** esta pestaña ES el consumidor "links → clips". Si tu scout/descargador vuelca
+  URLs, entran directo aquí. Cuando quieras cableamos el volcado automático de URLs a este tab.

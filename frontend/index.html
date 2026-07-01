@@ -104,6 +104,7 @@
 
   <nav class="tabs" id="tabs">
     <button data-p="p-crear" class="active">✂️ Crear clips</button>
+    <button data-p="p-producto">🎯 Producto → Clips</button>
     <button data-p="p-descargar">📥 Descargar</button>
     <button data-p="p-auto">✨ Automático</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
@@ -489,6 +490,116 @@
   <div id="results"></div>
   </div><!-- /p-crear -->
 
+  <div class="panel" id="p-producto" style="display:none">
+  <div class="autoHero">
+    <h2>🎯 <span>Producto → Clips</span> — de ganadores a tus clips, automático</h2>
+    <p class="lead">Tú encuentras 2-3 <b>creativos ganadores</b> en TikTok (el ojo humano juzga mejor) y
+      pegas los links. La app hace TODO lo demás sola: <b>descarga</b> los videos → <b>lee tu producto</b>
+      (imagen + página) → <b>crea los clips</b> priorizando donde se ve y se usa tu producto.</p>
+
+    <div class="prodGrid">
+      <input type="text" id="prodUrl" class="full" placeholder="🔗 Link de tu producto (opcional — ej. tu página o AliExpress)">
+      <input type="text" id="prodDesc" class="full" placeholder="✏️ ¿Qué es el producto? (opcional si subes imagen/link)">
+    </div>
+
+    <input type="file" id="prodImg" accept="image/*" class="hidden">
+    <label class="autoDrop" id="prodImgDrop" for="prodImg" style="margin-top:12px">
+      <b id="prodImgName">🖼️ Sube una imagen de tu producto (opcional)</b>
+      <div class="s">Ayuda a la IA a reconocer tu producto en los videos</div>
+    </label>
+
+    <label style="display:block;font-weight:700;margin:16px 0 6px;font-size:14px">🏆 Links de los creativos ganadores</label>
+    <textarea id="prodUrls" class="full" rows="5" spellcheck="false"
+      placeholder="Pega 2-3 links de videos ganadores (uno por línea):&#10;https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."></textarea>
+
+    <div class="autoOpts" style="margin-top:12px">
+      <select id="prodAspect">
+        <option value="9:16">Formato: 9:16 (Reels/TikTok)</option>
+        <option value="1:1">Formato: 1:1 (feed/landing)</option>
+        <option value="4:5">Formato: 4:5 (feed alto)</option>
+      </select>
+      <select id="prodDur">
+        <option value="10">Duración objetivo: 10s</option>
+        <option value="15" selected>Duración objetivo: 15s</option>
+        <option value="20">Duración objetivo: 20s</option>
+        <option value="30">Duración objetivo: 30s</option>
+      </select>
+    </div>
+    <div class="autoChk">
+      <label><input type="checkbox" id="prodBlur" checked> Tapar/traducir el texto del video original</label>
+    </div>
+
+    <button class="autoBtn" id="prodGo" onclick="prodRun()">🎯 Crear clips de mi producto</button>
+
+    <div class="autoProg hidden" id="prodProg">
+      <div class="autoBarWrap"><div class="autoBar" id="prodBar"></div></div>
+      <div class="autoMsg" id="prodMsg">Iniciando…</div>
+    </div>
+    <div id="prodMeta"></div>
+    <div id="productoResults"></div>
+  </div>
+
+  <style>
+    .prodGrid{display:grid;gap:10px}
+    #prodUrls{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;
+      min-height:110px;resize:vertical}
+    #prodMeta{margin-top:14px}
+    .prodInfo{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+      font-size:13px;color:var(--muted);margin-bottom:8px}
+    .prodInfo b{color:var(--txt)}
+  </style>
+
+  <script>
+    (function(){
+      const fileEl=document.getElementById('prodImg');
+      fileEl.addEventListener('change',e=>{
+        const f=e.target.files[0];
+        document.getElementById('prodImgName').textContent = f ? '🖼️ '+f.name : '🖼️ Sube una imagen de tu producto (opcional)';
+      });
+    })();
+    async function prodRun(){
+      const urls=document.getElementById('prodUrls').value.trim();
+      const msg=document.getElementById('prodMsg'), prog=document.getElementById('prodProg');
+      if(!urls){ prog.classList.remove('hidden'); msg.textContent='Pega al menos un link de un ganador 👆'; return; }
+      const fd=new FormData();
+      fd.append('winner_urls',urls);
+      fd.append('product_url',document.getElementById('prodUrl').value);
+      fd.append('product_desc',document.getElementById('prodDesc').value);
+      fd.append('aspect',document.getElementById('prodAspect').value);
+      fd.append('target_seconds',document.getElementById('prodDur').value);
+      fd.append('blur_captions',document.getElementById('prodBlur').checked);
+      const img=document.getElementById('prodImg').files[0];
+      if(img) fd.append('product_image',img);
+      document.getElementById('prodGo').disabled=true;
+      document.getElementById('productoResults').innerHTML='';
+      document.getElementById('prodMeta').innerHTML='';
+      prog.classList.remove('hidden');
+      document.getElementById('prodBar').style.width='0%';
+      msg.textContent='Iniciando…';
+      try{
+        const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
+        const j=await r.json();
+        if(j.job_id){ prodPoll(j.job_id); }
+        else{ msg.textContent=j.detail||'Error'; document.getElementById('prodGo').disabled=false; }
+      }catch(e){ msg.textContent='Error: '+e; document.getElementById('prodGo').disabled=false; }
+    }
+    async function prodPoll(id){
+      const r=await fetch('/api/status/'+id); const j=await r.json();
+      document.getElementById('prodBar').style.width=(j.progress||0)+'%';
+      document.getElementById('prodMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>prodPoll(id),1400); return; }
+      document.getElementById('prodGo').disabled=false;
+      if(j.status==='error'){ document.getElementById('prodMsg').innerHTML='<span style="color:var(--warn)">'+(j.message||'Error')+'</span>'; return; }
+      const res=j.result||{};
+      let info='';
+      if(res.producto_desc) info+=`<div class="prodInfo">🧠 La IA entendió tu producto como: <b>${res.producto_desc}</b></div>`;
+      if(typeof res.descargados!=='undefined') info+=`<div class="prodInfo">⬇️ ${res.descargados} ganador(es) descargado(s)${res.fallidos?` · ${res.fallidos} fallaron`:''}</div>`;
+      document.getElementById('prodMeta').innerHTML=info;
+      renderResults(res,'productoResults');
+    }
+  </script>
+  </div><!-- /p-producto -->
+
   <div class="panel" id="p-descargar" style="display:none">
   <div class="autoHero">
     <h2>📥 <span>Descargar videos</span> — desde cualquier link</h2>
@@ -647,6 +758,7 @@
     <div class="card">
       <h2>🧩 Qué hace cada pestaña</h2>
       <div class="tip"><span class="em">✂️</span><span><b>Crear clips</b> — el flujo principal: de tus videos crudos saca los mejores momentos y arma 6 versiones + clips sueltos + GIFs.</span></div>
+      <div class="tip"><span class="em">🎯</span><span><b>Producto → Clips</b> — el flujo semi-auto: pegas el producto (link/imagen) + los links de 2-3 ganadores que encontraste, y la app descarga + entiende tu producto + crea los clips, todo de corrido.</span></div>
       <div class="tip"><span class="em">📥</span><span><b>Descargar</b> — pega links (TikTok, Instagram, YouTube, Facebook…) y baja los videos automáticamente para usarlos como material en Crear clips.</span></div>
       <div class="tip"><span class="em">✨</span><span><b>Automático</b> — subes UN creativo ganador (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
       <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — clona un ganador poniendo TU producto en lugar del viejo (conserva el audio original).</span></div>
@@ -895,8 +1007,8 @@ function renderScripts(jobId, scripts){
 
 function enc(p){ return encodeURIComponent(p); }
 
-function renderResults(res){
-  const root = document.getElementById("results");
+function renderResults(res, rootId){
+  const root = document.getElementById(rootId || "results");
   const ar = ({"1:1":"1 / 1","9:16":"9 / 16","4:5":"4 / 5","16:9":"16 / 9"})[res.aspect] || "1 / 1";
   const gem = res.used_gemini
     ? '<span class="tag">Gemini ✓</span>'

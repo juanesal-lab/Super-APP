@@ -22,6 +22,8 @@ import re
 import time
 from typing import Callable
 
+import cv2
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_utils import run, probe
@@ -122,6 +124,32 @@ def _wrap(draw, text: str, font, max_w: int) -> list[str]:
     return lines
 
 
+def _render_solid(box_w: int, box_h: int, bg: tuple, out_png: str) -> None:
+    """PNG de relleno SÓLIDO (modo 'tapar': cubre el texto sin escribir nada encima)."""
+    box_w, box_h = max(8, box_w), max(8, box_h)
+    Image.new("RGBA", (box_w, box_h), bg + (255,)).save(out_png)
+
+
+def _region_color_rgb(cap, t_sec, x, y, w, h, default_rgb):
+    """Muestrea el color MEDIANO real de la zona del video (para que el relleno sólido combine).
+
+    Devuelve (r,g,b). Si no se puede leer, usa `default_rgb`. La mediana ignora el texto
+    (minoría de píxeles), así que da el color del fondo detrás del texto.
+    """
+    try:
+        cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, float(t_sec)) * 1000.0)
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            return default_rgb
+        Hf, Wf = frame.shape[:2]
+        x0, y0 = max(0, min(int(x), Wf - 1)), max(0, min(int(y), Hf - 1))
+        x1, y1 = max(x0 + 1, min(int(x + w), Wf)), max(y0 + 1, min(int(y + h), Hf))
+        med = np.median(frame[y0:y1, x0:x1].reshape(-1, 3), axis=0)   # BGR
+        return (int(med[2]), int(med[1]), int(med[0]))                # -> RGB
+    except Exception:
+        return default_rgb
+
+
 def _render_block(text: str, box_w: int, box_h: int, bg: tuple, fg: tuple, out_png: str) -> None:
     """Dibuja un PNG del tamaño de la caja: fondo relleno + texto traducido centrado y ajustado."""
     box_w, box_h = max(8, box_w), max(8, box_h)
@@ -169,8 +197,13 @@ def traducir_texto_pantalla(
     api_key: str | None = None,
     out_path: str | None = None,
     progress: Callable[[str, int], None] | None = None,
+    modo: str = "traducir",   # "traducir" (reescribe en es-CO) | "tapar" (relleno sólido)
 ) -> dict:
-    """Lee el texto en pantalla, lo traduce a es-CO y lo reemplaza sobre el video.
+    """Lee el texto en pantalla y lo reemplaza sobre el video (traducido o tapado sólido).
+
+    Gemini DETECTA el texto quemado (entiende texto vs caras/casas, a diferencia de EAST).
+    `modo="traducir"` reescribe en español colombiano; `modo="tapar"` lo cubre con un relleno
+    sólido (mismo detector inteligente, solo cambia lo que se pinta en la caja).
 
     Devuelve {"ok":True,"bloques":[...],"video":ruta}  (video = el mismo si no hay texto),
     o {"ok":False,"error":...}. Nunca lanza (para no romper el pipeline).
@@ -221,10 +254,11 @@ def traducir_texto_pantalla(
     # 2) Renderizar un PNG por bloque (fondo que tapa + texto traducido)
     report(f"Traduciendo {len(bloques)} bloque(s) de texto en pantalla...", 70)
     inputs, filt, last = ["-i", video_path], [], "[0:v]"
+    cap_s = cv2.VideoCapture(video_path) if modo == "tapar" else None   # para muestrear color real
     n = 0
     for b in bloques:
         es = str(b.get("es_colombia", "")).strip()
-        if not es:
+        if modo == "traducir" and not es:   # en "tapar" cubrimos aunque no haya traducción
             continue
         bw, bh = int(float(b.get("w", 0.5)) * W), int(float(b.get("h", 0.1)) * H)
         bx, by = int(float(b.get("x", 0)) * W), int(float(b.get("y", 0)) * H)
@@ -236,7 +270,12 @@ def traducir_texto_pantalla(
         bg = _hex(b.get("fondo"), (255, 255, 255))
         fg = _hex(b.get("texto_color"), (0, 0, 0))
         png = os.path.join(work, f"b{n}.png")
-        _render_block(es, bw, bh, bg, fg, png)
+        if modo == "tapar":
+            # color REAL de la zona (mediana) para que el relleno sólido combine con el fondo
+            fill = _region_color_rgb(cap_s, _mmss(b.get("inicio", 0)), bx, by, bw, bh, bg)
+            _render_solid(bw, bh, fill, png)
+        else:
+            _render_block(es, bw, bh, bg, fg, png)  # reescribe la traducción
         inputs += ["-i", png]
         s, e = _mmss(b.get("inicio", 0)), _mmss(b.get("fin", dur))
         if e <= s:
@@ -245,6 +284,8 @@ def traducir_texto_pantalla(
         filt.append(f"{last}[{n + 1}:v]overlay={bx}:{by}:enable='between(t,{s:.2f},{e:.2f})'{tag}")
         last = tag
         n += 1
+    if cap_s is not None:
+        cap_s.release()
 
     if n == 0:
         return {"ok": True, "bloques": [], "video": video_path}

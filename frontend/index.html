@@ -104,6 +104,7 @@
 
   <nav class="tabs" id="tabs">
     <button data-p="p-crear" class="active">✂️ Crear clips</button>
+    <button data-p="p-descargar">📥 Descargar</button>
     <button data-p="p-auto">✨ Automático</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
@@ -488,6 +489,91 @@
   <div id="results"></div>
   </div><!-- /p-crear -->
 
+  <div class="panel" id="p-descargar" style="display:none">
+  <div class="autoHero">
+    <h2>📥 <span>Descargar videos</span> — desde cualquier link</h2>
+    <p class="lead">Pega los links de los videos que quieres usar como material (TikTok, Instagram,
+      YouTube, Facebook…). La app los baja automáticamente y quedan listos para descargarlos a tu PC
+      y usarlos en <b>✂️ Crear clips</b>.</p>
+
+    <textarea id="dlUrls" class="full" rows="6" spellcheck="false"
+      placeholder="Pega un link por línea:&#10;https://www.tiktok.com/@usuario/video/123...&#10;https://www.instagram.com/reel/abc...&#10;https://youtube.com/shorts/xyz..."></textarea>
+
+    <button class="autoBtn" id="dlGo" onclick="dlRun()">📥 Descargar videos</button>
+
+    <div class="autoProg hidden" id="dlProg">
+      <div class="autoBarWrap"><div class="autoBar" id="dlBar"></div></div>
+      <div class="autoMsg" id="dlMsg">Iniciando…</div>
+    </div>
+    <div id="dlResult"></div>
+  </div>
+
+  <style>
+    #dlUrls{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;
+      min-height:130px;resize:vertical;margin-bottom:14px}
+    .dlSummary{font-weight:800;color:var(--accent2);margin:6px 0 12px}
+    .dlGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+    .dlCard{background:var(--card2);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+      display:flex;flex-direction:column}
+    .dlCard video{width:100%;aspect-ratio:9/16;object-fit:cover;background:#000;display:block}
+    .dlDown{display:block;text-align:center;padding:9px;font-size:12.5px;font-weight:700;
+      color:var(--accent);text-decoration:none;border-top:1px solid var(--line)}
+    .dlDown:hover{background:var(--accent);color:#fff}
+    .dlCard.bad{padding:16px;justify-content:center;align-items:center;text-align:center}
+    .dlErr{color:var(--warn);font-weight:700;font-size:13px}
+    .dlErr span{color:var(--muted);font-weight:500;font-size:11px;word-break:break-word}
+    .dlHint{margin-top:16px;background:var(--card2);border:1px solid var(--line);border-radius:10px;
+      padding:12px 14px;font-size:13px;color:var(--muted)}
+  </style>
+
+  <script>
+    async function dlRun(){
+      const urls=document.getElementById('dlUrls').value.trim();
+      const prog=document.getElementById('dlProg'), msg=document.getElementById('dlMsg');
+      if(!urls){ prog.classList.remove('hidden'); msg.textContent='Pega al menos un link 👆'; return; }
+      const fd=new FormData(); fd.append('urls',urls);
+      document.getElementById('dlGo').disabled=true;
+      document.getElementById('dlResult').innerHTML='';
+      prog.classList.remove('hidden');
+      document.getElementById('dlBar').style.width='0%';
+      msg.textContent='Iniciando…';
+      try{
+        const r=await fetch('/api/download-videos',{method:'POST',body:fd});
+        const j=await r.json();
+        if(j.job_id){ dlPoll(j.job_id); }
+        else{ msg.textContent=j.detail||'Error'; document.getElementById('dlGo').disabled=false; }
+      }catch(e){ msg.textContent='Error: '+e; document.getElementById('dlGo').disabled=false; }
+    }
+    async function dlPoll(id){
+      const r=await fetch('/api/status/'+id); const j=await r.json();
+      document.getElementById('dlBar').style.width=(j.progress||0)+'%';
+      document.getElementById('dlMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>dlPoll(id),1200); return; }
+      document.getElementById('dlGo').disabled=false;
+      if(j.status==='error'){ document.getElementById('dlMsg').innerHTML='<span style="color:var(--warn)">'+(j.message||'Error')+'</span>'; return; }
+      dlRender(j.result);
+    }
+    function dlRender(res){
+      if(!res){ return; }
+      const box=document.getElementById('dlResult'), vids=res.videos||[];
+      let h=`<div class="dlSummary">✅ ${res.n_ok}/${res.n_total} videos descargados</div><div class="dlGrid">`;
+      vids.forEach((v,i)=>{
+        if(v.ok && v.path){
+          const u='/api/file?path='+encodeURIComponent(v.path);
+          const d='/api/download?path='+encodeURIComponent(v.path)+'&name=video_'+(i+1);
+          h+=`<div class="dlCard"><video src="${u}" controls playsinline preload="metadata"></video>`+
+             `<a class="dlDown" href="${d}" download>⬇️ Descargar a mi PC</a></div>`;
+        }else{
+          h+=`<div class="dlCard bad"><div class="dlErr">✗ No se pudo bajar<br><span>${(v.error||'link inválido').slice(0,90)}</span></div></div>`;
+        }
+      });
+      h+='</div>';
+      if(res.n_ok>0){ h+='<p class="dlHint">💡 Descarga los videos a tu PC y súbelos en <b>✂️ Crear clips</b> para convertirlos en anuncios.</p>'; }
+      box.innerHTML=h;
+    }
+  </script>
+  </div><!-- /p-descargar -->
+
   <div class="panel" id="p-swap" style="display:none">
   <div class="qhace"><b>¿Qué hace?</b> Tomas un video (con su audio/voz) y le cambias el producto: la IA detecta dónde sale el producto viejo y mete tus tomas del producto nuevo en su lugar. Ideal para clonar un ganador con TU producto.</div>
 
@@ -561,6 +647,7 @@
     <div class="card">
       <h2>🧩 Qué hace cada pestaña</h2>
       <div class="tip"><span class="em">✂️</span><span><b>Crear clips</b> — el flujo principal: de tus videos crudos saca los mejores momentos y arma 6 versiones + clips sueltos + GIFs.</span></div>
+      <div class="tip"><span class="em">📥</span><span><b>Descargar</b> — pega links (TikTok, Instagram, YouTube, Facebook…) y baja los videos automáticamente para usarlos como material en Crear clips.</span></div>
       <div class="tip"><span class="em">✨</span><span><b>Automático</b> — subes UN creativo ganador (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
       <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — clona un ganador poniendo TU producto en lugar del viejo (conserva el audio original).</span></div>
       <div class="tip"><span class="em">🎙️</span><span><b>Doblar</b> — traduce la voz de un video a otro idioma manteniendo el tono (ej. inglés ↔ español).</span></div>

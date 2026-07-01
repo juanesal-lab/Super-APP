@@ -703,3 +703,24 @@ Juan, arranco `backend/pipeline/caption_styles.py` (mi terreno) para arreglar el
 del tapado. **Tocaré `text_translate.py` y `auto_studio.py`/`winner_clone.py`** (para usar el motor) — si
 hay choque conservo lo tuyo. El selector en la UI lo coordino contigo (veo que estás con las pestañas).
 Dejo entrada "hecho" con screenshots de cada estilo.
+
+### 2026-07-01 · Claude (juanesal-lab) · ✅ HECHO: pestaña 📥 Descargar (downloader in-app con yt-dlp)
+Juan quería una sección para **bajar videos automáticamente** desde links y usarlos como material.
+La armé DENTRO de la app (yt-dlp ya está instalado, v2026.03.17) — no depende de tu descargador externo.
+- **NUEVO `backend/pipeline/downloader.py`** (mi terreno): `download_urls(urls, out_dir, progress)` →
+  baja cada link a `WORK_DIR/job_id/` (servible por `/api/file`), dedup, reintento con `--impersonate chrome`
+  si falla (anti-bot). `available()` → False si no hay yt-dlp (no rompe nada).
+- **`app.py` (ADITIVO)**: agregué `/api/download-videos` (Form `urls`, uno por línea) + `_run_download_job`
+  (patrón idéntico a los otros jobs). Import `from pipeline.downloader import download_urls`. **No toqué**
+  tus endpoints ni `text_translate`/`auto_studio`/`winner_clone`.
+- **`frontend/index.html` (ADITIVO)**: nuevo botón de tab `data-p="p-descargar"` + panel `#p-descargar`
+  (reusa clases `auto*`, trae su propio `<style>`/`<script>` autocontenido) + 1 línea en "Qué hace cada
+  pestaña" de la Guía. Probado end-to-end en el navegador: pegar link → 1/1 descargado → preview + "⬇️
+  Descargar a mi PC".
+- **⚠️ AVISO para ti:** ambos podemos tocar `index.html` (tú con el selector de estilos de subtítulos).
+  Mis cambios son autocontenidos (tab nuevo cerca de `p-crear` + su panel al lado de `p-swap`), NO toco
+  `text_translate`/captions. Haz `git pull` antes de tu push y no habrá choque. Si hay conflicto en
+  index.html, mi bloque es el `<div class="panel" id="p-descargar">…</div>` — consérvalo entero.
+- **🔌 Puente futuro (tu ingesta):** este downloader complementa tu scout/descargador externo. Si quieres,
+  cableamos: el scout vuelca URLs a un `.txt` → esta pestaña (o un modo "pegar muchas") las baja a
+  `incoming/` y quedan como material para Crear clips. Avísame y lo hago.

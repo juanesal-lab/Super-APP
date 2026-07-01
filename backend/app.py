@@ -24,6 +24,7 @@ from pipeline.product_swap import detect_product_ranges, find_new_clips, swap_pr
 from pipeline.dubbing import dub_video, LANGS as DUB_LANGS
 from pipeline.auto_studio import generar_creativo_auto
 from pipeline.narrative import analyze_narrative
+from pipeline.downloader import download_urls
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -697,6 +698,40 @@ async def dub(video: UploadFile = File(...), target_lang: str = Form("en"),
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_dub_job, args=(job_id, vpath, target_lang, source_lang),
                      daemon=True).start()
+    return {"job_id": job_id}
+
+
+def _run_download_job(job_id: str, urls: list[str]):
+    """Baja videos con yt-dlp a WORK_DIR/job_id (servibles via /api/file)."""
+    job = JOBS[job_id]
+    try:
+        out_dir = os.path.join(WORK_DIR, job_id)
+
+        def progress(msg, pct):
+            job["message"] = msg
+            job["progress"] = pct
+
+        results = download_urls(urls, out_dir, progress=progress)
+        ok = [r for r in results if r["ok"]]
+        job["result"] = {"videos": results, "n_ok": len(ok), "n_total": len(results)}
+        job["status"] = "done"
+        job["progress"] = 100
+        job["message"] = f"Listo: {len(ok)}/{len(results)} videos descargados"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+
+
+@app.post("/api/download-videos")
+async def download_videos(urls: str = Form(...)):
+    """Baja videos desde una lista de links (uno por línea) con yt-dlp."""
+    links = [u.strip() for u in urls.replace(",", "\n").splitlines() if u.strip()]
+    if not links:
+        raise HTTPException(400, "Pega al menos un link")
+    job_id = uuid.uuid4().hex[:12]
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_download_job, args=(job_id, links), daemon=True).start()
     return {"job_id": job_id}
 
 

@@ -28,6 +28,7 @@ from typing import Callable
 from PIL import Image, ImageDraw
 
 from .ffmpeg_utils import run, probe
+from .assemble import venc   # encoder GPU (VideoToolbox) si está disponible; si no, libx264
 from .narrative import analyze_narrative, mmss_to_seconds
 from .dub_colombia import generar_dub
 from .text_translate import traducir_texto_pantalla, _font
@@ -180,7 +181,7 @@ def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str,
         return inp
     run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filt),
          "-map", last, "-map", "0:a?", "-c:a", "copy",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+         *venc(),
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
     return out
 
@@ -204,7 +205,7 @@ def _verticalize(inp: str, out: str, w: int = 1080, h: int = 1920) -> str:
     if src_ar and abs(src_ar - target_ar) < 0.02:
         # Ya es (casi) 9:16 -> solo asegurar 1080×1920, sin recortar
         run(["ffmpeg", "-y", "-i", inp, "-vf", f"scale={w}:{h},setsar=1",
-             "-c:a", "copy", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+             "-c:a", "copy", *venc(),
              "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
         return out
 
@@ -214,7 +215,7 @@ def _verticalize(inp: str, out: str, w: int = 1080, h: int = 1920) -> str:
           f"[fg]scale={w}:{h}:force_original_aspect_ratio=decrease[fgs];"
           f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1")
     run(["ffmpeg", "-y", "-i", inp, "-filter_complex", fc,
-         "-c:a", "copy", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+         "-c:a", "copy", *venc(),
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
     return out
 
@@ -351,8 +352,8 @@ def generar_creativo_auto(
             render_offer_pill(oferta.strip(), info.width, info.height).save(png)
             out = os.path.join(work_dir, "oferta.mp4")
             run(["ffmpeg", "-y", "-i", current, "-i", png, "-filter_complex", "[0:v][1:v]overlay=0:0",
-                 "-map", "0:a?", "-c:a", "copy", "-c:v", "libx264", "-preset", "veryfast",
-                 "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
+                 "-map", "0:a?", "-c:a", "copy", *venc(),
+                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
             current = out
             paso("Oferta", True, oferta.strip())
         except Exception as e:  # noqa: BLE001

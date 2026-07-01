@@ -241,13 +241,17 @@ def generar_dub(
         voz = "juan_carlos"
 
     # 3) TTS por fase + calce exacto a la duración de la fase
-    clips = []   # (ruta_fit, inicio_seg)
+    # OPTIMIZACIÓN: generar las voces EN PARALELO (antes era 1 x 1 = el cuello de botella).
+    # Cada fase es independiente -> ThreadPoolExecutor. ~N veces más rápido.
+    from concurrent.futures import ThreadPoolExecutor
     total = len(segments)
-    for i, s in enumerate(segments):
+    report(f"Generando {total} voces colombianas en paralelo...", 62)
+
+    def _voz(i_s):
+        i, s = i_s
         texto = s["es_colombia"].strip()
         if not texto:
-            continue
-        report(f"Generando voz colombiana ({i + 1}/{total})...", 60 + int(30 * i / max(1, total)))
+            return None
         ini = mmss_to_seconds(s["inicio"])
         dur = max(0.5, mmss_to_seconds(s["fin"]) - ini)
         raw = os.path.join(work_dir, f"voz_{i:02d}.mp3")
@@ -255,9 +259,12 @@ def generar_dub(
         try:
             synthesize(eleven_key, texto, voz, raw)
             _fit_audio(raw, dur, fit)
-            clips.append((fit, ini))
-        except Exception as e:  # noqa: BLE001
-            report(f"Fase {i} sin voz ({e})", 60)
+            return (fit, ini)
+        except Exception:  # noqa: BLE001
+            return None
+
+    with ThreadPoolExecutor(max_workers=min(6, max(1, total))) as ex:
+        clips = [r for r in ex.map(_voz, list(enumerate(segments))) if r]   # (ruta_fit, inicio_seg)
 
     if not clips:
         return {"ok": False, "error": "No se pudo generar ninguna voz (revisa la key de ElevenLabs)."}

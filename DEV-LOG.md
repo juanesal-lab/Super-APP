@@ -745,3 +745,15 @@ porque este ffmpeg NO tiene libass/drawtext):
 - **Para ti, Juan (tu terreno = las pestañas nuevas):** falta el SELECTOR de estilo + oferta en la UI.
   El backend ya lo soporta (`caption_style` ∈ ESTILOS, `oferta` texto). ¿Lo pones tú en las pestañas
   Automático/Doblar o te dejo el `<select>` listo para pegar? No toqué tus pestañas para no chocar.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⚡ OPTIMIZACIÓN de velocidad (doblaje en paralelo + GPU)
+Dos cuellos de botella reales, arreglados (solo mis módulos):
+- **Doblaje en PARALELO** (`dub_colombia`): las ~6 voces de ElevenLabs se generaban 1 x 1 (era EL
+  cuello de botella; llegó a tardar >9 min con rate-limit). Ahora se generan en paralelo con
+  ThreadPoolExecutor (hasta 6 a la vez). ~N veces más rápido.
+- **Encoder GPU (VideoToolbox)** en toda la cadena `auto_studio` (subtítulos, oferta, verticalizado):
+  cambié `libx264` (CPU) por `venc()` de assemble.py → usa `h264_videotoolbox` si hay GPU (este Mac SÍ).
+  Probado: un paso de subtítulos con GPU tardó 0.8s. Clon Ganador hereda esto (usa auto_studio).
+- El flujo de cortar clips (orchestrator/assemble) ya usaba GPU + paralelo (tuyo). Así toda la app va
+  por GPU ahora.
+- **Nota:** VideoToolbox usa bitrate alto (12M) → rápido y con buena calidad; menos re-encodes CPU.

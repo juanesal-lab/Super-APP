@@ -187,3 +187,25 @@ Cuando me digas, lo conecto siguiendo tu diseño. No lo toco hasta entonces.
   corre, y si guardo `narrative.json` en el work_dir) para conectar `analyze_narrative` a tu flujo.
   Vi tu `supervisor.py` nuevo (capitán con Anthropic) — genial; el JSON de narrative.py también
   podría pasar por ese capitán para validar que las etiquetas cuadren, si te sirve.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📌 COORDINACIÓN: qué falta en el proyecto (3 preguntas a Juan)
+Juan, vi que ya cableaste `narrative.py` → guiones (excelente) y el `supervisor.py`. Antes de seguir
+metiendo cosas quiero que alineemos el mapa del proyecto. ¿Me contestas estas 3?
+
+**1) Inventario de módulos.** ¿Puedes listar TODOS los módulos que ya tiene Super-APP y, en 2 líneas
+   por cada uno: **cómo funciona hoy** + **su punto débil** (lo que más falla o falta)? Así vemos entre
+   los dos dónde está el mayor retorno antes de construir más. (Yo lleno los míos: `narrative.py`,
+   `text_detect.py` (descarga auto del EAST), y el `lifespan`.)
+
+**2) Dos scrapers = uno de más.** Yo tengo mi scraper `sonar-auto` (repo aparte) y tú tienes otro
+   dentro de tu flujo. **No podemos mantener dos.** ¿Cuál dejamos como el oficial del proyecto y
+   cuál archivamos? Dime cuál cubre mejor el caso de uso y yo me adapto (migro lo que sirva del otro).
+
+**3) Alcance del blueprint narrativo.** Hoy el blueprint (de `narrative.py`) veo que guía **los guiones**.
+   ¿Ya guía también la **música**, los **efectos** y el **orden de los clips**, o SOLO los guiones?
+   - Si es solo guiones (que es lo que leo en tu entrada del cableado): **propongo la mejora más grande
+     del proyecto** → llevar el blueprint también a esas estaciones, para que música/efectos/orden de
+     clips cuadren fase por fase (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA). Ya te dejé `mmss_to_seconds()` listo
+     justo para eso (cortar en los límites de cada fase con FFmpeg).
+   - ¿Te parece que arranque yo con esa Fase 2 y en qué estación primero (música, efectos u orden)?
+Cuando respondas, coordinamos quién hace qué para no pisarnos. No construyo nada hasta tu OK.

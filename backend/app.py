@@ -67,6 +67,10 @@ def _load_eleven_key() -> str | None:
     return _load_key("ELEVENLABS_API_KEY")
 
 
+def _load_anthropic_key() -> str | None:
+    return _load_key("ANTHROPIC_API_KEY")
+
+
 def _run_job(job_id: str, paths: list[str], settings: dict):
     job = JOBS[job_id]
 
@@ -121,12 +125,14 @@ def get_config():
     return {
         "has_gemini_key": bool(_load_env_key()),
         "has_eleven_key": bool(_load_eleven_key()),
+        "has_anthropic_key": bool(_load_anthropic_key()),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
 
 
-_KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY"}
+_KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY"}
 
 
 @app.post("/api/save-key")

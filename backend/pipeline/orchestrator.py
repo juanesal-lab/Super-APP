@@ -15,6 +15,11 @@ from .text_detect import mask_video as mask_video_text, available as east_availa
 from .text_overlay import burn_hook
 from .hook_gen import generate_hook, fetch_page_text
 from .captions import add_captions
+from . import supervisor
+
+
+# Cuántas veces el capitán (Claude) puede mandar a re-tapar un corte hasta aprobarlo
+_MAX_CORRECCIONES = 2
 
 
 # Umbral de similitud visual: firmas con distancia < este valor se consideran el mismo plano
@@ -169,6 +174,7 @@ def render_versions(
         # frames y en paralelo.
         report("Tapando textos del proveedor (frame por frame)...", 56)
         done = [0]
+        capitan = supervisor.available()   # ¿hay ANTHROPIC_API_KEY? -> el capitán supervisa
 
         def _mask_seg(item):
             idx, seg = item
@@ -179,10 +185,35 @@ def render_versions(
                 run(["ffmpeg", "-y", "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{d:.3f}",
                      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
                      "-c:a", "aac", raw])
-                mask_video_text(raw, masked)
+                final = mask_video_text(raw, masked)   # == masked (tapó algo) o == raw (nada)
+
+                # ── Capitán (Claude): revisa el tapado y corrige si hace falta ──
+                # Prueba y error acotado: si tapó de más (falsos positivos) sube la
+                # precisión; si tapó de menos (texto sin tapar) la baja, y re-tapa.
+                if capitan and final == masked and os.path.exists(masked):
+                    mw = cf = None
+                    for _ in range(_MAX_CORRECCIONES):
+                        v = supervisor.revisar_blur(raw, masked)
+                        if not v or v.get("aprobado"):
+                            break
+                        if v.get("falsos_positivos"):        # tapó de más -> más preciso
+                            mw = round((mw or 1.5) + 0.4, 2)
+                            cf = min((cf or 0.6) + 0.1, 0.9)
+                        elif v.get("texto_sin_tapar"):       # tapó de menos -> menos preciso
+                            mw = round(max((mw or 1.5) - 0.3, 1.0), 2)
+                            cf = max((cf or 0.6) - 0.1, 0.4)
+                        else:
+                            break
+                        report(f"El capitán corrige el tapado del corte {idx + 1}...", 56)
+                        if os.path.exists(masked):
+                            os.remove(masked)
+                        final = mask_video_text(raw, masked, min_wh=mw, conf=cf)
+                        if final != masked:                  # la corrección lo dejó sin blur -> ok
+                            break
+
                 done[0] += 1
                 report(f"Tapando textos ({done[0]}/{len(selected)})...", 56)
-                if os.path.exists(masked):
+                if final == masked and os.path.exists(masked):
                     return idx, masked
             except Exception:
                 pass

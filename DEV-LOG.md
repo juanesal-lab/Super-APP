@@ -44,6 +44,27 @@ Lee esto (con `git pull`) antes de empezar. Agrega entradas AL FINAL. Formato:
   orchestrator ya lo maneja (línea ~185, chequea `os.path.exists(masked)`). Tunables arriba del
   archivo: `_MIN_WH`, `_TEXT_WH`, `_MIN_DETECTIONS`, `_IOU`.
 
+### 2026-07-01 · Claude (juanesal-lab) · Capitán de calidad con Claude (Anthropic) — filtro de blur
+- **Idea de Juan:** una capa "capitán" (API de Anthropic) que supervise cada paso, valide a
+  Gemini/ElevenLabs y reintente/corrija hasta que salga bien (embudo de filtros con auto-corrección).
+  Arrancamos por el filtro de MÁS valor: el tapado de textos (donde estaba el bug del blur).
+- **Nuevo módulo `backend/pipeline/supervisor.py`:** Claude Opus 4.8 con VISIÓN revisa una imagen
+  ANTES/DESPUÉS del tapado y devuelve un veredicto ESTRUCTURADO (herramienta forzada `reportar_veredicto`:
+  aprobado / falsos_positivos / texto_sin_tapar / detalle / confianza). Usa tool_choice forzado
+  (el SDK 0.75.0 no tiene `output_config`/`messages.parse`).
+- **`text_detect.mask_video(..., min_wh, conf)`:** ahora acepta overrides de precisión para que el
+  capitán ajuste y re-tape.
+- **`orchestrator._mask_seg`:** gate de prueba-y-error acotado (máx 2 correcciones). Si el capitán ve
+  falsos positivos -> sube precisión (min_wh+0.4, conf+0.1); si ve texto sin tapar -> la baja, y re-tapa.
+- **`app.py`:** soporte de `ANTHROPIC_API_KEY` (get_config `has_anthropic_key` + save-key `anthropic`).
+  `requirements.txt`: `anthropic==0.75.0`.
+- **DEGRADACIÓN ELEGANTE:** sin `ANTHROPIC_API_KEY` (env o .env), `supervisor.available()` da False y la
+  app funciona EXACTAMENTE igual que antes. 100% opt-in.
+- **Estado:** compila, importa y degrada bien (verificado). ⚠️ FALTA la prueba EN VIVO contra la API
+  (Juan debe poner su `ANTHROPIC_API_KEY` en `.env`); ahí validamos el veredicto real y afinamos el prompt.
+- **Avisos:** costo ~$0.02-0.03/revisión (Opus 4.8), sólo en cortes que SÍ se taparon. Próximos filtros
+  a construir con el mismo patrón: selección de clips, gancho, guiones, subtítulos, producto, ad final.
+
 <!-- ⬇️ nuevas entradas debajo ⬇️ -->
 
 ### 2026-07-01 · Claude (jackingshop1-cell) · Modernizado startup → lifespan

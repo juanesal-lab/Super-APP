@@ -94,7 +94,7 @@ def _on_face(box, faces) -> bool:
     return False
 
 
-def _detect(net, frame, conf=_CONF) -> list[tuple]:
+def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH) -> list[tuple]:
     """Devuelve cajas de texto (x,y,w,h) en pixeles del frame, sin caras ni texto chico."""
     H, W = frame.shape[:2]
     rW, rH = W / float(_INW), H / float(_INH)
@@ -133,7 +133,7 @@ def _detect(net, frame, conf=_CONF) -> list[tuple]:
     # solo cajas horizontales (líneas de texto). Descarta cuadradas/verticales: follaje,
     # arrugas de tela, bordes... que es donde EAST mete falsos positivos.
     return [(x, y, w, h) for (x, y, w, h) in _merge_lines(boxes, W)
-            if w > 0 and h > 0 and w >= h * _MIN_WH]
+            if w > 0 and h > 0 and w >= h * min_wh]
 
 
 def _merge_lines(boxes: list[tuple], W: int) -> list[tuple]:
@@ -194,7 +194,8 @@ def _confirm(detections: list[tuple], min_det: int) -> dict[int, list[tuple]]:
     return confirmed
 
 
-def mask_video(in_path: str, out_path: str) -> str:
+def mask_video(in_path: str, out_path: str,
+               min_wh: float | None = None, conf: float | None = None) -> str:
     """Tapa el texto detectado frame por frame y conserva el audio.
 
     Dos pases para evitar falsos positivos (blur donde NO hay texto):
@@ -203,9 +204,15 @@ def mask_video(in_path: str, out_path: str) -> str:
       2) CONFIRMAR: por consistencia temporal, descarta las cajas que no persisten.
       3) APLICAR: re-lee el video y difumina SOLO las cajas confirmadas.
     Si no queda nada confirmado, devuelve el original sin re-codificar.
+
+    `min_wh`/`conf`: overrides opcionales del detector. Suben la precisión (menos falsos
+    positivos) o la bajan (tapa más). El supervisor (Claude) los ajusta y re-llama cuando
+    revisa el resultado. `None` usa los valores por defecto del módulo.
     """
     if not available():
         return in_path
+    mw = _MIN_WH if min_wh is None else min_wh
+    cf = _CONF if conf is None else conf
     net = _load()
     cap = cv2.VideoCapture(in_path)
     if not cap.isOpened():
@@ -222,7 +229,7 @@ def mask_video(in_path: str, out_path: str) -> str:
             break
         if i % DETECT_EVERY == 0:
             try:
-                boxes = _detect(net, frame)
+                boxes = _detect(net, frame, conf=cf, min_wh=mw)
             except Exception:
                 boxes = []
             detections.append((i, boxes))

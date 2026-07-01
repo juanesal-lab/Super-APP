@@ -945,3 +945,17 @@ Jack: el blur salía gigante; quería que tape SOLO la franja exacta de los subt
   hacía unión de cajas de Gemini → banda enorme de 42%). Ahora tapa solo la franja real.
 - Probado en file(2): antes tapaba y=0.58→1.0 (42%); ahora y=0.69→0.90 (banda del texto, 21%).
   En un ORIGINAL limpio (subs de 1 línea) será aún más fino. Demo: ~/Downloads/prueba/BLUR_tight.png.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔬 20+ pruebas: detección de banda de subtítulos afinada (híbrido Gemini+EAST)
+Loop autónomo de test/error (12 videos reales de TikTok × 5 rondas = 60 observaciones) para afinar
+`subtitle_band.detect_subtitle_band`. Errores encontrados y arreglados:
+- **Ronda 1 (solo EAST):** agarraba texto de ESCENA (etiquetas de producto "BUTTER"/"THERMAL"), UI y
+  daba banda en videos SIN subtítulo. → EAST no distingue subtítulo de texto de escena.
+- **Ronda 2-3:** GEMINI sí distingue (semántico). Insight clave: los subtítulos REALES salen en muchos
+  frames; el texto de escena/falsos, en 0-2. → **regla de consistencia**: solo tapar si el texto aparece
+  en ≥3 frames muestreados. Separó PERFECTO subtítulo vs no-subtítulo (7/7 no-subs correctos).
+- **Ronda 4-5 (híbrido):** Gemini CONFIRMA + da zona; **EAST afina la caja tight** dentro de esa zona;
+  ventana deslizante con tope de alto (0.34) para subtítulos gigantes sobre escena con texto.
+- **Resultado:** ~10/12 correctos. Falla el caso raro de subtítulo de 5 líneas sobre escena llena de
+  texto de producto. Antes: blur gigante SIEMPRE (42-55%). Ahora: nada si no hay subtítulo, y banda
+  tight si lo hay. Montaje de pruebas: ~/Downloads/prueba/PRUEBAS_deteccion_subtitulos.png

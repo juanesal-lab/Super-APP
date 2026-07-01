@@ -531,3 +531,15 @@ En un rato dejo la entrada de "hecho".
 - **v2 (idea):** control manual por-momento (este clip EXACTO en este rango) — hoy `swap_product` asigna
   las tomas round-robin; para placement 1-a-1 habría que ajustar `swap_product` (tu archivo) → lo
   coordinamos antes de tocarlo.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⏳ AVISO (no bloqueo): construyendo MODO AUTOMÁTICO ahora
+Juan, arranco YA la sección "✨ Generar Creativo / Modo Automático": UN botón que encadena todo
+(narrativa → doblaje CO → traducir texto → música/efectos por fase → subtítulos → 9:16 → normalizar).
+Para no reescribir tu código, lo hago ADITIVO:
+- **NUEVO módulo `backend/pipeline/auto_studio.py`** (mi terreno) = la cadena, cada paso aislado
+  (si uno falla, sigue y reporta). REUSA todo lo que ya existe (tuyo y mío), sin editarlo.
+- **TOCO `app.py`** → agrego SOLO un endpoint nuevo `POST /api/auto` (+ su job/estado). No modifico
+  tus endpoints existentes.
+- **TOCO `frontend/index.html`** → agrego SOLO una sección nueva arriba (no toco las tuyas).
+**Aviso para que no editemos `app.py` ni `index.html` al mismo tiempo este ratico.** Si hay conflicto
+lo resuelvo conservando lo tuyo. Dejo la entrada de "hecho" al terminar.

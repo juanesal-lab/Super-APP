@@ -7,6 +7,7 @@ import shutil
 import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -31,15 +32,16 @@ ENV_FILE = os.path.join(BASE, ".env")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 
-app = FastAPI(title="Cortador de Clips")
-
-
-@app.on_event("startup")
-def _descargar_modelo_si_falta():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # Baja el modelo EAST (~92 MB) la primera vez, en segundo plano para no
     # frenar el arranque del servidor. Así el usuario no hace nada manual.
     from pipeline.text_detect import ensure_model
     threading.Thread(target=ensure_model, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Cortador de Clips", lifespan=lifespan)
 
 
 # Estado de trabajos en memoria

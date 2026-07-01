@@ -632,3 +632,18 @@ Un solo botón: video ganador (cualquier idioma) → creativo terminado en espa�
   (nunca 2 a la vez) y valida ANTES de agregar el input. Probado con fases que se pisan a propósito:
   en el solape ahora se ve UN solo subtítulo limpio (blanco con borde, en la safe zone).
 - Solo toqué `auto_studio.py` (mi terreno). Sigue lo del copy (lo reviso ahora).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔎 Revisión + mejora del COPY del doblaje (dub_colombia)
+- **Revisión (lo pidió jack):** el copy del creativo en Modo Automático lo genera
+  `dub_colombia.adaptar_guion` (Gemini + framework de Juan). Estaba BIEN (adapta por fase, problem-aware,
+  congruente con lo que se ve, policy-safe, COD). Puntos flojos que encontré: ritmo un pelín apretado
+  (se pasaba de largo y la voz se aceleraba) y riesgo de repetir ideas entre fases.
+- **Mejoras aplicadas (mi módulo):** bajé el ritmo de 2.6→2.2 palabras/seg; el largo ahora es un MÁXIMO
+  ("mejor corto y natural que apretado"); frases HABLADAS cortas; y "no repitas ideas entre fases".
+- **Muestra real (video de dolor):** HOOK "¡Ay, no! ¿A usted también le pasa esta vaina?" · DOLOR
+  "...la ropa no cierra, uno parece un balón... y lo de la cita, parce, ¡hasta diciembre!". Natural,
+  modismos, congruente. (Ese video solo tenía HOOK+DOLOR; la narrativa lo detectó bien.)
+- **Nota:** el copy de los 10 GUIONES (`scripts.py`) es tu terreno; ahí no toqué nada. Si quieres que
+  unifiquemos el estilo/las reglas entre `scripts.py` y `dub_colombia`, coordinamos.
+- **Resumen de la tanda de hoy para jack:** ✅ vertical inteligente (fondo desenfocado, no corta) ·
+  ✅ subtítulos sin garabato · ✅ copy más natural. Falta pulir el "tapado" en casos feos (siguiente).

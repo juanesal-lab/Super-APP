@@ -30,8 +30,8 @@ _MODEL = "gemini-2.5-flash"
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "assets")
 
-# Español ~2.6 palabras/segundo hablado a ritmo de ad -> para pedir el largo por fase
-_WORDS_PER_SEC = 2.6
+# Ritmo hablado natural (más bajo = voz más calmada y menos "apretada"; deja aire para calzar)
+_WORDS_PER_SEC = 2.2
 # Límite de estiramiento del audio para no distorsionar la voz (atempo)
 _TEMPO_MIN, _TEMPO_MAX = 0.85, 1.5
 
@@ -94,7 +94,10 @@ def _prompt(segments: list[dict], product_desc: str, oferta_2x1: bool) -> str:
         "vendiendo, arranca con el problema que el cliente reconoce.\n"
         "- Congruente con 'se_ve': habla del producto cuando el producto aparece, del problema "
         "cuando se ve el problema.\n"
-        "- Respeta el LARGO objetivo de cada fase (para que la voz calce con el tiempo del video).\n"
+        "- LARGO: el número de palabras es un MÁXIMO. Prefiere quedarte CORTO y natural que apretado "
+        "(si te pasas, la voz suena acelerada). Frases cortas, HABLADAS (para decir en voz alta), sin "
+        "comas largas ni enredos.\n"
+        "- NO repitas la misma idea entre fases: cada fase aporta algo nuevo (no relleno).\n"
         "- Español colombiano natural, cercano, humano. Sin sonar caricaturesco.\n"
         "- POLICY-SAFE (Meta/TikTok): NADA de claims médicos/de salud, NADA de claims absolutos, "
         "NADA de groserías, NUNCA menciones precios.\n"

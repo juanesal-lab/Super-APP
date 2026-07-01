@@ -74,11 +74,11 @@ def _frame_at(cap, idx):
     return frame if ok else None
 
 
-def _comparison_sheet(raw_path: str, masked_path: str, n: int = 3, cell_w: int = 460):
+def _comparison_sheet(raw_path: str, masked_path: str, n: int = 3, cell_w: int = 600):
     """Arma UNA imagen con `n` filas [ANTES | DESPUÉS] de frames del mismo instante.
 
-    Devuelve un ndarray BGR, o None si no se pudo leer. Se limita el lado largo a 2000 px
-    para acotar el costo de visión (Claude escala a máx. 2576 px de todas formas).
+    Devuelve un ndarray BGR, o None si no se pudo leer. Se limita el lado largo a 2400 px
+    para que el texto sea legible sin pasarse del máx. de visión (~2576 px).
     """
     capr, capm = cv2.VideoCapture(raw_path), cv2.VideoCapture(masked_path)
     total = int(capm.get(cv2.CAP_PROP_FRAME_COUNT)) or int(capr.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -103,8 +103,8 @@ def _comparison_sheet(raw_path: str, masked_path: str, n: int = 3, cell_w: int =
     for r in rows[1:]:
         sheet = np.vstack([sheet, gap, r])
     long_edge = max(sheet.shape[:2])
-    if long_edge > 2000:
-        s = 2000 / long_edge
+    if long_edge > 2400:
+        s = 2400 / long_edge
         sheet = cv2.resize(sheet, (int(sheet.shape[1] * s), int(sheet.shape[0] * s)))
     return sheet
 
@@ -112,20 +112,27 @@ def _comparison_sheet(raw_path: str, masked_path: str, n: int = 3, cell_w: int =
 # ─────────────────────────── filtro: tapado de textos ───────────────────────────
 
 _SYS_BLUR = (
-    "Eres el supervisor de calidad de una app que edita anuncios de dropshipping para "
-    "Facebook/Instagram. Revisas el 'tapado de textos del proveedor': la app difumina "
-    "(mosaico/blur) el texto sobrepuesto que trae el video original del proveedor "
-    "(subtítulos, marcas de agua, precios, @usuarios) para que no salga en el anuncio.\n\n"
-    "Te doy UNA imagen con varias filas. En cada fila: IZQUIERDA = el frame ORIGINAL, "
-    "DERECHA = el mismo frame DESPUÉS del tapado. Compara ambos y evalúa el tapado.\n\n"
+    "Eres el supervisor de calidad de una app que edita anuncios de dropshipping. La app toma "
+    "video CRUDO del proveedor (que suele traer texto SOBREPUESTO en la edición: subtítulos, "
+    "marcas de agua, precios, @usuarios, logos de otra tienda) y lo difumina (mosaico/blur) para "
+    "quitarlo. IMPORTANTE: en esta etapa el dueño de la tienda AÚN NO ha puesto sus propios textos "
+    "—eso pasa después—, así que TODO texto sobrepuesto en edición que veas es del proveedor y SÍ "
+    "debe taparse.\n\n"
+    "Te doy UNA imagen con varias filas. En cada fila: IZQUIERDA = frame ORIGINAL, DERECHA = el "
+    "mismo frame DESPUÉS del tapado. Compara y evalúa SOLO el tapado.\n\n"
     "Busca DOS fallas:\n"
-    "1) FALSOS POSITIVOS (lo más grave): en la derecha hay mosaico/blur sobre algo que en "
-    "la izquierda claramente NO es texto sobrepuesto — el producto, una cara, o el fondo "
-    "(árboles, cielo, pasto, arrugas de tela, bordes). Tapar eso ARRUINA el anuncio.\n"
-    "2) TEXTO SIN TAPAR: en la derecha quedó visible texto del proveedor que debió taparse.\n\n"
-    "OJO: el texto de marketing propio del anuncio (ganchos grandes, emojis) NO es texto del "
-    "proveedor y NO debe taparse; si sigue visible, eso está bien. Sé estricto con los falsos "
-    "positivos. Llama a la herramienta 'reportar_veredicto' con tu evaluación."
+    "1) FALSOS POSITIVOS (grave): en la DERECHA hay mosaico/blur sobre algo que en la IZQUIERDA "
+    "claramente NO es texto sobrepuesto — el producto, una cara, o el fondo (árboles, cielo, pasto, "
+    "agua, arrugas de tela, bordes, reflejos). Difuminar eso ARRUINA el anuncio.\n"
+    "2) TEXTO SIN TAPAR: en la DERECHA quedó visible texto SOBREPUESTO que debió taparse.\n\n"
+    "Reglas de juicio:\n"
+    "- Si el mosaico cubre bien un subtítulo/marca/precio sobrepuesto, eso es CORRECTO (NO es "
+    "falso positivo): ese es justo el trabajo.\n"
+    "- El texto que es parte NATURAL de la escena (una placa de carro, el tablero, un letrero real "
+    "en la calle, el empaque del producto) NO es texto sobrepuesto: no hace falta taparlo y NO "
+    "cuenta como 'texto sin tapar'.\n"
+    "- Ante la duda de si una zona difuminada tenía texto, mírala en la IZQUIERDA (el original).\n\n"
+    "Llama a la herramienta 'reportar_veredicto' con tu evaluación."
 )
 
 _TOOL_VEREDICTO = {

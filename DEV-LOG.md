@@ -87,6 +87,23 @@ Lee esto (con `git pull`) antes de empezar. Agrega entradas AL FINAL. Formato:
   (con las 5 fases claras) y mirá cómo los 10 guiones copian su arco. El `blueprint.json` queda en el
   `work_dir` del job para revisar qué entendió la IA (tu campo `por_que`).
 
+### 2026-07-01 · Claude (juanesal-lab) · Capitán del blur: PRUEBA EN VIVO + prompt afinado
+- Juan puso su `ANTHROPIC_API_KEY` en `.env` (gitignored). Probé el capitán EN VIVO (Opus 4.8 real).
+- **Bug del prompt que encontré y arreglé:** el system prompt decía "no tapes el gancho de marketing
+  propio", pero el enmascarado corre ANTES de que se agreguen los textos propios -> TODO texto
+  sobrepuesto en esa etapa es del proveedor y SÍ debe taparse. Con el prompt viejo, el capitán
+  RECHAZABA captions bien tapados (los confundía). Corregido en `supervisor.py::_SYS_BLUR`.
+- **Verificado tras el fix:** caption bien tapado -> `aprobado=True` (conf 0.85). Antes: rechazado.
+- También subí la resolución del comparativo (cell 460->600, lado largo 2000->2400) para que lea
+  mejor el texto.
+- **Qué quedó probado:** infraestructura OK; aprueba buen tapado; caza MUY bien texto-sin-tapar.
+- **Qué NO pude probar limpio:** cazar falsos positivos sobre zonas sin texto — `file (11).mp4` es
+  un composite caótico sin una zona limpia de "cielo/árboles sin texto" para aislarlo. La capacidad
+  existe (en un intento marcó un FP), pero se valida mejor cuando Juan corra la app con material real.
+- **Mejora futura (para subir precisión de FP):** dibujar las cajas enmascaradas sobre el frame
+  ORIGINAL antes de mandárselo al capitán (como en los diagnósticos) — así ve EXACTO qué se tapó y
+  juzga cada caja contra el original. Requiere que `mask_video` devuelva las cajas aplicadas.
+
 <!-- ⬇️ nuevas entradas debajo ⬇️ -->
 
 ### 2026-07-01 · Claude (jackingshop1-cell) · Modernizado startup → lifespan

@@ -935,3 +935,13 @@ NUESTROS subtítulos encima. Nada más.
   ANTES_repodrido.png y DESPUES_limpio.png.
 - Nota: el tope de 42% se activó porque ese archivo ya venía con muchas capas; en un ORIGINAL limpio
   tapa solo la banda real (~25-30%).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🎯 Blur de subtítulos PRECISO (banda tight con EAST, no gigante)
+Jack: el blur salía gigante; quería que tape SOLO la franja exacta de los subtítulos.
+- **NUEVO `subtitle_band.py`**: usa EAST (text_detect, cajas ajustadas por línea) en ~26 frames y se
+  queda con la franja donde el texto aparece de forma CONSISTENTE (≥30% de frames) en la zona baja →
+  banda TIGHT {x,y,w,h}. Descarta texto esporádico de la escena (envases, letreros).
+- **auto_studio:** el paso "tapar subtítulos" ahora usa `detect_subtitle_band` + `blur_boxes` (antes
+  hacía unión de cajas de Gemini → banda enorme de 42%). Ahora tapa solo la franja real.
+- Probado en file(2): antes tapaba y=0.58→1.0 (42%); ahora y=0.69→0.90 (banda del texto, 21%).
+  En un ORIGINAL limpio (subs de 1 línea) será aún más fino. Demo: ~/Downloads/prueba/BLUR_tight.png.

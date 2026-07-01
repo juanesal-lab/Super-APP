@@ -304,26 +304,19 @@ def generar_creativo_auto(
     #   escena: envases, letreros, logos), arma la ZONA donde viven y la tapa con blur CONTINUO — así
     #   NUNCA se asoma el subtítulo viejo y encima quedan limpios NUESTROS subtítulos.
     #   NO se traduce ni se agrega ningún otro texto (eso era lo que ensuciaba el creativo).
-    report("🧽 Detectando y tapando los subtítulos del original...", 40)
+    report("🧽 Detectando la banda EXACTA de los subtítulos del original...", 40)
     try:
-        from .caption_mask import detect_text_boxes_timed
+        from .subtitle_band import detect_subtitle_band
         from .assemble import blur_boxes
-        cajas = detect_text_boxes_timed(gemini_key, current)
-        # nos quedamos con lo que está en la mitad de abajo (ahí viven los subtítulos)
-        bajas = [c for c in cajas if (c.get("y", 0) + c.get("h", 0) / 2) > 0.5]
-        if bajas:
-            y1 = min(1.0, max(c["y"] + c["h"] for c in bajas) + 0.02)   # borde inferior de los subs
-            y0 = min(c["y"] for c in bajas) - 0.02
-            y0 = max(0.0, max(y0, y1 - 0.42))     # tope: tapa como MÁXIMO el ~42% de abajo (anclado abajo)
-            x0 = max(0.0, min(c["x"] for c in bajas) - 0.03)
-            x1 = min(1.0, max(c["x"] + c["w"] for c in bajas) + 0.03)
-            zona = {"x": round(x0, 4), "y": round(y0, 4),
-                    "w": round(x1 - x0, 4), "h": round(y1 - y0, 4)}
+        # EAST (cajas ajustadas) + presencia consistente -> banda TIGHT solo donde están los subtítulos
+        banda = detect_subtitle_band(current)
+        if banda:
             out = os.path.join(work_dir, "sin_subs.mp4")
-            current = blur_boxes(current, out, [zona])
-            paso("Tapar subtítulos viejos", True, f"zona y={zona['y']:.2f} alto={zona['h']:.2f}")
+            current = blur_boxes(current, out, [banda])
+            paso("Tapar subtítulos viejos", True,
+                 f"banda y={banda['y']:.2f}→{banda['y'] + banda['h']:.2f} (alto {banda['h']:.2f})")
         else:
-            paso("Tapar subtítulos viejos", True, "no detecté subtítulos sobrepuestos")
+            paso("Tapar subtítulos viejos", True, "no detecté subtítulos quemados")
     except Exception as e:  # noqa: BLE001
         paso("Tapar subtítulos viejos", False, str(e))
 

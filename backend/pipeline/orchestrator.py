@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Callable
 
-from .ffmpeg_utils import probe
+from .ffmpeg_utils import probe, run
 from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, sig_distance
 from .gemini_rank import rank_with_gemini
 from concurrent.futures import ThreadPoolExecutor
@@ -164,19 +164,36 @@ def render_versions(
     # Tapar textos del proveedor: Gemini DETECTA las cajas y se enmascara la FUENTE
     # (antes de cortar), para que la mascara quede justo donde esta cada caption.
     if blur_captions and east_available():
-        report("Tapando textos del proveedor (detección precisa frame por frame)...", 56)
-        mapping = {}
-        for src in {seg.video for seg in selected}:
+        # OPTIMIZADO: enmascara SOLO los cortes que se usan (2s c/u), no los videos
+        # completos. Antes con 40 videos tardaba muchísimo; ahora procesa poquísimos
+        # frames y en paralelo.
+        report("Tapando textos del proveedor (frame por frame)...", 56)
+        done = [0]
+
+        def _mask_seg(item):
+            idx, seg = item
+            raw = os.path.join(work_dir, f"segraw_{idx:03d}.mp4")
+            masked = os.path.join(work_dir, f"segmask_{idx:03d}.mp4")
+            d = max(0.1, seg.end - seg.start)
             try:
-                masked = os.path.join(work_dir, "masked_" + os.path.basename(src))
-                mask_video_text(src, masked)
+                run(["ffmpeg", "-y", "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{d:.3f}",
+                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                     "-c:a", "aac", raw])
+                mask_video_text(raw, masked)
+                done[0] += 1
+                report(f"Tapando textos ({done[0]}/{len(selected)})...", 56)
                 if os.path.exists(masked):
-                    mapping[src] = masked
+                    return idx, masked
             except Exception:
                 pass
-        for seg in selected:
-            if seg.video in mapping:
-                seg.video = mapping[seg.video]
+            return idx, None
+
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            for idx, masked in ex.map(_mask_seg, list(enumerate(selected))):
+                if masked:
+                    selected[idx].video = masked
+                    selected[idx].start = 0.0
+                    selected[idx].end = probe(masked).duration
 
     report("Recortando clips..." + (" (mejorando calidad)" if enhance else ""), 62)
     clip_dims = dims_for("1:1")   # los clips sueltos siempre en 1:1 (cuadrado)

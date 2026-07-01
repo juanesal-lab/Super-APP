@@ -31,14 +31,19 @@ from .gemini_rank import _parse_array  # reutilizado: extrae el array JSON de la
 # Mismo modelo multimodal que usa el resto del pipeline
 _MODEL = "gemini-2.5-flash"
 
-# Las 5 etiquetas oficiales (en orden narrativo típico de un ad)
-ETIQUETAS = ["HOOK", "DOLOR", "SOLUCIÓN", "DESEO/RESULTADO", "CTA"]
+# Etiquetas oficiales = la "estructura madre" del blueprint de creativos ganadores
+# (ver assets/blueprint-creativos-ganadores.md). PRUEBA es la fase de evidencia/reviews.
+ETIQUETAS = ["HOOK", "DOLOR", "SOLUCIÓN", "PRUEBA", "DESEO/RESULTADO", "CTA"]
 
 # Variantes que puede escupir el modelo -> etiqueta canónica
 _ALIAS = {
     "HOOK": "HOOK", "GANCHO": "HOOK",
-    "DOLOR": "DOLOR", "PROBLEMA": "DOLOR", "PAIN": "DOLOR",
+    "DOLOR": "DOLOR", "PROBLEMA": "DOLOR", "PAIN": "DOLOR", "AGITACION": "DOLOR",
+    "AGITACIÓN": "DOLOR",
     "SOLUCION": "SOLUCIÓN", "SOLUCIÓN": "SOLUCIÓN", "PRODUCTO": "SOLUCIÓN", "SOLUTION": "SOLUCIÓN",
+    "PRUEBA": "PRUEBA", "PROOF": "PRUEBA", "TESTIMONIO": "PRUEBA", "RESENA": "PRUEBA",
+    "RESEÑA": "PRUEBA", "REVIEW": "PRUEBA", "EVIDENCIA": "PRUEBA", "DEMOSTRACION": "PRUEBA",
+    "DEMOSTRACIÓN": "PRUEBA", "PRUEBA SOCIAL": "PRUEBA", "SOCIAL PROOF": "PRUEBA",
     "DESEO": "DESEO/RESULTADO", "RESULTADO": "DESEO/RESULTADO",
     "DESEO/RESULTADO": "DESEO/RESULTADO", "TRANSFORMACION": "DESEO/RESULTADO",
     "TRANSFORMACIÓN": "DESEO/RESULTADO", "RESULT": "DESEO/RESULTADO",
@@ -131,6 +136,8 @@ def _prompt(product_desc: str, duration: float) -> str:
         "- HOOK: el gancho inicial, lo que frena el scroll en los primeros segundos.\n"
         "- DOLOR: se muestra o menciona el problema/la molestia que sufre la persona.\n"
         "- SOLUCIÓN: aparece el PRODUCTO resolviendo o entrando en acción.\n"
+        "- PRUEBA: evidencia que da confianza: reseñas, cantidad de clientes, demostración, "
+        "antes/después, testimonios. (Solo si el video la muestra; no la inventes.)\n"
         "- DESEO/RESULTADO: la transformación, el resultado logrado, la persona feliz/satisfecha.\n"
         "- CTA: el llamado a la acción o cierre (comprar, pedir, oferta, urgencia).\n\n"
         "Devuelve SOLO un JSON válido (un array), sin texto extra, con esta forma EXACTA:\n"

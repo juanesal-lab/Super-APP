@@ -87,7 +87,11 @@ def _prompt(segments: list[dict], product_desc: str, oferta_2x1: bool) -> str:
         + "\nGUÍA DE VOZ Y FÓRMULAS (framework real de Juan, úsalo):\n" + framework +
         "\n\nREGLAS:\n"
         "- HOOK: potente, frena el scroll. DOLOR: emotivo, que se sienta. SOLUCIÓN: clara, "
-        "presenta el producto. DESEO/RESULTADO: aspiracional. CTA: cierre con urgencia (COD).\n"
+        "presenta el producto. PRUEBA: evidencia concreta que da confianza (reseñas, "
+        "demostración, 'llevo X semanas y…'), sin superlativos vacíos. DESEO/RESULTADO: "
+        "aspiracional. CTA: cierre con urgencia (COD).\n"
+        "- PROBLEM-AWARE FIRST (tráfico frío): nombra el DOLOR antes que el producto; no arranques "
+        "vendiendo, arranca con el problema que el cliente reconoce.\n"
         "- Congruente con 'se_ve': habla del producto cuando el producto aparece, del problema "
         "cuando se ve el problema.\n"
         "- Respeta el LARGO objetivo de cada fase (para que la voz calce con el tiempo del video).\n"

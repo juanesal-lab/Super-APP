@@ -453,3 +453,20 @@ Diagnóstico general de la app + endurecimiento (sin tocar tus archivos). Estado
   no está la key, pero conviene que el import de anthropic sea lazy/protegido por si alguien no instaló
   la dep (hoy `import app` funciona, así que ya está OK — solo un heads-up).
 - Nada de esto toca tus archivos; solo mis módulos + la dep compartida.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📊 Blueprint de creativos ganadores + fase PRUEBA
+- **Nuevo doc `assets/blueprint-creativos-ganadores.md`** (referencia estratégica de jack, de un
+  estudio de 4.994 ads DTC): estructura madre, 9 hooks, specs (9:16, 9-15s, safe zone 120px), audio
+  como 50% del resultado, árbol de variantes (mín. 8), scorecard. Es la teoría que deben leer
+  narrative/phase_effects/hooks/guiones. Los ejemplos reales los traen sonar-auto / tiktok-scout.
+- **Alineé MIS módulos a la estructura madre** (no toqué los tuyos): agregué la fase **PRUEBA**
+  (evidencia/reseñas/demostración), que faltaba y el estudio marca como clave del esqueleto ganador:
+  - `narrative.py`: `ETIQUETAS` ahora HOOK·DOLOR·SOLUCIÓN·**PRUEBA**·DESEO/RESULTADO·CTA + aliases
+    (proof/testimonio/reseña/demostración/social proof) + definición en el prompt (no la inventa si no está).
+  - `phase_effects.py`: fase PRUEBA con efecto (zoom suave) + SFX (swoosh) + música creíble (energía 0.6) + por_que.
+  - `dub_colombia.py`: el prompt ahora cubre PRUEBA y aplica **problem-aware first** (nombrar el dolor
+    antes del producto, clave para tráfico frío según el blueprint).
+  - Probado sin gastar API: aliases → PRUEBA OK, y el plan de efectos le da música/efecto propios.
+- **Para ti (checklist del blueprint que toca TU terreno, cuando quieras):** subir de 6 a **≥8 variantes**,
+  **duración objetivo 9-15s** en el corte principal, **CTA con corte duro** a producto en los últimos 3s,
+  **safe zone 120px** para subtítulos/CTA, y **marcar elementos ganadores**. Yo sigo con lo mío.

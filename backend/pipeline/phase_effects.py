@@ -22,8 +22,8 @@ from typing import Callable
 
 from .narrative import mmss_to_seconds
 
-# Etiquetas canónicas (mismas que narrative.py)
-_ETIQUETAS = ["HOOK", "DOLOR", "SOLUCIÓN", "DESEO/RESULTADO", "CTA"]
+# Etiquetas canónicas (mismas que narrative.py + la estructura madre del blueprint)
+_ETIQUETAS = ["HOOK", "DOLOR", "SOLUCIÓN", "PRUEBA", "DESEO/RESULTADO", "CTA"]
 
 # Config por fase: efecto visual + sonido preferido + música + razón (para auditar).
 # 'sfx_prefer' es una palabra que se busca en el nombre del archivo de SFX disponible.
@@ -47,6 +47,13 @@ _PHASE_CFG: dict[str, dict] = {
         "musica": {"estilo": "que sube, esperanzadora (llega el producto)", "energia": 0.75},
         "por_que": "SOLUCIÓN: momento del producto → impacto (golpe + punch-in) y música que sube "
                    "para marcar que aparece la solución.",
+    },
+    "PRUEBA": {
+        "efecto": {"zoom": "in_suave", "intensidad": "media"},
+        "sfx_prefer": "swoosh",
+        "musica": {"estilo": "creíble y positiva, que da confianza (reseñas/evidencia)", "energia": 0.6},
+        "por_que": "PRUEBA: evidencia/reseñas → zoom suave para enfocar la prueba y música creíble "
+                   "que refuerza la confianza, sin exagerar.",
     },
     "DESEO/RESULTADO": {
         "efecto": {"zoom": "in_suave", "intensidad": "media"},

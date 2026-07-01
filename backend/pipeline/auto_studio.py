@@ -172,9 +172,34 @@ def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str) -> str:
 
 
 def _verticalize(inp: str, out: str, w: int = 1080, h: int = 1920) -> str:
-    """Reencuadra a 9:16 (1080×1920) rellenando por cover (sin barras)."""
-    run(["ffmpeg", "-y", "-i", inp,
-         "-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1",
+    """Lleva a 9:16 (1080×1920) SIN recortar contenido, de forma inteligente según el formato:
+
+    - Si el video YA es ~9:16: solo ajusta el tamaño exacto (no toca la composición).
+    - Si es CUADRADO u horizontal (viene "encuadrado"): NO agranda ni recorta los lados
+      (eso cortaría textos/banners). En su lugar arma el clásico FONDO DESENFOCADO: una copia
+      ampliada y borrosa del mismo video llena las barras, y el video ORIGINAL COMPLETO va
+      centrado encima. Así no se pierde nada del creativo.
+    """
+    try:
+        info = probe(inp)
+        src_ar = info.width / info.height if info.height else 0
+    except Exception:
+        src_ar = 0
+    target_ar = w / h
+
+    if src_ar and abs(src_ar - target_ar) < 0.02:
+        # Ya es (casi) 9:16 -> solo asegurar 1080×1920, sin recortar
+        run(["ffmpeg", "-y", "-i", inp, "-vf", f"scale={w}:{h},setsar=1",
+             "-c:a", "copy", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+             "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
+        return out
+
+    # Formato distinto (cuadrado/horizontal) -> fondo desenfocado + original completo centrado
+    fc = (f"[0:v]split=2[bg][fg];"
+          f"[bg]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},gblur=sigma=22[bgb];"
+          f"[fg]scale={w}:{h}:force_original_aspect_ratio=decrease[fgs];"
+          f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1")
+    run(["ffmpeg", "-y", "-i", inp, "-filter_complex", fc,
          "-c:a", "copy", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
     return out

@@ -593,3 +593,17 @@ Un solo botón: video ganador (cualquier idioma) → creativo terminado en espa�
   (`Creative<span>Maxing</span>`) + `<title>`, `app.py` (docstring + `FastAPI(title=...)`), `run.sh`
   (comentario + echo). Aviso porque toca archivos compartidos; es solo texto/marca, sin lógica.
   La API de FastAPI (title) es interna, no afecta endpoints.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🎯 Verticalizado INTELIGENTE (fondo desenfocado, no recorta)
+- **Bug que reportó jack:** un ganador CUADRADO, al verticalizar, se AGRANDABA y RECORTABA los lados
+  → cortaba banners/textos del creativo (se veía "a las Plagas Sin Quím[ico]" cortado, etc.).
+- **Fix en `auto_studio._verticalize` (mi terreno):** ahora es format-smart:
+  - Si ya es ~9:16 → solo ajusta tamaño, no toca la composición.
+  - Si es cuadrado/horizontal → **FONDO DESENFOCADO**: copia ampliada+borrosa (gblur) llena las
+    barras y el video ORIGINAL COMPLETO va centrado encima. NO se pierde nada del creativo.
+  - Probado: cuadrado con texto pegado a los bordes → izq/der se conservan 100%, fondo borroso OK.
+- **Para ti, Juan:** si tu flujo normal (`assemble` aspect) también recorta al verticalizar, te sirve la
+  misma técnica (`split` → bg cover+gblur → fg contain → overlay). Puedo pasártela si quieres.
+- **Pendientes que jack también señaló (los tomo enseguida):** (a) los **subtítulos por fase salen
+  feos/encimados** en videos reales (texto largo/solapado); (b) revisar **cómo se genera el copy/guion**;
+  (c) el **tapado de texto** se ve mal en algunos casos. Voy por esos.

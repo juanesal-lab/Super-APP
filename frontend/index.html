@@ -825,16 +825,22 @@
     }
     function disRenderConceptos(){
       const box=document.getElementById('disAngulos');
-      let h='<div class="pmsg" style="margin-top:14px">🎯 Elige los ángulos que más te llamen (los que marques se generan):</div><div class="disConceptos">';
+      let h=`<div class="pmsg" style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        🎯 Elige los ángulos que quieras (o TODOS) — los que marques se generan:
+        <button class="btn" style="padding:5px 12px;font-size:12.5px" onclick="disToggleAll()">✓ Seleccionar todas</button></div><div class="disConceptos">`;
       disConceptos.forEach((c,i)=>{
         h+=`<div class="disConcepto" data-i="${i}" onclick="this.classList.toggle('sel')">
-             <div class="cang">${i+1}. ${c.angulo||''}</div>
+             <div class="cang">${i+1}. ${c.angulo||''} <span class="cmec">${c.formato||c.mecanismo||''}</span></div>
              <div class="ctit">"${c.titular||''}"</div>
-             <div class="ccon">${c.concepto||''}</div>
-             <span class="cmec">${c.mecanismo||''}</span></div>`;
+             <div class="ccon">${c.concepto||''}</div></div>`;
       });
       h+='</div><button class="autoBtn" style="margin-top:14px" onclick="disGenerate()">🎨 Generar imágenes de los elegidos</button>';
       box.innerHTML=h;
+    }
+    function disToggleAll(){
+      const cards=[...document.querySelectorAll('.disConcepto')];
+      const allSel=cards.every(c=>c.classList.contains('sel'));
+      cards.forEach(c=>c.classList.toggle('sel', !allSel));
     }
     async function disGenerate(){
       const sel=[...document.querySelectorAll('.disConcepto.sel')].map(el=>+el.dataset.i);

@@ -6,6 +6,7 @@ visual: convierte cada prompt en una imagen. Metes CUALQUIER producto -> 10 crea
 """
 from __future__ import annotations
 
+import math
 import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
@@ -59,70 +60,128 @@ def _fit(draw, text, font_path, max_w, max_h, start=98, mins=38):
     return font, _wrap(draw, text, font, max_w), mins * 1.12
 
 
-def _cursor(draw, x, y, s=52):
-    """Dibuja un cursor-mano/flecha blanco (señal de 'clickeable')."""
-    pts = [(x, y), (x, y + s), (x + s * 0.28, y + s * 0.72), (x + s * 0.44, y + s),
-           (x + s * 0.60, y + s * 0.92), (x + s * 0.44, y + s * 0.64), (x + s * 0.72, y + s * 0.64)]
-    draw.polygon(pts, fill=(255, 255, 255, 255), outline=(0, 0, 0, 255))
+def _star(draw, cx, cy, r, fill=(255, 196, 0, 255)):
+    pts = []
+    for i in range(10):
+        rr = r if i % 2 == 0 else r * 0.45
+        a = math.pi * 2 * i / 10 - math.pi / 2
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    draw.polygon(pts, fill=fill)
+
+
+def _stars(draw, cx, y, rating="4.9/5.0"):
+    r, gap = 18, 45
+    rf = ImageFont.truetype(_FONT_XB, 36)
+    rtw = draw.textlength(rating, font=rf)
+    x = cx - (gap * 5 + 16 + rtw) / 2
+    for k in range(5):
+        _star(draw, x + k * gap + r, y, r)
+    draw.text((x + gap * 5 + 14, y - 20), rating, font=rf, fill=(255, 255, 255, 255))
+
+
+def _starburst(draw, cx, cy, r, text, fill=(226, 29, 46, 255)):
+    pts = []
+    for i in range(28):
+        rr = r if i % 2 == 0 else r * 0.74
+        a = math.pi * 2 * i / 28 - math.pi / 2
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    draw.polygon(pts, fill=fill)
+    lines = text.upper().split()
+    f = ImageFont.truetype(_FONT_XB, int(r * 0.46))
+    ly = cy - len(lines) * int(r * 0.26)
+    for l in lines:
+        lw = draw.textlength(l, font=f)
+        draw.text((cx - lw / 2, ly), l, font=f, fill=(255, 255, 255, 255))
+        ly += int(r * 0.52)
+
+
+def _play_button(draw, cx, cy, r):
+    """Botón de play falso estilo YouTube (el sello de Juan)."""
+    w, h = int(r * 1.5), int(r * 1.05)
+    draw.rounded_rectangle([cx - w, cy - h, cx + w, cy + h], radius=int(h * 0.3), fill=(230, 33, 23, 240))
+    t = int(r * 0.6)
+    draw.polygon([(cx - t * 0.42, cy - t), (cx - t * 0.42, cy + t), (cx + t * 0.85, cy)], fill=(255, 255, 255, 255))
+
+
+def _arrow(draw, x1, y1, x2, y2, color=(255, 196, 0, 255), w=18):
+    draw.line([x1, y1, x2, y2], fill=color, width=w)
+    ang = math.atan2(y2 - y1, x2 - x1)
+    s = 40
+    draw.polygon([(x2, y2),
+                  (x2 - s * math.cos(ang - 0.5), y2 - s * math.sin(ang - 0.5)),
+                  (x2 - s * math.cos(ang + 0.5), y2 - s * math.sin(ang + 0.5))], fill=color)
 
 
 def componer_ad(scene_path: str, out_path: str, *, titular: str, sub: str = "", cta: str = "VER PRECIO",
-                precio: str = "", ofertas: list[str] | None = None, banda_hex: str = "#111111",
-                cta_hex: str = "#E11D2E", W: int = 1080, H: int = 1350) -> str:
-    """Compone el ad final: escena (IA) + titular arriba + CTA/precio/ofertas abajo, con FUENTES REALES."""
+                precio: str = "", ofertas: list[str] | None = None, formato: str = "",
+                banda_hex: str = "#0B1E3B", cta_hex: str = "#E11D2E", rating: str = "4.9/5.0",
+                cod: bool = True, W: int = 1080, H: int = 1350) -> str:
+    """Compone un ad direct-response CARGADO (estilo Juan): titular + play falso + ⭐ + oferta + CTA + COD."""
     ofertas = [o for o in (ofertas or []) if o]
-    scene = Image.open(scene_path).convert("RGB")
-    img = ImageOps.fit(scene, (W, H), Image.LANCZOS)
+    img = ImageOps.fit(Image.open(scene_path).convert("RGB"), (W, H), Image.LANCZOS)
     draw = ImageDraw.Draw(img, "RGBA")
-    band = _hex(banda_hex, (17, 17, 17))
+    band = _hex(banda_hex, (11, 30, 59))
 
-    # HEADER: banda de color + titular (auto-fit, Poppins ExtraBold)
+    # HEADER: banda de color + titular (auto-fit, Poppins ExtraBold) + sub
     pad = 46
-    font, lines, lh = _fit(draw, (titular or "").upper(), _FONT_XB, W - 2 * pad, H * 0.24, start=100, mins=42)
-    sub_h = 44 if sub else 0
-    header_h = int(len(lines) * lh + pad * 1.3 + sub_h)
-    draw.rectangle([0, 0, W, header_h], fill=band + (232,))
-    y = int(pad * 0.65)
+    font, lines, lh = _fit(draw, (titular or "").upper(), _FONT_XB, W - 2 * pad, H * 0.22, start=96, mins=42)
+    sub_h = 46 if sub else 0
+    header_h = int(len(lines) * lh + pad * 1.2 + sub_h)
+    draw.rectangle([0, 0, W, header_h], fill=band + (235,))
+    draw.rectangle([0, header_h, W, header_h + 7], fill=(255, 196, 0, 255))   # línea acento
+    y = int(pad * 0.6)
     for l in lines:
         w = draw.textlength(l, font=font)
         draw.text(((W - w) // 2, y), l, font=font, fill=(255, 255, 255, 255))
         y += int(lh)
     if sub:
-        sf = ImageFont.truetype(_FONT_B, 36)
+        sf = ImageFont.truetype(_FONT_B, 37)
         sw = draw.textlength(sub, font=sf)
-        draw.text(((W - sw) // 2, y + 2), sub, font=sf, fill=(255, 255, 255, 235))
+        draw.text(((W - sw) // 2, y + 2), sub, font=sf, fill=(255, 214, 10, 255))
 
-    # FOOTER (de abajo hacia arriba): precio -> CTA pill -> badges de oferta
-    yb = H - 40
-    # precio
+    # PLAY FALSO (el sello) — si el formato es video/play, o por defecto
+    fmt = (formato or "").lower()
+    if any(k in fmt for k in ("play", "video", "reproduc", "reels", "toca")) or not fmt:
+        cy = int(H * 0.46)
+        _play_button(draw, W // 2, cy, 96)
+        # barra de progreso + label
+        py = cy + 150
+        draw.line([150, py, W - 150, py], fill=(255, 255, 255, 180), width=5)
+        draw.ellipse([150 - 9, py - 9, 150 + 9, py + 9], fill=(255, 255, 255, 255))
+        tf = ImageFont.truetype(_FONT_B, 30)
+        draw.text((150, py - 46), "0:00 / 2:47", font=tf, fill=(255, 255, 255, 235))
+
+    # STARBURST de oferta (esquina sup-der, debajo del header)
+    if ofertas:
+        _starburst(draw, W - 118, header_h + 118, 96, ofertas[0])
+
+    # FOOTER (de abajo hacia arriba): COD band -> precio -> CTA pill+flecha -> estrellas
+    yb = H
+    if cod:
+        draw.rectangle([0, yb - 74, W, yb], fill=(10, 10, 10, 235))
+        cf = ImageFont.truetype(_FONT_XB, 44)
+        ct = "PAGO CONTRA ENTREGA"
+        cw = draw.textlength(ct, font=cf)
+        draw.text(((W - cw) // 2, yb - 62), ct, font=cf, fill=(255, 214, 10, 255))
+        yb -= 74
     if precio:
-        pf = ImageFont.truetype(_FONT_XB, 48)
+        pf = ImageFont.truetype(_FONT_XB, 46)
         pw = draw.textlength(precio, font=pf)
-        draw.rectangle([0, yb - 66, W, yb], fill=(0, 0, 0, 150))
-        draw.text(((W - pw) // 2, yb - 58), precio, font=pf, fill=(255, 255, 255, 255))
-        yb -= 86
-    # CTA pill + cursor
-    cf = ImageFont.truetype(_FONT_XB, 48)
+        draw.text(((W - pw) // 2, yb - 60), precio, font=pf, fill=(255, 255, 255, 255))
+        # sombra suave detrás
+        yb -= 74
+    # CTA pill + flecha
+    cf = ImageFont.truetype(_FONT_XB, 46)
     ctatxt = (cta or "VER PRECIO").upper()
     cw = draw.textlength(ctatxt, font=cf)
-    bh = 100
-    bw = int(cw + 130)
-    bx = (W - bw) // 2
-    by = yb - bh
+    bh, bw = 98, int(cw + 120)
+    bx, by = (W - bw) // 2, yb - bh - 8
     draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=bh // 2, fill=_hex(cta_hex, (225, 29, 46)) + (255,))
-    draw.text((bx + (bw - cw) // 2, by + (bh - 56) // 2), ctatxt, font=cf, fill=(255, 255, 255, 255))
-    _cursor(draw, bx + bw - 40, by + bh - 30)
-    yb = by - 20
-    # badges de oferta (pills amarillas)
-    if ofertas:
-        of = ImageFont.truetype(_FONT_B, 34)
-        widths = [draw.textlength(o.upper(), font=of) + 44 for o in ofertas]
-        total = sum(widths) + 16 * (len(ofertas) - 1)
-        x = (W - total) // 2
-        for o, w in zip(ofertas, widths):
-            draw.rounded_rectangle([x, yb - 56, x + w, yb - 4], radius=26, fill=(255, 214, 10, 255))
-            draw.text((x + 22, yb - 50), o.upper(), font=of, fill=(20, 20, 20, 255))
-            x += w + 16
+    draw.text((bx + (bw - cw) // 2, by + (bh - 54) // 2), ctatxt, font=cf, fill=(255, 255, 255, 255))
+    _arrow(draw, bx + bw + 78, by - 34, bx + bw + 14, by + bh // 2)   # flecha amarilla al CTA
+    yb = by - 16
+    # estrellas + rating
+    _stars(draw, W // 2, yb - 24, rating)
 
     img.convert("RGB").save(out_path, quality=92)
     return out_path
@@ -212,7 +271,7 @@ _CIERRE = (" Thick bold sans-serif fonts, high contrast, saturated colors, profe
 
 # ─────────────────────  V2: 6 ángulos con escena LIMPIA + datos para componer texto  ──────────
 _SISTEMA_V2 = """Eres un DIRECTOR DE ARTE DISRUPTIVO para ads de IMAGEN de dropshipping en Colombia (COD).
-Tu trabajo: convertir un producto en 6 conceptos que FRENAN EL SCROLL — ideas extraordinarias, exageradas,
+Tu trabajo: convertir un producto en 10 conceptos que FRENAN EL SCROLL — ideas extraordinarias, exageradas,
 casi ABSURDAS (pattern-interrupt), MUY DIFERENTES entre sí, que la gente no puede ignorar.
 
 CLAVE (arquitectura nueva): el TEXTO del anuncio (titular, CTA, precio, ofertas) NO va dentro de la imagen
@@ -227,7 +286,14 @@ REGLAS DE ORO:
   agrietado, dolor = ladrillo). Lo inesperado gana. PROHIBIDO el "frasco sobre fondo blanco + persona feliz".
 - COHERENCIA: la escena debe TENER SENTIDO y conectar con el dolor/deseo real del producto (raro con
   propósito, no raro porque sí). Usa el contexto de la página de venta si te lo doy.
-- Fotorrealista (DSLR o UGC iPhone), alto impacto.
+- HÉROE VISCERAL Y DRAMÁTICO como los ads que de verdad funcionan: anatomía extrema (corazón con arterias
+  tapadas de grasa, próstata inflamada y brillante), cuerpo/piel llevados al límite de la metáfora (piel =
+  cuero agrietado), o escena emocional UGC MUY relatable (la persona mirándose al espejo con el problema
+  encima, cara de angustia). Fotorrealista DSLR o UGC iPhone, ALTÍSIMO impacto — nada tibio ni "bonito de
+  catálogo". El resultado será un ad CARGADO (el botón de play falso, estrellas, oferta, flecha y COD se
+  ponen ENCIMA aparte), así que la escena debe ser un HERO potente que deje aire arriba y abajo.
+- Además del titular, sugiere el `formato` falso-interactivo (casi siempre "falso play/video"; a veces
+  "antes/después", "quiz", "chat") — así se decora el ad acorde.
 
 CUMPLIMIENTO Meta: nada de curas absolutas ni % médicos; antes/después de cuerpo/rostro insinuado (no split
 clínico); sin desnudez ni contenido sexual explícito (shock por drama/metáfora, no por piel).
@@ -235,17 +301,17 @@ clínico); sin desnudez ni contenido sexual explícito (shock por drama/metáfor
 Para cada concepto das: el ángulo, la escena (prompt visual sin texto), y el TEXTO en español colombiano
 (tuteo, corto) para componer: titular (gancho, MAYÚSCULAS), sub opcional, CTA ("VER PRECIO", "TOCA PARA
 VER", "DESLIZA Y MIRÁ"), y 2 colores hex (banda del titular, botón CTA) que combinen con la escena y con
-alto contraste. Devuelve 6."""
+alto contraste. Devuelve EXACTAMENTE 10 conceptos, todos MUY diferentes entre sí."""
 
 _TOOL_V2 = {
     "name": "proponer_conceptos",
-    "description": "Propone 6 conceptos disruptivos (escena limpia + texto para componer).",
+    "description": "Propone 10 conceptos disruptivos (escena limpia + texto para componer).",
     "input_schema": {
         "type": "object",
         "properties": {
             "conceptos": {
                 "type": "array",
-                "description": "Exactamente 6 conceptos, MUY diferentes entre sí (mecanismo y escena distintos).",
+                "description": "Exactamente 10 conceptos, MUY diferentes entre sí (mecanismo y escena distintos).",
                 "items": {
                     "type": "object",
                     "properties": {
@@ -283,7 +349,8 @@ def generar_conceptos_v2(producto: str, page_text: str, ofertas: list[str],
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=8000, system=_SISTEMA_V2,
             tools=[_TOOL_V2], tool_choice={"type": "tool", "name": "proponer_conceptos"},
-            messages=[{"role": "user", "content": ctx + "\nPropón 6 conceptos disruptivos MUY diferentes."}],
+            messages=[{"role": "user", "content": ctx + "\nPropón 10 conceptos disruptivos MUY diferentes "
+                       "(cada uno con mecanismo Y escena distintos, tipo tus mejores ads)."}],
         )
         for block in resp.content:
             if getattr(block, "type", None) == "tool_use" and block.name == "proponer_conceptos":
@@ -305,7 +372,8 @@ def generar_ad_compuesto(concepto: dict, out_path: str, *, gemini_key: str, prec
         componer_ad(scene, out_path,
                     titular=concepto.get("titular", ""), sub=concepto.get("sub", ""),
                     cta=concepto.get("cta", "VER PRECIO"), precio=precio, ofertas=ofertas,
-                    banda_hex=concepto.get("banda_hex", "#111111"),
+                    formato=concepto.get("formato", "") or concepto.get("mecanismo", ""),
+                    banda_hex=concepto.get("banda_hex", "#0B1E3B"),
                     cta_hex=concepto.get("cta_hex", "#E11D2E"))
         try:
             os.remove(scene)

@@ -6,8 +6,10 @@ visual: convierte cada prompt en una imagen. Metes CUALQUIER producto -> 10 crea
 """
 from __future__ import annotations
 
+import json
 import math
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
@@ -15,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 _CLAUDE = "claude-opus-4-8"
 _IMG_MODEL = "gemini-2.5-flash-image"   # Nano Banana
+_TXT_MODEL = "gemini-2.5-flash"         # para verificar ortografía del render
 
 _BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _FONT_XB = os.path.join(_BASE, "assets", "fonts", "Poppins-ExtraBold.ttf")
@@ -272,51 +275,56 @@ def componer_ad(scene_path: str, out_path: str, *, titular: str, sub: str = "", 
     img.convert("RGB").save(out_path, quality=92)
     return out_path
 
-# Estilo de Juan destilado (de la skill ads-disruptivos-imagen) -> system prompt del cerebro creativo.
-_SISTEMA = """Eres un DIRECTOR DE ARTE DISRUPTIVO para ads de IMAGEN ESTÁTICA (Meta/Instagram/TikTok) de \
-dropshipping en Colombia (pago contraentrega). Conviertes un producto en creativos que FRENAN EL SCROLL: \
-ideas extraordinarias, exageradas, casi ABSURDAS (pattern-interrupt) que la gente no puede ignorar.
+# Estilo de Juan destilado (skill ads-disruptivos-imagen) + sus 5 ads ganadores -> cerebro creativo.
+_SISTEMA = """Eres el MEJOR DIRECTOR DE ARTE de ads de IMAGEN para dropshipping en Colombia (pago \
+contraentrega). Conviertes un producto en creativos ESTÁTICOS que FRENAN EL SCROLL: ideas SURREALES, \
+arriesgadas, casi ABSURDAS, con el texto del anuncio YA INCRUSTADO en la MISMA imagen (todo lo dibuja el \
+generador). El generador escribe bien el texto SOLO si se lo das corto, exacto y entre comillas.
 
-FILOSOFÍA (obligatoria):
-- Dramatiza el dolor o la transformación hasta el límite de lo absurdo. PROHIBIDO el "frasco sobre fondo \
-blanco + persona feliz sonriendo" (eso no frena a nadie).
-- Lo inesperado gana: metáforas extremas y literales, escenas imposibles, personificación del dolor, \
-consecuencias absurdas, objetos surreales, reacciones faciales exageradas.
-- Piensa primero en la IDEA, no en el producto (el producto puede ir pequeño en el tercio inferior; la \
-ESCENA vende, el producto cierra).
-- Cada concepto debe sentirse NUEVO en el nicho. Si la idea ya se ve en el feed típico (frasco+persona \
-feliz, antes/después clínico genérico, mano sosteniendo el producto), DESCÁRTALA y súbela una marcha.
-- VARIEDAD OBLIGATORIA: las 10 variantes cubren mecanismos distintos (miedo, deseo, humor, metáfora \
-surreal, prueba/autoridad, curiosidad nativa, comparación de precio, testimonio, dato de shock, \
-antes/después de OBJETO). Nada de 10 versiones de la misma idea.
+⭐ NIVEL EXIGIDO — estos 5 fueron ÉXITOS REALES del operador (producto: gotas para la RETENCIÓN DE LÍQUIDOS). \
+Este es el LISTÓN; iguálalo o supéralo. Fíjate lo surreales y relatables que son:
+1. «¿AMANECES SINTIÉNDOTE UN HIPOPÓTAMO?» — mujer en pijama rosa frente al espejo y su REFLEJO es un \
+HIPOPÓTAMO con la misma pijama. Sub: "No es peso. Es líquido retenido." → personificación surreal.
+2. «¿PARA CUÁNDO EL BEBÉ?» — en un bus lleno un viejito le cede el asiento señalando su barriga hinchada; \
+ella roja de vergüenza. Sub: "No estoy embarazada. Estoy inflamada." → escena vergonzosa social.
+3. «MI JEAN SE RINDIÓ A LAS 4:37 PM» — el botón del jean salió disparado e quedó incrustado en la pared \
+agrietada como una BALA, con marcador forense "evidencia #1". Sub: "La hinchazón de la tarde es real." → \
+consecuencia absurda.
+4. «NO ESTOY GORDA. ESTOY INFLADA.» — una amiga le saca un TAPÓN a la barriga de otra y la DESINFLA como \
+globo (aire saliendo, papeles volando). CTA: "DESINFLARME YA". → metáfora literal extrema.
+5. «A LAS 6PM YA ESTOY FLOTANDO» — antes/después 6:00 AM (normal) vs 6:00 PM (inflada como globo FLOTANDO \
+al techo, la familia la sostiene con cuerdas en la cena). → antes/después imposible.
 
-FÓRMULA DE 4 CAPAS (el esqueleto ganador de Juan), de arriba a abajo:
-1. Titular-gancho en MAYÚSCULAS gruesas: una PREGUNTA, un DATO DE SHOCK o una COMPARACIÓN DE PRECIO.
-2. Escena realista del dolor/deseo (foto DSLR realista o UGC iPhone; nada de render plástico).
-3. UN elemento que PARECE interactivo (el sello de Juan; MÍNIMO 1 por pieza): falso play ▶ (triángulo \
-blanco en círculo translúcido + barra de progreso "0:00 / 3:42"); selector/quiz de pastillas con \
-CURSOR-MANO blanca tocando una; falso slider antes/después (línea vertical + manija + flechas ◄►, lados \
-ANTES/DESPUÉS); cursor/dedo blanco sobre un botón amarillo/rojo; falso chat de WhatsApp (burbujas verdes, \
-hora, doble check azul); falso post de Instagram (barra like/comentar/compartir); toca-para-revelar.
-4. Cierre de conversión: botón CTA (rojo o amarillo) + precio en COP + "Pago contraentrega".
+Son SURREALES pero SIEMPRE conectadas al dolor real; dan risa, vergüenza o miedo; y JAMÁS muestran un frasco \
+sobre fondo blanco. ESE es el nivel. Nada tibio, obvio ni de catálogo.
 
-MOLDES DE COPY: pregunta-dolor ("¿DÓNDE...?", "¿HACE CUÁNTO...?"); dato de shock ("1 DE 10..."); \
-comparación de precio ("CLÍNICA: $150.000 — ESTO: $79.900"); curiosidad/secreto ("El truco que no querían \
-que supieras"); metáfora corporal. CTA: "TOCA PARA VER", "VER PRECIO", "DESLIZA Y MIRÁ". Prueba social: \
-"+20.000 lo usan", "4.9/5 ★". Texto SIEMPRE en español colombiano (tuteo), CORTO y literal (los modelos \
-de imagen escriben mal los textos largos), alto contraste.
+LOS 6 MOTORES para inventar (usa uno DISTINTO por concepto, sin repetir):
+personificación del dolor · metáfora literal extrema · consecuencia absurda · escena social vergonzosa · \
+objeto/reflejo surreal · reacción facial extrema o antes/después imposible.
 
-CUMPLIMIENTO (para que Meta no lo banee): nada de curas absolutas ni porcentajes médicos inventados -> usa \
-"ayuda a / apoya el bienestar / fórmula natural". Antes/después de CUERPO o ROSTRO está restringido: \
-insinúa la transformación con escena y emoción, NO con un split clínico enfermo->sano. Antes/después de \
-OBJETO (camisa, líquido) sí es seguro. Sin desnudez ni contenido sexual explícito: el shock se logra con \
-drama, metáfora y emoción exagerada, no con piel.
+FÓRMULA VISUAL (todo en la MISMA imagen, de arriba a abajo):
+1. Banda de color sólido arriba con el TITULAR en MAYÚSCULAS gruesas blancas (pregunta, shock o frase-gancho).
+2. La ESCENA surreal fotorrealista (DSLR o UGC iPhone; nada de render plástico) — el HÉROE de la pieza.
+3. UN elemento falso-interactivo (el sello): botón de play ▶ translúcido + barra de progreso "0:12 / 1:58"; \
+o slider antes/después con manija redonda + flechas ◄►; o cursor-mano blanco tocando algo.
+4. Franja blanca con el SUB en negrita oscura; y tercio inferior: el PRODUCTO pequeño (frasco ámbar), un \
+BOTÓN redondeado (amarillo o rojo) con el CTA + cursor-mano blanco a punto de tocar, y el precio/oferta.
 
-Genera EXACTAMENTE 10 variantes. Cada 'prompt' debe ser un párrafo en texto plano, en INGLÉS para el \
-generador de imagen PERO con los textos incrustados del anuncio LITERALES en español (entre comillas y con \
-su ubicación), describiendo: escena + sujeto + emoción + el elemento disruptivo + el elemento \
-falso-interactivo con precisión + el producto + los textos incrustados + estilo/luz + realismo, en 4:5 \
-vertical."""
+CUMPLIMIENTO Meta: nada de curas absolutas ni % médicos ("ayuda a / apoya el bienestar"). El antes/después \
+o la transformación se hace SURREAL/metafórico (globo, hipopótamo), NUNCA un split clínico enfermo→sano de \
+cuerpo/rostro. Sin desnudez ni sexo explícito: el shock es por drama y metáfora, no por piel.
+
+Cada 'prompt' que entregues:
+- UN SOLO párrafo en INGLÉS, fotorrealista, empieza con "Bold direct-response Facebook ad, 4:5 vertical, \
+photorealistic." y describe la escena surreal + sujeto + emoción + el elemento falso-interactivo con \
+precisión + el frasco ámbar pequeño abajo.
+- Los TEXTOS incrustados van LITERALES en español (colombiano, tuteo), entre comillas, CORTOS, con su \
+ubicación exacta (banda superior, franja, botón, precio). No inventes texto largo.
+- Termina SIEMPRE con: thick sans-serif fonts, high contrast, saturated colors, professional \
+direct-response ad composition, render all embedded text crisply and spelled exactly as written. Avoid: \
+extra fingers, deformed hands, garbled or misspelled text, random logos, watermarks, nudity, low-res artifacts.
+
+Devuelve EXACTAMENTE 10 variantes, 10 mecanismos/escenas MUY distintos, todas al nivel de los 5 ejemplos."""
 
 _TOOL = {
     "name": "entregar_creativos",
@@ -477,19 +485,32 @@ def generar_ad_compuesto(concepto: dict, out_path: str, *, gemini_key: str, prec
         return scene   # al menos la escena
 
 
-def generar_conceptos(producto: str, anthropic_key: str,
+def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
+                      ofertas: list[str] | None = None, precio: str = "",
                       mercado: str = "Colombia · español colombiano · pago contraentrega (COD)") -> list[dict]:
-    """Claude inventa las 10 variantes (concepto + copy + prompt). Devuelve [] si falla."""
+    """Claude inventa las 10 variantes full-prompt (concepto + copy + prompt rico). Devuelve [] si falla."""
+    ofertas = [o for o in (ofertas or []) if o]
+    ctx = f"PRODUCTO: {producto}\nMERCADO: {mercado}\n"
+    if page_text.strip():
+        ctx += f"\nCONTEXTO DE LA PÁGINA DE VENTA (para entender dolor/beneficio real):\n{page_text[:2500]}\n"
+    if ofertas:
+        ctx += f"\nOFERTAS a incrustar en el precio (úsalas): {', '.join(ofertas)}\n"
+    if precio.strip():
+        ctx += (f"\nPRECIO: {precio.strip()} — inclúyelo en la línea de precio junto con la oferta y "
+                "'Paga al recibir' / 'Pago contraentrega'.\n")
+    else:
+        ctx += ("\nSIN PRECIO: NO pongas ninguna cifra de precio en la imagen. El CTA NO debe decir "
+                "'VER PRECIO' (usa 'TOCA PARA VER', 'PEDIR AHORA', 'DESLIZA Y MIRA', etc.); si hay oferta "
+                "(ej. 2x1) sí puedes mostrarla, pero sin cifra.\n")
     try:
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key)
         resp = client.messages.create(
-            model=_CLAUDE, max_tokens=12000, system=_SISTEMA,
+            model=_CLAUDE, max_tokens=16000, system=_SISTEMA,
             tools=[_TOOL], tool_choice={"type": "tool", "name": "entregar_creativos"},
             messages=[{"role": "user", "content":
-                       f"PRODUCTO: {producto}\nMERCADO: {mercado}\n\n"
-                       "Inventa las 10 variantes disruptivas (ángulos y formatos distintos, "
-                       "todas pasando el listón de originalidad)."}],
+                       ctx + "\nInventa las 10 variantes disruptivas al nivel de los 5 ejemplos "
+                       "(mecanismos y escenas distintos, todas surreales y arriesgadas)."}],
         )
         for block in resp.content:
             if getattr(block, "type", None) == "tool_use" and block.name == "entregar_creativos":
@@ -497,6 +518,115 @@ def generar_conceptos(producto: str, anthropic_key: str,
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Conceptos (Claude) no disponibles: {e}")
     return []
+
+
+def _norm_words(s: str) -> set[str]:
+    """Palabras normalizadas (sin tildes, MAYÚS, solo letras/números) de ≥3 chars, para comparar."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().upper()
+    return {w for w in re.sub(r"[^A-Z0-9]", " ", s).split() if len(w) >= 3}
+
+
+def _verificar_ortografia(img_path: str, textos: list[str], gemini_key: str) -> tuple[bool, list[str]]:
+    """¿El texto GRANDE del ad quedó bien escrito? (ok, lista_de_malos).
+
+    Truco anti-'auto-corrección': en vez de preguntar '¿está bien?' (el modelo lee lo que ESPERA, no lo
+    que hay), le pedimos TRANSCRIBIR LITERAL letra por letra y comparamos palabra por palabra con lo
+    esperado. Si una palabra esperada (≥3 letras) no aparece transcrita → mal escrita. Ante cualquier
+    fallo devuelve ok=True (no bloquea la entrega)."""
+    textos = [t.strip() for t in textos if t and t.strip()]
+    if not textos or not gemini_key:
+        return True, []
+    try:
+        from google import genai
+        from google.genai import types
+        with open(img_path, "rb") as f:
+            ib = f.read()
+        prompt = (
+            "Transcribe LITERALMENTE, copiando los glifos EXACTOS aunque una palabra quede mal escrita o "
+            "sin sentido (NO corrijas ni completes nada), TODO el texto GRANDE de este anuncio: el titular "
+            "de la banda superior, el subtítulo, el botón y la línea de precio. IGNORA la etiqueta pequeña "
+            'del frasco. Responde SOLO JSON: {"lineas":["...","...","..."]}')
+        cl = genai.Client(api_key=gemini_key)
+        resp = cl.models.generate_content(
+            model=_TXT_MODEL, contents=[prompt, types.Part.from_bytes(data=ib, mime_type="image/png")])
+        m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
+        if not m:
+            return True, []
+        lineas = json.loads(m.group(0)).get("lineas") or []
+        vistas = set()
+        for ln in lineas:
+            vistas |= _norm_words(str(ln))
+        malos = []
+        for t in textos:
+            faltan = _norm_words(t) - vistas
+            if faltan:                         # alguna palabra esperada NO se transcribió igual → mal
+                malos.append(t)
+        return (len(malos) == 0), malos
+    except Exception:  # noqa: BLE001
+        return True, []
+
+
+def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
+                          product_image_path: str | None = None, verify: bool = True,
+                          max_regen: int = 2) -> str | None:
+    """Genera el ad COMPLETO desde el prompt rico (Nano Banana dibuja TODO incl. texto). Verifica la
+    ortografía del render y REGENERA si sale mal (hasta max_regen veces). Devuelve la ruta o None."""
+    prompt = variant.get("prompt", "")
+    if not prompt:
+        return None
+    textos = [variant.get("titular", ""), variant.get("apoyo", ""),
+              variant.get("boton_cta", ""), variant.get("precio_cta", "")]
+    last = None
+    for intento in range(max_regen + 1):
+        p = prompt if intento == 0 else (
+            prompt + f" IMPORTANT (retry {intento}): make ABSOLUTELY every letter of the Spanish embedded "
+            "text correct, complete and legible; do not misspell or repeat letters.")
+        img = generar_imagen(p, gemini_key, out_path, product_image_path)
+        if not img:
+            return last          # error de generación (créditos/bloqueo) -> no insiste
+        last = img
+        if not verify:
+            return img
+        ok, _ = _verificar_ortografia(out_path, textos, gemini_key)
+        if ok:
+            return img
+    return last                  # devuelve el último aunque no sea perfecto (mejor algo que nada)
+
+
+def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,
+                           product_image_path: str | None = None,
+                           progress: Callable[[str, int], None] | None = None) -> dict:
+    """Paso 2 (full-prompt): para los conceptos ELEGIDOS genera el ad completo + verifica/regenera. Nunca lanza."""
+    def rep(m, p):
+        if progress:
+            progress(m, int(p))
+
+    os.makedirs(work_dir, exist_ok=True)
+    if not gemini_key:
+        return {"ok": False, "error": "Falta la API key de Gemini para generar las imágenes."}
+    n = len(variants)
+    done = [0]
+    rep(f"Generando {n} ads completos con Google AI (revisando ortografía)...", 8)
+
+    def _one(item):
+        i, v = item
+        out = os.path.join(work_dir, f"ad_{i:02d}.png")
+        try:
+            v["imagen"] = generar_ad_fullprompt(v, out, gemini_key=gemini_key,
+                                                product_image_path=product_image_path)
+        except Exception as e:  # noqa: BLE001
+            v["imagen"] = None
+            v["error"] = str(e)[:150]
+        done[0] += 1
+        rep(f"Ad {done[0]}/{n} listo...", 8 + int(done[0] / max(1, n) * 88))
+        return v
+
+    with ThreadPoolExecutor(max_workers=3) as ex:   # poca concurrencia por el rate-limit de Gemini
+        variants = list(ex.map(_one, enumerate(variants)))
+    ok = [v for v in variants if v.get("imagen")]
+    rep("Listo", 100)
+    return {"ok": True, "variantes": variants, "n_ok": len(ok), "n_total": n}
 
 
 def generar_imagen(prompt: str, gemini_key: str, out_path: str,

@@ -1140,3 +1140,24 @@ distinguiéndolos del texto propio del producto (etiqueta/empaque). Cambié `tik
   Verificado: un clip "nada" gana aunque tenga menos views/no-español.
 - Solo toqué `backend/pipeline/tiktok_search.py` (módulo de Jack). Jack: cambié la firma interna del dict
   de `_verificar` (`poco_texto`→`overlay` int); si lo usabas en otro lado, ajústalo.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🎨 Ads imagen: PIVOTE a full-prompt (como los ads ganadores de Juan)
+Juan mostró 5 ads suyos GENIALES (hippo en el espejo, bus "¿para cuándo el bebé?", botón-bala, desinflar
+como globo, flotar al techo). Todos son FULL-PROMPT: Google AI dibuja el ad COMPLETO (texto incluido) desde
+un prompt rico → integrados y creativos. La app hacía lo contrario (escena + texto pegado/composite), por eso
+salían menos arriesgados y con typos. Juan eligió full-prompt. Cambios:
+- `disruptive_images.py`: `_SISTEMA` reescrito con sus 5 ejemplos como few-shot + 6 motores + disciplina de
+  prompt (párrafo inglés, textos ES literales cortos entre comillas, cierre "render all embedded text
+  crisply..."). `generar_conceptos` ahora usa link/ofertas/precio (y maneja "sin precio"). NUEVO:
+  `generar_ad_fullprompt` (genera ad completo + VERIFICA ortografía del render + REGENERA si sale mal),
+  `generar_ads_fullprompt` (paso 2 en paralelo), `_verificar_ortografia` (transcripción LITERAL + match por
+  palabra — evita que Gemini "auto-corrija" al leer; caza typos tipo ESPEJRO≠ESPEJO).
+- `app.py`: paso 1 → `generar_conceptos`; job → `generar_ads_fullprompt`; regenerar → `generar_ad_fullprompt`.
+  Ya NO uso composite (`generar_ad_compuesto`/`generar_ads_v2`) ni el CTA-hack. AVISO Jack: tu
+  `_corregir_ortografia_ads` quedó SIN llamar (en full-prompt el texto lo escribe Claude bien; la ortografía
+  se controla en el render). Lo dejé definido por si lo reusas.
+- Probado: 10 conceptos MUY surreales (espejo/globo, bombero/anillo, pecera-barriga, exprimir-trapo) + 1
+  imagen real generada = integrada y creativa como sus ejemplos (con 1 typo que el verificador nuevo sí caza).
+- ⚠️ BLOQUEO: el proyecto Google de la key llegó al TOPE DE GASTO MENSUAL (429 spend cap). Juan debe subirlo
+  en https://ai.studio/spend para seguir generando. Falta validar el verificador en vivo cuando se destape.
+- Los helpers del compositor (componer_ad/_quiz/_slider/_chat) quedan sin uso en este flujo (no los borré).

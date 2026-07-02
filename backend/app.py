@@ -28,8 +28,8 @@ from pipeline.auto_studio import generar_creativo_auto
 from pipeline.narrative import analyze_narrative
 from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
-from pipeline.disruptive_images import (generar_conceptos_v2, generar_ads_v2, generar_ad_compuesto,
-                                        generar_imagen)
+from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
+                                        generar_ad_fullprompt)
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -1129,8 +1129,8 @@ async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
             page_text = fetch_page_text(link.strip(), max_chars=3000)
         except Exception:  # noqa: BLE001
             page_text = ""
-    conceptos = generar_conceptos_v2(producto.strip() or link.strip(), page_text,
-                                     ofertas_list, _load_anthropic_key())
+    conceptos = generar_conceptos(producto.strip() or link.strip(), _load_anthropic_key(),
+                                  page_text=page_text, ofertas=ofertas_list, precio=precio.strip())
     if not conceptos:
         raise HTTPException(502, "No se pudieron generar los conceptos (revisa la key de Claude)")
     JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
@@ -1180,16 +1180,11 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
         job["message"] = m
         job["progress"] = p
 
-    _corregir_ortografia_ads(conceptos, _load_env_key())   # arregla typos del texto ANTES de componer
-    # Si NO se muestra precio (precio vacío), que el CTA tampoco diga "VER PRECIO"
-    if not (precio or "").strip():
-        for c in conceptos:
-            cta = str(c.get("cta", "") or "")
-            if "PRECIO" in cta.upper():
-                c["cta"] = "PEDIR AHORA"
+    # Full-prompt: Google AI dibuja el ad COMPLETO (texto ya escrito bien por Claude); la ortografía del
+    # render se verifica y regenera dentro de generar_ads_fullprompt. (precio/ofertas ya van en el prompt.)
     try:
-        r = generar_ads_v2(conceptos, os.path.join(WORK_DIR, job_id), gemini_key=_load_env_key(),
-                           precio=precio, ofertas=ofertas, product_image_path=image_path, progress=progress)
+        r = generar_ads_fullprompt(conceptos, os.path.join(WORK_DIR, job_id), gemini_key=_load_env_key(),
+                                   product_image_path=image_path, progress=progress)
         job["result"] = r
         job["status"] = "done" if r.get("ok") else "error"
         if not r.get("ok"):
@@ -1234,14 +1229,9 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     v = variantes[index]
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    try:
-        if v.get("escena_prompt"):   # concepto v2 → escena + composición de texto
-            img = generar_ad_compuesto(v, out, gemini_key=_load_env_key(),
-                                       precio=job.get("_precio", ""), ofertas=job.get("_ofertas", []),
-                                       product_image_path=job.get("_image_path"))
-        else:                         # v1 → imagen directa
-            img = generar_imagen(v.get("prompt", ""), _load_env_key(), out,
-                                 product_image_path=job.get("_image_path"))
+    try:                              # full-prompt: ad completo + verificación de ortografía
+        img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
+                                    product_image_path=job.get("_image_path"))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo regenerar: {e}")
     if not img:

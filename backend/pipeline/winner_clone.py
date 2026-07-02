@@ -37,6 +37,19 @@ from .dub_colombia import generar_dub
 from .text_translate import traducir_texto_pantalla
 from . import auto_studio as A
 
+
+def _es_espanol(texto: str) -> bool:
+    """Heurística GRATIS (sin API): ¿el transcript ya está en español? Para no re-doblar los que ya lo están."""
+    t = " " + (texto or "").lower() + " "
+    if len(t.strip()) < 6:
+        return False
+    es = sum(t.count(f" {w} ") for w in ("de", "la", "que", "el", "en", "los", "las", "un", "una",
+             "por", "con", "para", "es", "muy", "tu", "más", "este", "esta", "y", "no", "se", "lo"))
+    en = sum(t.count(f" {w} ") for w in ("the", "and", "is", "you", "for", "this", "with", "your",
+             "that", "are", "to", "of", "it", "on", "we", "my", "have", "just"))
+    acc = sum(t.count(c) for c in "áéíóúñ¿¡")
+    return (es + acc * 2) > en
+
 # Umbrales de movimiento (diff media 0..255 sobre gris 64x64, muestreando ~8 frames). Tuneables.
 # Calibrados sobre datos reales: quieto/primer plano ~0-4, moderado ~4-11, mucho movimiento >11.
 _MOTION_LOW = 4.0     # por debajo = quieto / primer plano
@@ -150,9 +163,14 @@ def clonar_ganador(
     paso("Narrativa", bool(blueprint), f"{len(blueprint['segments'])} fases" if blueprint else "no")
     paso("Detectar producto", bool(ranges), f"{len(ranges)} momento(s)" if ranges else "no detectado")
 
-    # 1) Voz: original o doblada a español colombiano
-    if doblar and eleven_key:
-        report("🇨🇴 Doblando la voz a español colombiano...", 20)
+    # 1) Voz: doblaje INTELIGENTE por idioma. Si el creativo está en OTRO idioma -> lo dobla
+    #    (traduce la idea a español colombiano). Si YA está en español -> lo deja y sigue.
+    transcript = " ".join(s.get("que_se_dice", "") for s in
+                          (blueprint.get("segments") if blueprint else []))
+    ya_espanol = _es_espanol(transcript)
+    if eleven_key and (not ya_espanol or doblar):
+        motivo = "otro idioma → traducir" if not ya_espanol else "forzado"
+        report(f"🇨🇴 Doblando a español colombiano ({motivo})...", 20)
         try:
             wd = os.path.join(work_dir, "dub"); os.makedirs(wd, exist_ok=True)
             d = generar_dub(current, api_key=gemini_key, eleven_key=eleven_key,
@@ -161,13 +179,15 @@ def clonar_ganador(
             if d.get("ok") and d.get("video"):
                 current = d["video"]; dub_segments = d.get("segments", [])
                 word_timings = d.get("word_timings", [])
-                paso("Doblaje CO", True, f"voz {d.get('voz')}")
+                paso("Doblaje CO", True, f"voz {d.get('voz')} ({motivo})")
             else:
                 paso("Doblaje CO", False, d.get("error", ""))
         except Exception as e:  # noqa: BLE001
             paso("Doblaje CO", False, str(e))
+    elif ya_espanol:
+        paso("Voz", True, "el creativo ya está en español — se conserva la voz original")
     else:
-        paso("Voz", True, "se conserva la voz original")
+        paso("Voz", True, "se conserva la voz original (sin key de ElevenLabs)")
 
     # (la detección del producto ya se hizo en paralelo con la narrativa, arriba)
 

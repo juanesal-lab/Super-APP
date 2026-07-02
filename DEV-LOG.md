@@ -1243,3 +1243,12 @@ Doblar con el creativo ya cargado. Y regla global: SIEMPRE excluir Colombia (esp
   El botón Doblar guarda la URL, salta a la pestaña Doblar y muestra el creativo cargado. Verificado en vivo.
 - **Excluir Colombia** en búsqueda TikTok (tiktok_search): saqué CO de _ES_REGIONS y filtro region=="CO".
   Nota Juan: en Foreplay ya va language=spanish; si su API tiene filtro de país, excluir CO también allá.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🌐 Clonar ganador: doblaje INTELIGENTE por idioma
+Jack: en Clonar ganador, si el creativo está en OTRO idioma que se doble (traduzca la idea); si ya está
+en español, que NO se re-doble y siga. (Él puso uno y "se mantuvo igual" porque solo doblaba con el flag.)
+- **winner_clone**: nuevo `_es_espanol()` (heurística GRATIS, sin API, sobre el transcript que ya trae
+  la narrativa). Ahora dobla si (no-español O flag forzado) y hay key; si ya es español, conserva la voz.
+- Verificado el detector: 4/4 (español→conserva, inglés→dobla). Solo mi módulo.
+- No pude correr el clon end-to-end (Gemini de Jack en tope 429). PENDIENTE aún: "Mi producto" (música
+  auto + voz + subtítulos + bajar volumen) — es el siguiente build grande.

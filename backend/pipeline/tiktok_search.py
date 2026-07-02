@@ -75,25 +75,42 @@ def _expandir(kw: str, variants: list[str]) -> list[str]:
     return out[:5]
 
 
-def buscar_tiktok(keywords: str, count: int = 20) -> list[dict]:
-    """Devuelve [{url, title, cover}] de videos reales de TikTok para esas palabras clave."""
+# Regiones donde el contenido suele estar en español (para priorizar sin gastar visión)
+_ES_REGIONS = {"CO", "MX", "ES", "AR", "PE", "CL", "EC", "VE", "GT", "BO", "DO", "CR",
+               "PA", "UY", "PY", "SV", "HN", "NI", "US"}
+
+
+def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
+    """Videos reales de TikTok con paginación + datos de engagement (views/likes/región/duración)."""
     out: list[dict] = []
     if not keywords.strip():
         return out
+    cursor = 0
     try:
-        r = requests.get(_TIKWM, params={"keywords": keywords, "count": min(max(count, 1), 30)},
-                         headers=_UA, timeout=25)
-        vids = ((r.json() or {}).get("data") or {}).get("videos") or []
-        for v in vids[:count]:
-            au = (v.get("author") or {}).get("unique_id", "")
-            vid = v.get("video_id", "")
-            if au and vid:
-                out.append({"url": f"https://www.tiktok.com/@{au}/video/{vid}",
-                            "title": (v.get("title") or "").strip()[:120],
-                            "cover": v.get("cover") or ""})
+        for _ in range(max(1, pages)):
+            r = requests.get(_TIKWM, params={"keywords": keywords, "count": 30, "cursor": cursor},
+                             headers=_UA, timeout=25)
+            data = (r.json() or {}).get("data") or {}
+            vids = data.get("videos") or []
+            for v in vids:
+                au = (v.get("author") or {}).get("unique_id", "")
+                vid = v.get("video_id", "")
+                if au and vid:
+                    out.append({
+                        "url": f"https://www.tiktok.com/@{au}/video/{vid}",
+                        "title": (v.get("title") or "").strip()[:120],
+                        "cover": v.get("cover") or "",
+                        "plays": int(v.get("play_count") or 0),
+                        "likes": int(v.get("digg_count") or 0),
+                        "region": (v.get("region") or "").upper(),
+                        "dur": int(v.get("duration") or 0),
+                    })
+            if not data.get("hasMore") or not vids:
+                break
+            cursor = data.get("cursor") or (cursor + len(vids))
     except Exception:  # noqa: BLE001
         pass
-    return out
+    return out[:count]
 
 
 def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dict | None:
@@ -150,17 +167,22 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     queries = [q for q in queries if q][:5] or [(nombre or "").strip()]
     kw = queries[0]
 
-    # AMPLIAR: varias consultas (producto + beneficios/resultados) y juntamos candidatos únicos
+    # AMPLIAR: varias consultas (producto + beneficios) × varias páginas → muchos candidatos únicos
     cands: dict[str, dict] = {}
     for q in queries:
-        for c in buscar_tiktok(q, 15):
+        for c in buscar_tiktok(q, count=40, pages=2):
             cands.setdefault(c["url"], c)
     cand_list = list(cands.values())
-    verificado = False
+    # descarta duraciones raras (fuera de 4-120s) y PRE-ORDENA: región hispana + más views (virales) primero
+    filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120]
+    cand_list = filtered or cand_list
+    cand_list.sort(key=lambda c: (1 if c.get("region") in _ES_REGIONS else 0, c.get("plays", 0)),
+                   reverse=True)
 
+    verificado = False
     if ref_bytes and api_key and cand_list:
         verificado = True
-        pool = cand_list[:24]                 # tope de verificaciones (acota costo)
+        pool = cand_list[:28]                 # verifica los MEJORES (hispanos + virales) primero
         matches: list[dict] = []
         with ThreadPoolExecutor(max_workers=6) as ex:
             futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c for c in pool}
@@ -168,9 +190,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 v = fut.result()
                 if v and v.get("match"):
                     c = futs[fut]
-                    c["_rank"] = (v.get("muestra", False), v.get("es", False), v.get("poco_texto", False))
+                    c["_rank"] = (v.get("muestra", False), v.get("es", False),
+                                  v.get("poco_texto", False), c.get("plays", 0))
                     matches.append(c)
-        # los que MUESTRAN el producto + español + poco texto van primero
+        # muestra el producto → español → poco texto → más views
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
         links = matches[:count]
         if len(links) < min(3, count):       # si quedaron muy pocos, completa con candidatos

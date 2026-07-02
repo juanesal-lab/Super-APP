@@ -1092,3 +1092,13 @@ BENEFICIOS y que sean SÍ O SÍ su producto.
   `muestra_producto`. El ranking pone primero los que MUESTRAN el producto + español + poco texto.
 - Tope de 24 verificaciones por búsqueda (acota costo). Solo mi módulo tiktok_search.py.
 - ⚠️ Más candidatos = un poco más de tiempo/gasto por búsqueda, pero acierta mejor (lo que pidió Jack).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🚀 Motor de búsqueda TikTok MUCHO más potente
+Jack: mejorar el motor de búsqueda para que encuentre. Descubrí que la API (tikwm) daba mucho más:
+- **Paginación** (cursor) → `buscar_tiktok` ahora trae varias páginas.
+- **Engagement + metadata** por video: play_count, digg, region, duration.
+- `buscar`: junta multi-consulta × páginas → ~99 candidatos únicos (antes 15). PRE-ORDENA por región
+  hispana (_ES_REGIONS) + más views (virales probados), descarta duraciones raras (4-120s), y verifica
+  con visión los 28 MEJORES primero. Ranking final: muestra producto → español → poco texto → más views.
+- Probado (sin visión): "crema veneno de abeja" → 99 candidatos, top = "Bee Venom Treatment Cream",
+  "before and after", "Piel más lisa firme y glow" (su producto exacto + beneficios). Solo mi módulo.

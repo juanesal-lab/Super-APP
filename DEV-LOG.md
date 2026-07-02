@@ -1359,3 +1359,28 @@ look catálogo) y COLOSTRUM (redundante con el contrarian + top-funnel).
   instrucción final (1-2 fijas, 3-10 surreales). No toqué la lógica.
 - Verificado con Claude real: #1 sale contrarian ("NO LA USES."), #2 prueba social, #3+ surreales.
   (Nota menor: Claude devolvió 11 en la prueba; el front igual las lista.)
+
+### 2026-07-02 · Claude (juanesal-lab) · 🧭 Pendientes de la revisión: Clon a su pestaña + Guía + GC de JOBS
+Seguí con los pendientes que había dejado anotados de la revisión:
+- **Clon Ganador desenterrado**: `/api/clone` ("Clon con mi producto") estaba dentro del panel de Claves
+  SIN botón de nav → nadie lo veía. Lo moví a su propia pestaña `p-clone` con botón. Aclaré nombres: el
+  nav "Clonar ganador" (que en realidad era `/api/swap`) ahora dice "Reemplazar producto" (= su panel).
+  Verificado en navegador: las 2 pestañas funcionan y Claves quedó limpio.
+- **Guía actualizada**: la lista "Qué hace cada pestaña" ahora incluye TODAS (Ads imagen, Editor, Foreplay,
+  Buscar TikTok, Clon con mi producto) con nombres correctos; "Crear creativo" ya no dice "UN creativo";
+  Claves menciona Foreplay.
+- **Fuga de RAM de JOBS**: nuevo `_gc_jobs(keep=80)` — en `status()` (oportunista) borra los trabajos MÁS
+  VIEJOS ya terminados si hay >80; NUNCA toca los 'running'. Conservador para no romper flujos en curso.
+Todo verificado (import OK + navegador). Sin tocar lógica que funciona.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🎨 Pulir Ads imagen: variedad de formatos + mecanismos + más surreal
+Juan: pulir los Ads imagen. Diagnóstico: los conceptos salían 7/10 en formato "video" (monótono) y a veces
+tibios ("persona preocupada mirándose"). Reforcé `_SISTEMA`/`_TOOL` en disruptive_images.py:
+- Quité el sesgo "FORMATO VIDEO (el más usado)". DISTRIBUCIÓN OBLIGATORIA: máx 4 'video'; el resto reparte
+  entre slider/quiz/chat/cursor (mín 4 formatos). El `formato` ahora es una palabra exacta del enum.
+- Agregué campo `mecanismo` al schema (antes salía vacío) — cada concepto un motor distinto de los 6.
+- SURREAL OBLIGATORIO: mín 6/10 deben ser metáfora física imposible (piel=desierto, cara=estatua, reflejo=
+  momia/hipopótamo); "alguien preocupado en el espejo" NO cuenta.
+Probado (mismo producto, serum vit C): antes {video:7} → ahora {video:5, slider:2, quiz:1, chat:1, cursor:1},
+mecanismos poblados y variados, titulares mucho más salvajes (cara-atlas, "¿quién es esa momia?", "se oxidó
+como manzana", "mis manchas me escribieron"). Solo prompt — sin tocar el flujo de generación.

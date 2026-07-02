@@ -147,7 +147,8 @@
     <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-buscar">🔎 Buscar TikTok</button>
     <button data-p="p-auto">✨ Crear creativo</button>
-    <button data-p="p-swap">🔄 Clonar ganador</button>
+    <button data-p="p-clone">🎯 Clon con mi producto</button>
+    <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
@@ -351,10 +352,7 @@
     </script>
   </div><!-- /p-buscar -->
 
-  <div class="panel" id="p-config" style="display:none">
-  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
-  <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
-
+  <div class="panel" id="p-clone" style="display:none">
   <!-- 🎯 CLON GANADOR CON MI PRODUCTO (sección nueva, autocontenida, reusa clases auto*) -->
   <div class="autoHero" style="margin-top:0">
     <h2>🎯 <span>Clon Ganador</span> con mi Producto</h2>
@@ -454,6 +452,12 @@
       box.innerHTML=h;
     }
   </script>
+  </div><!-- /p-clone -->
+
+  <div class="panel" id="p-config" style="display:none">
+  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
+  <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
+
 
   <!-- Gemini key -->
   <div class="card" id="keyCard">
@@ -585,7 +589,7 @@
     </div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useVO"> 🎙️ Voz en off (genera 10 guiones y narra)</label>
-      <span id="voiceWrap" style="display:none;align-items:center;gap:8px">
+      <span id="voiceWrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="lbl" style="margin:0">Voz:</span>
         <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
@@ -1463,13 +1467,18 @@
 
     <div class="card">
       <h2>🧩 Qué hace cada pestaña</h2>
-      <div class="tip"><span class="em">✂️</span><span><b>Crear clips</b> — el flujo principal: de tus videos crudos saca los mejores momentos y arma 6 versiones + clips sueltos + GIFs.</span></div>
-      <div class="tip"><span class="em">🎯</span><span><b>Producto → Clips</b> — el flujo semi-auto: pegas el producto (link/imagen) + los links de 2-3 ganadores que encontraste, y la app descarga + entiende tu producto + crea los clips, todo de corrido.</span></div>
-      <div class="tip"><span class="em">📥</span><span><b>Descargar</b> — pega links (TikTok, Instagram, YouTube, Facebook…) y baja los videos automáticamente para usarlos como material en Crear clips.</span></div>
-      <div class="tip"><span class="em">✨</span><span><b>Automático</b> — subes UN creativo ganador (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
-      <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — clona un ganador poniendo TU producto en lugar del viejo (conserva el audio original).</span></div>
+      <div class="tip"><span class="em">✂️</span><span><b>Cortar clips</b> — el flujo principal: de tus videos crudos saca los mejores momentos y arma 6 versiones + clips sueltos + GIFs.</span></div>
+      <div class="tip"><span class="em">📦</span><span><b>Mi producto</b> — semi-auto: pegas tu producto (link/imagen) + los links de 2-3 ganadores, y la app descarga + entiende tu producto + crea los clips, todo de corrido.</span></div>
+      <div class="tip"><span class="em">🎬</span><span><b>Editor</b> — mini-CapCut: la IA arma los clips y tú los reordenas, recortas y borras en una línea de tiempo, luego exportas.</span></div>
+      <div class="tip"><span class="em">🎨</span><span><b>Ads imagen</b> — pega un producto y Claude te da 10 conceptos disruptivos; Nano Banana 2 dibuja el ad completo (video nativo, fotorrealista). Tú metes tu producto con "➕ Poner mi producto".</span></div>
+      <div class="tip"><span class="em">📥</span><span><b>Descargar</b> — pega links (TikTok, Instagram, YouTube, Facebook…) y baja los videos automáticamente para usarlos como material.</span></div>
+      <div class="tip"><span class="em">🔥</span><span><b>Foreplay</b> — busca en +100M ads GANADORES reales (por nicho/idioma/días corriendo), elige los que te gusten y los corta en clips de una.</span></div>
+      <div class="tip"><span class="em">🔎</span><span><b>Buscar TikTok</b> — encuentra videos de TikTok de un producto (por foto/nombre) para usarlos de material.</span></div>
+      <div class="tip"><span class="em">✨</span><span><b>Crear creativo</b> — subes creativos ganadores (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
+      <div class="tip"><span class="em">🎯</span><span><b>Clon con mi producto</b> — sube un ganador + foto/clips de TU producto y la IA lo mete en la escena (reemplaza donde queda limpio, corta a una toma tuya donde hay movimiento) + voz/subtítulos.</span></div>
+      <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — cambia el producto de un video por el tuyo conservando el audio original.</span></div>
       <div class="tip"><span class="em">🎙️</span><span><b>Doblar</b> — traduce la voz de un video a otro idioma manteniendo el tono (ej. inglés ↔ español).</span></div>
-      <div class="tip"><span class="em">🔑</span><span><b>Configuración</b> — donde pegas tus API keys (Gemini, ElevenLabs, Claude).</span></div>
+      <div class="tip"><span class="em">🔑</span><span><b>Claves</b> — donde pegas tus API keys (Gemini, ElevenLabs, Claude, Foreplay).</span></div>
     </div>
 
     <div class="card">
@@ -1548,7 +1557,7 @@ blurCaptions.onchange = ()=>{
 // --- Voz en off toggle ---
 const useVO = document.getElementById("useVO");
 useVO.onchange = ()=>{
-  document.getElementById("voiceWrap").style.display = useVO.checked ? "inline-flex" : "none";
+  document.getElementById("voiceWrap").style.display = useVO.checked ? "flex" : "none";
   document.getElementById("go").textContent = useVO.checked ? "📝  Generar guiones de voz" : "✂️  Generar clips";
 };
 

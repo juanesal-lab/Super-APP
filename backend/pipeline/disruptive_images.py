@@ -76,7 +76,7 @@ REGLA MADRE: el creativo NO debe PARECER un anuncio. Debe parecer CONTENIDO ORG�
 alguien grabó) que por lo surreal frena el scroll. NADA de "banda de color de anuncio arriba con el titular".
 
 FÓRMULA VISUAL por formato:
-- FORMATO VIDEO (el más usado): es el SCREENSHOT de un VIDEO REAL (TikTok/Reel/YouTube). La ESCENA surreal
+- FORMATO VIDEO: es el SCREENSHOT de un VIDEO REAL (TikTok/Reel/YouTube). La ESCENA surreal
   LLENA todo el cuadro; encima va el chrome de video NATIVO — botón de play ▶ translúcido al centro, barra de
   progreso con tiempo ("0:08 / 2:04"), iconitos de volumen/pantalla completa en una esquina. El TITULAR va
   como CAPTION NATIVO: texto blanco grueso con contorno/sombra ENCIMA del video (estilo subtítulo de TikTok),
@@ -109,14 +109,22 @@ Cada 'prompt' que entregues:
   exactly as written, looks like an authentic organic social media video screenshot NOT a polished ad. Avoid:
   extra fingers, deformed hands, garbled or misspelled text, random logos, watermarks, nudity, low-res artifacts.
 
-Devuelve EXACTAMENTE 10 variantes: la 1 = plantilla "no_compres" (contrarian) y la 2 = plantilla \
-"capturas" (prueba social), adaptadas al producto; de la 3 a la 10, surreales con los 6 motores \
-(mecanismos MUY distintos). Todas al nivel de los ejemplos. NOTA: para las variantes 1 y 2 el 'prompt' \
-NO describe un screenshot de video con chrome, sino un POST/imagen editorial LIMPIO (fondo sobrio, \
-tipografía gruesa; contrarian = titular gigante + zona de producto vacía + barra de credibilidad; \
-capturas = zona de producto + pila de comentarios tipo captura de Facebook). Igual: texto en español \
-entre comillas, sin precio, y termina con: thick sans-serif, render all embedded text spelled exactly, \
-looks authentic not a polished ad, avoid deformed hands/garbled text/watermarks."""
+DISTRIBUCIÓN OBLIGATORIA de los 10 (para que NO salgan todos iguales):
+- Las variantes 1 y 2 son las 2 PLANTILLAS FIJAS de arriba: la 1 = "no_compres" (contrarian) y la 2 =
+  "capturas" (prueba social), adaptadas al producto. Su `formato` es "post_editorial" y su 'prompt'
+  describe un POST/imagen editorial LIMPIO (NO screenshot de video con chrome): fondo sobrio, tipografía
+  gruesa; contrarian = titular gigante + zona de producto vacía + barra de credibilidad; capturas = zona
+  de producto + pila de comentarios estilo Facebook. Español entre comillas, sin precio.
+- De la 3 a la 10 (8 variantes) van SURREALES con los 6 motores. FORMATOS: MÁXIMO 4 en "video"; el resto
+  REPARTIDO entre "slider" (antes/después con manija ◄►), "quiz" (fila de pastillas con cursor-mano),
+  "chat" (WhatsApp) y "cursor" (dedo sobre un botón). Usa AL MENOS 4 formatos distintos. Pon el `formato`
+  EXACTO como una de esas palabras. Cada concepto un motor DISTINTO (no repitas el mismo dos veces).
+- SURREAL OBLIGATORIO: de la 3 a la 10, MÍNIMO 6 deben ser SURREALES/absurdos de verdad — metáfora física
+  IMPOSIBLE (piel = desierto agrietado, cara = estatua que se rompe, reflejo = hipopótamo/momia, persona
+  que se desinfla como globo). "Alguien preocupado mirándose al espejo" NO cuenta: súbelo a surreal o cámbialo.
+
+Devuelve EXACTAMENTE 10 variantes (1-2 = plantillas fijas, 3-10 = surreales), al nivel de los 5 ejemplos
+(hipopótamo, bus, cemento, globo, momia)."""
 
 _TOOL = {
     "name": "entregar_creativos",
@@ -131,7 +139,8 @@ _TOOL = {
                     "type": "object",
                     "properties": {
                         "angulo": {"type": "string", "description": "nombre corto del ángulo de venta"},
-                        "formato": {"type": "string", "description": "formato falso-interactivo usado"},
+                        "formato": {"type": "string", "description": "formato falso-interactivo EXACTO: 'video' | 'slider' | 'quiz' | 'chat' | 'cursor'. Máx 4 'video'; varía el resto."},
+                        "mecanismo": {"type": "string", "description": "el motor psicológico: personificación | metáfora | consecuencia absurda | escena social | reflejo surreal | reacción extrema. DISTINTO por concepto."},
                         "concepto": {"type": "string", "description": "la idea loca en 1-2 frases (español)"},
                         "por_que": {"type": "string", "description": "por qué frena el scroll y convierte"},
                         "titular": {"type": "string", "description": "titular incrustado (español, corto, MAYÚSCULAS)"},

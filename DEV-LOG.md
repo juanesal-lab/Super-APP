@@ -1172,3 +1172,22 @@ spending cap). Mejoré el manejo en `disruptive_images.py`:
   `error` cuando NINGUNA salió → el UI muestra en rojo "Se agotó el TOPE DE GASTO mensual de Google.
   Súbelo en ai.studio/spend". `/api/regenerate-image` también da el motivo real.
 - Juan debe subir el tope en https://ai.studio/spend para que Nano Banana genere.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🔥 NUEVA pestaña Foreplay (biblioteca de ads ganadores)
+Juan pidió conectar la API de Foreplay. Verificado que funciona (key válida, 10k créditos/mes) y CONSTRUIDO:
+- NUEVO `backend/pipeline/foreplay_search.py`: `buscar_ads` (discovery/ads con filtros query/idioma/nicho/
+  live/días-corriendo), `usage` (créditos), `descargar_video(s)` (baja el MP4 directo del CDN).
+- `app.py`: endpoints `/api/foreplay-search`, `/api/foreplay-usage`, `/api/foreplay-thumb` (PROXY de
+  miniaturas — el CDN bloquea hotlink desde el navegador), `/api/foreplay-clips` (descarga los elegidos →
+  `process_job` los corta en clips). Key nueva `FOREPLAY_API_KEY` (provider "foreplay").
+- Frontend: pestaña **🔥 Foreplay** — buscador + filtros, grid de tarjetas seleccionables (miniatura,
+  badge "🔥 X días corriendo" = ganador, nombre, descripción, link), "cortar seleccionados en clips"
+  (reusa `renderResults` + Editor), y campo de key en 🔑 Claves. PROBADO en navegador: busca, muestra
+  miniaturas (vía proxy), selecciona, créditos OK.
+- 🔒 BLINDAJE: `/api/save-key` ahora RECHAZA providers desconocidos (antes caían por defecto en
+  GEMINI_API_KEY y podían sobrescribirlo).
+- ⚠️⚠️ INCIDENTE (mi culpa): mientras cableaba esto, con un server viejo aún corriendo, guardar la key de
+  Foreplay cayó en GEMINI_API_KEY y SOBRESCRIBIÓ la key de Gemini (se perdió, no había backup). Ya moví la
+  de Foreplay a su lugar. Juan debe RE-PEGAR su key de Gemini en 🔑 Claves (esa estaba topada de gasto de
+  todos modos → ideal una fresca de un proyecto con presupuesto). El "cortar en clips" de Foreplay necesita
+  Gemini para funcionar.

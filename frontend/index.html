@@ -144,6 +144,7 @@
     <button data-p="p-editor">🎬 Editor</button>
     <button data-p="p-disruptivo">🎨 Ads imagen</button>
     <button data-p="p-descargar">📥 Descargar</button>
+    <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-buscar">🔎 Buscar TikTok</button>
     <button data-p="p-auto">✨ Crear creativo</button>
     <button data-p="p-swap">🔄 Clonar ganador</button>
@@ -472,6 +473,16 @@
       <button class="btn sec" id="anthropicSave" style="width:auto">Guardar</button>
     </div>
     <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, Claude (Opus 4.8) revisa la calidad de cada paso y corrige (ej. el tapado de textos: aprueba o manda a re-tapar). Sin key, todo funciona igual pero sin supervisión. La sacas en console.anthropic.com → API Keys.</p>
+  </div>
+
+  <!-- Foreplay key (biblioteca de ads ganadores) -->
+  <div class="card" id="foreplayCard">
+    <h2>🔎 Ads ganadores · Foreplay <span id="foreplayPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow">
+      <input type="password" id="foreplayInput" placeholder="Pega tu API key de Foreplay">
+      <button class="btn sec" id="foreplaySave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, la pestaña <b>🔎 Foreplay</b> busca en su biblioteca de +100M ads ganadores (con video descargable) para cortarlos en clips. La sacas en app.foreplay.co → API. Cada búsqueda gasta créditos de tu plan.</p>
   </div>
 
   </div><!-- /p-config -->
@@ -1168,6 +1179,153 @@
   </script>
   </div><!-- /p-descargar -->
 
+  <div class="panel" id="p-foreplay" style="display:none">
+  <div class="autoHero">
+    <h2>🔥 <span>Foreplay</span> — ads ganadores probados</h2>
+    <p class="lead">Busca en la biblioteca de <b>+100M ads reales</b> de Meta/TikTok. Filtra por idioma y
+      cuánto llevan corriendo (más días = más ganador), elige los que te gusten y <b>córtalos en clips</b>
+      en una pasada. <span id="fpCredits" class="fpCred"></span></p>
+
+    <div class="fpSearchRow">
+      <input type="text" id="fpQuery" class="full" placeholder="¿Qué buscas? (ej. crema arrugas, drenaje linfático, gel reductor)" onkeydown="if(event.key==='Enter')fpSearch()">
+      <button class="autoBtn" id="fpGo" style="margin:0;width:auto;white-space:nowrap" onclick="fpSearch()">🔎 Buscar</button>
+    </div>
+    <div class="fpFilters">
+      <select id="fpLang"><option value="spanish">🇪🇸 Español</option><option value="">🌐 Cualquier idioma</option><option value="english">🇬🇧 Inglés</option><option value="portuguese">🇧🇷 Portugués</option></select>
+      <label><input type="checkbox" id="fpLive" checked> Solo activos ahora</label>
+      <label><input type="checkbox" id="fpVid" checked> Solo con video</label>
+      <label>Mín. días corriendo <input type="number" id="fpDays" min="0" value="0" style="width:60px"></label>
+      <span id="fpSearchMsg" class="fpCred" style="color:var(--muted);font-weight:500"></span>
+    </div>
+
+    <div id="fpActions" class="fpActions hidden">
+      <span id="fpSelCount" class="fpCred"></span>
+      <select id="fpAspect"><option value="1:1">1:1 cuadrado</option><option value="9:16">9:16 vertical</option><option value="4:5">4:5</option></select>
+      <button class="autoBtn" style="margin:0;width:auto" onclick="fpCut()">✂️ Cortar seleccionados en clips</button>
+    </div>
+
+    <div class="autoProg hidden" id="fpProg">
+      <div class="autoBarWrap"><div class="autoBar" id="fpBar"></div></div>
+      <div class="autoMsg" id="fpMsg">Iniciando…</div>
+    </div>
+
+    <div id="fpResults"></div>
+    <div id="fpClipsResult" style="margin-top:16px"></div>
+  </div>
+
+  <style>
+    .fpSearchRow{display:flex;gap:10px;margin:4px 0 10px}
+    .fpFilters{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:13px;color:var(--muted)}
+    .fpFilters select,.fpFilters input[type=number]{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:13px}
+    .fpFilters label{display:flex;align-items:center;gap:6px}
+    .fpCred{color:var(--accent2);font-weight:700}
+    .fpActions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 0;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:12px}
+    .fpActions.hidden{display:none}
+    .fpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:8px}
+    .fpCard{background:var(--card2);border:2px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;transition:.15s;display:flex;flex-direction:column}
+    .fpCard:hover{border-color:var(--accent2)}
+    .fpCard.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+    .fpThumbWrap{position:relative;aspect-ratio:1/1;background:#000}
+    .fpThumb{width:100%;height:100%;object-fit:cover;display:block}
+    .fpBadge{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px}
+    .fpBadge.win{background:var(--accent);color:var(--ink)}
+    .fpCheck{position:absolute;right:8px;top:8px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--ink);display:none;align-items:center;justify-content:center;font-weight:900;font-size:14px}
+    .fpCard.sel .fpCheck{display:flex}
+    .fpBody{padding:10px;display:flex;flex-direction:column;flex:1}
+    .fpName{font-weight:800;font-size:13.5px;margin-bottom:4px}
+    .fpDesc{color:var(--muted);font-size:12px;line-height:1.4;max-height:51px;overflow:hidden;flex:1}
+    .fpLink{display:inline-block;margin-top:8px;color:var(--accent2);font-size:11.5px;font-weight:600;text-decoration:none}
+    .fpLink:hover{text-decoration:underline}
+  </style>
+
+  <script>
+    let _fpAds=[], _fpSel=new Set(), _fpCursor='';
+    function fpEsc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+    async function fpUsage(){
+      try{ const j=await (await fetch('/api/foreplay-usage')).json();
+        const el=document.getElementById('fpCredits');
+        if(j.ok){ const rem=(j.remaining!=null)?j.remaining.toLocaleString('es'):'?'; el.textContent='· '+rem+' créditos'; }
+        else el.textContent='';
+      }catch(e){}
+    }
+    async function fpSearch(more){
+      const q=document.getElementById('fpQuery').value.trim();
+      const msg=document.getElementById('fpSearchMsg');
+      const fd=new FormData();
+      fd.append('query',q);
+      fd.append('languages',document.getElementById('fpLang').value);
+      fd.append('live',document.getElementById('fpLive').checked);
+      fd.append('video_only',document.getElementById('fpVid').checked);
+      fd.append('running_min_days',document.getElementById('fpDays').value||0);
+      if(more&&_fpCursor) fd.append('cursor',_fpCursor);
+      document.getElementById('fpGo').disabled=true;
+      msg.textContent='Buscando ganadores…';
+      try{
+        const r=await fetch('/api/foreplay-search',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!r.ok){ msg.innerHTML='<span style="color:var(--warn)">'+fpEsc(j.detail||'Error')+'</span>'; return; }
+        if(!more){ _fpAds=[]; _fpSel.clear(); }
+        _fpAds=_fpAds.concat(j.ads||[]);
+        _fpCursor=j.cursor||'';
+        msg.textContent=_fpAds.length?(_fpAds.length+' ads encontrados'):'Sin resultados — prueba otra búsqueda';
+        fpRender(); fpUsage();
+      }catch(e){ msg.textContent='Error: '+e; }
+      finally{ document.getElementById('fpGo').disabled=false; }
+    }
+    function fpRender(){
+      const box=document.getElementById('fpResults');
+      let h='<div class="fpGrid">';
+      _fpAds.forEach((a,i)=>{
+        const badge=a.dias>=1?`<span class="fpBadge win">🔥 ${fpEsc(a.corriendo)}</span>`
+                             :(a.corriendo?`<span class="fpBadge">${fpEsc(a.corriendo)}</span>`:'');
+        h+=`<div class="fpCard${_fpSel.has(i)?' sel':''}" onclick="fpToggle(${i})">
+          <div class="fpThumbWrap">
+            <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
+            ${badge}<span class="fpCheck">✓</span></div>
+          <div class="fpBody"><div class="fpName">${fpEsc(a.name)||'—'}</div>
+            <div class="fpDesc">${fpEsc((a.description||'').slice(0,120))}</div>
+            <a class="fpLink" href="${fpEsc(a.foreplay_url)||'#'}" target="_blank" onclick="event.stopPropagation()">ver en Foreplay ↗</a>
+          </div></div>`;
+      });
+      h+='</div>';
+      if(_fpCursor && _fpAds.length) h+='<button class="btn sec" style="margin:16px auto 0;display:block" onclick="fpSearch(true)">➕ Ver más resultados</button>';
+      box.innerHTML=h;
+      fpActions();
+    }
+    function fpToggle(i){ _fpSel.has(i)?_fpSel.delete(i):_fpSel.add(i); fpRender(); }
+    function fpActions(){
+      document.getElementById('fpActions').classList.toggle('hidden', _fpSel.size===0);
+      document.getElementById('fpSelCount').textContent=_fpSel.size?(_fpSel.size+' seleccionados'):'';
+    }
+    async function fpCut(){
+      const sel=[..._fpSel].map(i=>({video:_fpAds[i].video,name:_fpAds[i].name})).filter(a=>a.video);
+      if(!sel.length) return;
+      const fd=new FormData();
+      fd.append('videos',JSON.stringify(sel));
+      fd.append('aspect',document.getElementById('fpAspect').value);
+      const prog=document.getElementById('fpProg');
+      document.getElementById('fpClipsResult').innerHTML='';
+      prog.classList.remove('hidden');
+      document.getElementById('fpBar').style.width='0%';
+      document.getElementById('fpMsg').textContent='Iniciando…';
+      try{
+        const j=await (await fetch('/api/foreplay-clips',{method:'POST',body:fd})).json();
+        if(j.job_id) fpPoll(j.job_id);
+        else document.getElementById('fpMsg').textContent=j.detail||'Error';
+      }catch(e){ document.getElementById('fpMsg').textContent='Error: '+e; }
+    }
+    async function fpPoll(id){
+      const j=await (await fetch('/api/status/'+id)).json();
+      document.getElementById('fpBar').style.width=(j.progress||0)+'%';
+      document.getElementById('fpMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>fpPoll(id),1500); return; }
+      if(j.status==='error'){ document.getElementById('fpMsg').innerHTML='<span style="color:var(--warn)">'+fpEsc(j.message||'Error')+'</span>'; return; }
+      if(j.result && j.result.versions){ renderResults(j.result,'fpClipsResult'); }
+    }
+    fpUsage();
+  </script>
+  </div><!-- /p-foreplay -->
+
   <div class="panel" id="p-swap" style="display:none">
   <div class="qhace"><b>¿Qué hace?</b> Tomas un video (con su audio/voz) y le cambias el producto: la IA detecta dónde sale el producto viejo y mete tus tomas del producto nuevo en su lugar. Ideal para clonar un ganador con TU producto.</div>
 
@@ -1293,6 +1451,7 @@ async function refreshConfig(){
   setPill("keyPill", j.has_gemini_key);
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
+  setPill("foreplayPill", j.has_foreplay_key);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
   if(vs && !vs.dataset.loaded && j.voices){
@@ -1320,6 +1479,7 @@ async function saveKey(provider, inputId){
 document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
 document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
 document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
+document.getElementById("foreplaySave").onclick = ()=>saveKey("foreplay","foreplayInput");
 refreshConfig();
 
 // --- Textos del proveedor: mostrar selector Tapar/Traducir al activar ---

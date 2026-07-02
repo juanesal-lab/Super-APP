@@ -11,7 +11,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
@@ -30,6 +30,7 @@ from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
 from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
                                         generar_ad_fullprompt)
+from pipeline import foreplay_search as fp
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -77,6 +78,10 @@ def _load_eleven_key() -> str | None:
 
 def _load_anthropic_key() -> str | None:
     return _load_key("ANTHROPIC_API_KEY")
+
+
+def _load_foreplay_key() -> str | None:
+    return _load_key("FOREPLAY_API_KEY")
 
 
 def _run_job(job_id: str, paths: list[str], settings: dict):
@@ -135,13 +140,14 @@ def get_config():
         "has_gemini_key": bool(_load_env_key()),
         "has_eleven_key": bool(_load_eleven_key()),
         "has_anthropic_key": bool(_load_anthropic_key()),
+        "has_foreplay_key": bool(_load_foreplay_key()),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
 
 
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY"}
+            "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
 # (fue lo que pasó: un key de Anthropic terminó en GEMINI_API_KEY y rompió todo lo de Gemini).
 _KEY_PREFIX = {"gemini": ("AIza", "AQ."), "eleven": ("sk_",), "anthropic": ("sk-ant-",)}
@@ -153,7 +159,9 @@ _KEY_LABEL = {"gemini": "Gemini (empieza con AIza o AQ.)",
 @app.post("/api/save-key")
 def save_key(key: str = Form(...), provider: str = Form("gemini")):
     key = key.strip()
-    env_name = _KEY_ENV.get(provider, "GEMINI_API_KEY")
+    env_name = _KEY_ENV.get(provider)
+    if not env_name:   # NUNCA caer por defecto en otro proveedor (sobrescribiría la key equivocada)
+        raise HTTPException(400, f"Proveedor desconocido: {provider}")
     if not key:
         raise HTTPException(400, "Key vacia")
     pref = _KEY_PREFIX.get(provider)
@@ -1002,6 +1010,111 @@ async def producto_clips(
     threading.Thread(target=_run_producto_job,
                      args=(job_id, links, product_url.strip(), image_path,
                            product_desc.strip(), settings), daemon=True).start()
+    return {"job_id": job_id}
+
+
+# ─────────────────────────  FOREPLAY (biblioteca de ads ganadores)  ─────────────────────────
+@app.get("/api/foreplay-usage")
+def foreplay_usage():
+    """Créditos disponibles de Foreplay (para mostrar en la pestaña)."""
+    return fp.usage(_load_foreplay_key() or "")
+
+
+@app.get("/api/foreplay-thumb")
+def foreplay_thumb(url: str):
+    """Proxy de miniaturas de Foreplay (su CDN bloquea el hotlink desde el navegador)."""
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").lower()
+    if not (host == "foreplay.co" or host.endswith(".foreplay.co")):
+        raise HTTPException(400, "URL no permitida")
+    try:
+        import requests as _rq
+        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+        if r.status_code != 200:
+            raise HTTPException(502, "No se pudo cargar la miniatura")
+        return Response(content=r.content, media_type=r.headers.get("Content-Type", "image/jpeg"),
+                        headers={"Cache-Control": "public, max-age=86400"})
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        raise HTTPException(502, "Error cargando miniatura")
+
+
+@app.post("/api/foreplay-search")
+def foreplay_search(query: str = Form(""), live: bool = Form(True),
+                    languages: str = Form(""), niches: str = Form(""),
+                    video_only: bool = Form(True), running_min_days: int = Form(0),
+                    video_max_seconds: int = Form(0), cursor: str = Form("")):
+    """Busca ads ganadores en Foreplay (+100M) por keyword/idioma/nicho."""
+    key = _load_foreplay_key()
+    if not key:
+        raise HTTPException(400, "Falta la API key de Foreplay (ponla en 🔑 Claves)")
+    r = fp.buscar_ads(query, api_key=key, live=live, languages=languages, niches=niches,
+                      video_only=video_only,
+                      running_min_days=running_min_days or None,
+                      video_max_seconds=video_max_seconds or None, cursor=cursor)
+    if not r.get("ok"):
+        raise HTTPException(502, r.get("error", "No se pudo buscar en Foreplay"))
+    return r
+
+
+def _run_foreplay_clips_job(job_id: str, videos: list[dict], settings: dict):
+    """Descarga los videos elegidos de Foreplay → los corta en clips (pipeline normal)."""
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        out_dir = os.path.join(WORK_DIR, job_id)
+        progress("Descargando videos de Foreplay...", 4)
+        paths = fp.descargar_videos(videos, os.path.join(out_dir, "src"),
+                                    progress=lambda m, p: progress(m, 4 + int(p * 0.30)))
+        if not paths:
+            job["status"] = "error"
+            job["message"] = "No se pudo descargar ningún video de Foreplay (reintenta)."
+            return
+        result = process_job(
+            paths, out_dir,
+            target_seconds=settings["target_seconds"], max_clip_seconds=settings["max_clip"],
+            use_gemini=True, product_desc=settings.get("product_desc", ""),
+            aspect=settings["aspect"], hook_text="", hook_pos="arriba", auto_hook=False,
+            page_url="", enhance=False, effects=False,
+            blur_captions=settings.get("blur_captions", True),
+            text_mode=settings.get("text_mode", "tapar"),
+            gemini_key=_load_env_key(),
+            progress=lambda m, p: progress(m, 34 + int(p * 0.66)),
+        )
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "Error desconocido")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+
+
+@app.post("/api/foreplay-clips")
+def foreplay_clips(videos: str = Form(...), aspect: str = Form("1:1"),
+                   target_seconds: float = Form(15.0), max_clip: float = Form(3.0),
+                   blur_captions: bool = Form(True), text_mode: str = Form("tapar")):
+    """Descarga los ads elegidos de Foreplay y los corta en clips."""
+    import json as _json
+    try:
+        ads = _json.loads(videos)
+        ads = [a for a in ads if isinstance(a, dict) and a.get("video")]
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Selección inválida")
+    if not ads:
+        raise HTTPException(400, "Elige al menos un ad con video")
+    settings = {"aspect": aspect, "target_seconds": float(target_seconds),
+                "max_clip": min(5.0, max(1.0, float(max_clip))),
+                "blur_captions": bool(blur_captions), "text_mode": text_mode}
+    job_id = uuid.uuid4().hex[:12]
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_foreplay_clips_job, args=(job_id, ads, settings), daemon=True).start()
     return {"job_id": job_id}
 
 

@@ -11,6 +11,19 @@ from .analyze import Segment
 
 _MODEL = "gemini-2.5-flash"
 
+# CTA OBLIGATORIO: TODOS los copies/guiones deben CERRAR con esta frase EXACTA (pedido del dueño).
+CTA_OBLIGATORIO = ("por tu compra hoy te regalamos el envío, y para tu seguridad ante estafas "
+                   "pagas al recibir")
+
+
+def _con_cta(texto: str) -> str:
+    """Garantiza que el copy termine con el CTA EXACTO (lo añade si el modelo no lo puso igual)."""
+    t = (texto or "").strip()
+    if CTA_OBLIGATORIO.lower() in t.lower():
+        return t
+    sep = "" if (not t or t.endswith((".", "!", "?"))) else "."
+    return (t + sep + " " + CTA_OBLIGATORIO.capitalize() + ".").strip()
+
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "assets")
 
@@ -127,7 +140,9 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "noticia/pregunta incómoda, NO el producto; el producto aparece DESPUÉS del gancho); usa la "
         "voz colombiana real de Juan (modismos: 'Y señores', 'Oiga', '¡Ojo!', 'Le tengo malas "
         "noticias', 'es físico y ya', 'No te voy a mentir', 'es extrañamente satisfactorio'); ancla "
-        "de precio comparativa; CTA con COD/escasez ('paga al recibir', 'antes de que se agote').\n"
+        "de precio comparativa. "
+        f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
+        f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
         f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, MÁXIMO {max_words} palabras, sin "
         "emojis, sin overlays ni acotaciones de escena, listo para narrar de corrido.\n"
         "Devuelve SOLO un JSON válido (array) con esta forma exacta:\n"
@@ -153,7 +168,7 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     for d in data if isinstance(data, list) else []:
         if isinstance(d, dict) and d.get("texto"):
             out.append({"angulo": str(d.get("angulo", ""))[:40],
-                        "texto": str(d["texto"]).strip()[:600]})
+                        "texto": _con_cta(str(d["texto"]).strip()[:600])})  # cierre con CTA EXACTO
     return out[:n]
 
 

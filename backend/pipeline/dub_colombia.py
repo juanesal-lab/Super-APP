@@ -24,6 +24,7 @@ from typing import Callable
 
 from .ffmpeg_utils import run, probe
 from .narrative import analyze_narrative, mmss_to_seconds
+from .scripts import CTA_OBLIGATORIO, _con_cta
 from .voiceover import synthesize, synthesize_with_timestamps, VOICES
 
 _MODEL = "gemini-2.5-flash"
@@ -101,6 +102,8 @@ def _prompt(segments: list[dict], product_desc: str, oferta_2x1: bool) -> str:
         "- Español colombiano natural, cercano, humano. Sin sonar caricaturesco.\n"
         "- POLICY-SAFE (Meta/TikTok): NADA de claims médicos/de salud, NADA de claims absolutos, "
         "NADA de groserías, NUNCA menciones precios.\n"
+        f"- CTA OBLIGATORIO: la ÚLTIMA fase debe TERMINAR con esta frase EXACTA, palabra por palabra, "
+        f"sin cambiar nada: \"{CTA_OBLIGATORIO}\".\n"
         + oferta +
         "\nTe paso las fases del anuncio:\n" + bloque +
         "\n\nDevuelve SOLO un JSON válido (array), un objeto por fase EN EL MISMO ORDEN, así:\n"
@@ -180,6 +183,14 @@ def adaptar_guion(
             "es_colombia": str(d.get("es_colombia", "")).strip(),
             "por_que": str(d.get("por_que", "")).strip(),
         })
+    # Red de seguridad: si el modelo no puso el CTA exacto en ninguna fase, lo añadimos a la última.
+    joined = " ".join(s["es_colombia"] for s in out_segs).lower()
+    if CTA_OBLIGATORIO.lower() not in joined:
+        for seg in reversed(out_segs):
+            if seg["es_colombia"]:
+                seg["es_colombia"] = _con_cta(seg["es_colombia"])
+                break
+
     report("Guion colombiano listo", 100)
     return {"ok": True, "duration": narr.get("duration", 0), "segments": out_segs}
 

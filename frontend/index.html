@@ -174,6 +174,8 @@
     .autoOpts input,.autoOpts select{width:100%;padding:11px 12px;border-radius:10px;
       background:var(--card2);border:1px solid var(--line);color:var(--txt);font-size:13.5px}
     .autoOpts .full{grid-column:1 / -1}
+    /* La clase .full debe ocupar todo el ancho AUNQUE esté fuera de .autoOpts (arreglo de inputs diminutos) */
+    input.full,textarea.full,select.full{width:100%;box-sizing:border-box}
     .autoChk{display:flex;gap:16px;align-items:center;color:var(--muted);font-size:13px;margin-bottom:16px}
     .autoBtn{width:100%;padding:15px;border:0;border-radius:13px;cursor:pointer;
       font-size:16px;font-weight:800;color:var(--ink);
@@ -748,9 +750,10 @@
   <div class="panel" id="p-disruptivo" style="display:none">
   <div class="autoHero">
     <h2>🎨 <span>Ads de imagen disruptivos</span> — de cualquier producto</h2>
-    <p class="lead">Pega tu producto/link y la IA hace TODO: <b>Claude te da 6 ángulos disruptivos</b>, tú
-      eliges los que más te gusten, y <b>Google AI genera las imágenes</b> con el texto <b>compuesto en
-      fuentes reales</b> (ortografía perfecta) — en tu estilo (formatos falso-interactivos, cierre COD).</p>
+    <p class="lead">Pega tu producto/link y la IA hace TODO: <b>Claude te da 10 conceptos disruptivos</b>, tú
+      eliges los que más te gusten, y <b>Nano Banana 2 (Google) dibuja el ad completo</b> — estilo
+      <b>video nativo</b> (no parece anuncio), fotorrealista y con el texto bien escrito. El producto lo
+      metes tú donde se vea bien.</p>
 
     <textarea id="disProd" class="full" rows="2" placeholder="¿Qué es tu producto y qué dolor resuelve? Ej: MultiBalm, barra hidratante para el rostro (mujeres 40-60), glow y disimula ojeras."></textarea>
     <div class="prodGrid" style="margin-top:10px">
@@ -761,7 +764,6 @@
       <span style="font-weight:700;font-size:13px;color:var(--muted)">Ofertas:</span>
       <label><input type="checkbox" class="disOf" value="2x1"> 2x1</label>
       <label><input type="checkbox" class="disOf" value="Envío gratis"> Envío gratis</label>
-      <label><input type="checkbox" class="disOf" value="50% OFF"> 50% OFF</label>
       <label><input type="checkbox" class="disOf" value="Paga 2 lleva 3"> Paga 2 lleva 3</label>
       <label><input type="checkbox" class="disOf" value="Pago contraentrega"> Contraentrega</label>
     </div>
@@ -769,10 +771,10 @@
     <input type="file" id="disImg" accept="image/*" class="hidden">
     <label class="autoDrop" id="disImgDrop" for="disImg" style="margin-top:12px">
       <b id="disImgName">🖼️ Sube una foto de tu producto (opcional)</b>
-      <div class="s">Para que el producto salga real en las escenas</div>
+      <div class="s">Para meterlo luego, exacto, en las imágenes que elijas (botón "➕ Poner mi producto")</div>
     </label>
 
-    <button class="autoBtn" id="disGo" onclick="disAnalyze()">🔍 Analizar y darme 6 ángulos</button>
+    <button class="autoBtn" id="disGo" onclick="disAnalyze()">🔍 Analizar y darme 10 conceptos</button>
 
     <div class="autoProg hidden" id="disProg">
       <div class="autoBarWrap"><div class="autoBar" id="disBar"></div></div>
@@ -830,7 +832,7 @@
       const img=document.getElementById('disImg').files[0]; if(img) fd.append('product_image',img);
       document.getElementById('disGo').disabled=true;
       document.getElementById('disAngulos').innerHTML=''; document.getElementById('disResult').innerHTML='';
-      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='45%'; msg.textContent='🧠 Claude analiza y crea 6 ángulos disruptivos...';
+      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='45%'; msg.textContent='🧠 Claude analiza y crea 10 conceptos disruptivos...';
       try{
         const r=await fetch('/api/disruptive-angles',{method:'POST',body:fd}); const j=await r.json();
         document.getElementById('disGo').disabled=false;

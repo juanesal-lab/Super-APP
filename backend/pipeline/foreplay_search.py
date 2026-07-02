@@ -113,18 +113,28 @@ def buscar_ads(query: str = "", *, api_key: str, live: bool | None = None,
         return {"ok": False, "error": str(e)[:150], "ads": []}
 
 
+_MAX_VIDEO_BYTES = 200 * 1024 * 1024   # tope de 200 MB por video (evita llenar el disco)
+
+
 def descargar_video(video_url: str, out_path: str, timeout: int = 180) -> str | None:
     """Descarga el MP4 directo de Foreplay (CDN r2.foreplay.co). Devuelve la ruta o None."""
     if not video_url:
         return None
+    d = os.path.dirname(out_path)
+    if d:
+        os.makedirs(d, exist_ok=True)
     try:
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        with requests.get(video_url, headers=_UA, timeout=timeout, stream=True) as r:
+        with requests.get(video_url, headers=_UA, timeout=timeout, stream=True,
+                          allow_redirects=False) as r:   # no seguir redirects (evita SSRF/exfil)
             if r.status_code != 200:
                 return None
+            escritos = 0
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):
                     if chunk:
+                        escritos += len(chunk)
+                        if escritos > _MAX_VIDEO_BYTES:   # corta si excede el tope
+                            break
                         f.write(chunk)
         return out_path if os.path.exists(out_path) and os.path.getsize(out_path) > 2000 else None
     except Exception:  # noqa: BLE001

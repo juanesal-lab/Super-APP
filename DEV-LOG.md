@@ -1297,3 +1297,29 @@ Jack: Mi producto solo cortaba clips (sin música/voz/subs, volumen alto). Empec
   AVISO Juan: toqué producto_clips.py + /api/producto-clips + la sección Mi producto (2 toggles).
 - PENDIENTE (siguiente increment): voz en off opcional + subtítulos opcionales en Mi producto (necesitan
   guion/transcripción por versión — build aparte).
+
+### 2026-07-02 · Claude (juanesal-lab) · 🔧 Revisión completa: fixes visuales + bugs + seguridad + limpieza
+Juan pidió revisar TODO (3 revisores en paralelo). Arreglado SIN romper lo que funciona:
+**Visual (frontend):** copy viejo de Ads imagen actualizado (6→10 conceptos, "Nano Banana 2 dibuja el ad",
+video nativo, sin COD) en intro/botón/progreso/label; quité oferta "50% OFF" (choca con "nunca precio");
+**FIX inputs diminutos**: agregué `input.full,textarea.full,select.full{width:100%}` global (la clase `.full`
+solo tenía width dentro de `.autoOpts`) → el textarea de producto, links, etc. ahora a ancho completo.
+**Bugs internos:** (1) botón "➕ Producto" daba éxito FALSO aunque fallara → `_integrar_producto_ia` ahora
+devuelve None en fallo (bloqueo/cuota/sin foto) y el ad queda intacto; el endpoint responde 502 real. (2)
+`generar_imagen` y `_integrar_producto_ia` crasheaban en `candidates[0]` con bloqueo de contenido → guardado
++ mensaje "blocked/safety". (3) `status()` daba KeyError entre paso1/paso2 de Ads imagen → `.get()`. (4)
+race en `/api/last-project` → `list(JOBS.items())`.
+**Seguridad:** `/api/editor-export` NO confinaba rutas (leía archivos arbitrarios) → ahora filtra por
+`_within(WORK_DIR/UPLOAD_DIR)`; `_safe_path`/`_safe_link_paths` sin separador (hermanos tipo 'work2') →
+`_within` con `os.sep`; SSRF por redirect en proxies Foreplay + `descargar_video` → `allow_redirects=False`;
+`/api/foreplay-video` cargaba el MP4 entero en RAM → `StreamingResponse`; tope de 200MB por video.
+**Calidad:** `_CIERRE` decía "professional advertising composition" (chocaba con "video nativo") → ahora
+"authentic organic social-media video screenshot NOT a polished ad".
+**Limpieza (código muerto confirmado por grep):** quité imports sin usar (JSONResponse, suggest_sfx,
+sound_effect); `_corregir_ortografia_ads` (de Jack, muerta tras full-prompt); endpoint `/api/process-links` +
+`_run_links_job` (el frontend usa fetch-links+process); docstring con modelo viejo.
+⚠️ PENDIENTE (identificado, NO tocado por riesgo): el cluster muerto grande en `disruptive_images.py`
+(generar_conceptos_v2, generar_ads_v2, generar_ad_compuesto, componer_ad + ~14 helpers de compositor,
+_SISTEMA_V2, _TOOL_V2, generar_ads_disruptivos, _pegar_producto) — ~400 líneas muertas, limpiar en pasada
+aparte. También: "Clon Ganador" enterrado en pestaña Claves sin botón de nav; Guía sin pestañas nuevas;
+JOBS nunca se limpia (fuga de RAM en uso largo). Todo eso queda para después.

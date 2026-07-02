@@ -1,8 +1,8 @@
 """Generador de ADS DISRUPTIVOS de imagen.
 
 Anthropic (Claude) = cerebro creativo: inventa 10 conceptos disruptivos + prompts siguiendo el estilo
-de Juan (skill ads-disruptivos-imagen). Google AI (Nano Banana / gemini-2.5-flash-image) = generación
-visual: convierte cada prompt en una imagen. Metes CUALQUIER producto -> 10 creativos listos.
+de Juan (skill ads-disruptivos-imagen). Google AI (Nano Banana 2 / gemini-3-pro-image) = generación
+visual: dibuja el ad completo (video nativo) desde cada prompt. Metes CUALQUIER producto -> 10 creativos.
 """
 from __future__ import annotations
 
@@ -372,10 +372,10 @@ _TOOL = {
 }
 
 # Cola de calidad que se pega al final de cada prompt de imagen.
-_CIERRE = (" Thick bold sans-serif fonts, high contrast, saturated colors, professional direct-response "
-           "advertising composition, 4:5 vertical aspect ratio, render all embedded text crisply and "
-           "spelled EXACTLY as written. Avoid: extra fingers, deformed hands, garbled or misspelled text, "
-           "random logos, watermarks, nudity, low-resolution artifacts.")
+_CIERRE = (" Thick bold sans-serif fonts, high contrast, 4:5 vertical aspect ratio, looks like an authentic "
+           "organic social-media video screenshot (NOT a polished advertisement), render all embedded text "
+           "crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed hands, garbled or "
+           "misspelled text, random logos, watermarks, nudity, low-resolution artifacts.")
 
 
 # ─────────────────────  V2: 6 ángulos con escena LIMPIA + datos para componer texto  ──────────
@@ -624,24 +624,25 @@ def _pegar_producto(out_path: str, product_image_path: str | None) -> str:
     return out_path
 
 
-def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_key: str) -> str:
+def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_key: str) -> str | None:
     """2ª pasada: Nano Banana 2 mete el PRODUCTO REAL integrado en la escena (con luz y sombra reales,
-    no pegado plano). Mantiene el producto idéntico a la foto. Si falla, deja el ad sin producto."""
+    no pegado plano). Mantiene el producto idéntico a la foto.
+
+    Devuelve la ruta si logró meter el producto; None si NO se pudo (bloqueo/cuota/sin foto) — en ese caso
+    el ad queda intacto (sin producto), y el que llama debe avisar el fallo."""
     if not (product_image_path and os.path.exists(product_image_path)):
-        return ad_path
+        return None
+    buf = ad_path + ".prod.png"
     try:
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=gemini_key)
-        ad_b = open(ad_path, "rb").read()
+        with open(ad_path, "rb") as f:
+            ad_b = f.read()
         prod = _recortar_producto(Image.open(product_image_path))   # producto limpio, sin logos/fondo
-        buf = ad_path + ".prod.png"
         prod.save(buf)
-        prod_b = open(buf, "rb").read()
-        try:
-            os.remove(buf)
-        except OSError:
-            pass
+        with open(buf, "rb") as f:
+            prod_b = f.read()
         prompt = (
             "Edit the FIRST image (a vertical social-media video). Take the EXACT product from the SECOND image "
             "and place it SMALL (about 20% of the width) resting on a real flat surface in the LOWER part of the "
@@ -657,14 +658,19 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
             contents=[prompt,
                       types.Part.from_bytes(data=ad_b, mime_type="image/png"),
                       types.Part.from_bytes(data=prod_b, mime_type="image/png")])
-        for p in r.candidates[0].content.parts:
+        for p in ((r.candidates or [None])[0].content.parts if (r.candidates or None) else []):
             if getattr(p, "inline_data", None):
                 with open(ad_path, "wb") as f:
                     f.write(p.inline_data.data)
                 return ad_path
     except Exception:  # noqa: BLE001
         pass
-    return ad_path
+    finally:
+        try:
+            os.remove(buf)
+        except OSError:
+            pass
+    return None                    # no se pudo integrar → el ad queda intacto (sin producto)
 
 
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
@@ -698,7 +704,7 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
     if not got:
         return None
     if integrar_producto:            # solo si se pide: 2ª pasada que integra el producto en la escena
-        return _integrar_producto_ia(out_path, product_image_path, gemini_key)
+        return _integrar_producto_ia(out_path, product_image_path, gemini_key) or out_path
     return out_path                  # por defecto: ad LIMPIO sin producto
 
 
@@ -779,7 +785,12 @@ def generar_imagen(prompt: str, gemini_key: str, out_path: str,
     for attempt in range(tries):
         try:
             resp = client.models.generate_content(model=_IMG_MODEL, contents=contents)
-            for p in resp.candidates[0].content.parts:
+            cands = resp.candidates or []
+            if not cands:            # bloqueo por políticas: sin candidatos -> mensaje claro, no reintenta
+                if errors is not None:
+                    errors[:] = [f"blocked/safety: {getattr(resp, 'prompt_feedback', '')}"]
+                return None
+            for p in (cands[0].content.parts or []):
                 if getattr(p, "inline_data", None):
                     with open(out_path, "wb") as f:
                         f.write(p.inline_data.data)

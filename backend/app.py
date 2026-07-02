@@ -11,15 +11,15 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from pipeline.orchestrator import process_job, analyze_select, render_versions
 from pipeline.assemble import export_resolution, list_sfx, concat_clips
 from pipeline.ffmpeg_utils import probe as _probe
-from pipeline.scripts import generate_scripts, suggest_sfx, suggest_music
-from pipeline.voiceover import (synthesize, synthesize_with_timestamps, sound_effect,
+from pipeline.scripts import generate_scripts, suggest_music
+from pipeline.voiceover import (synthesize, synthesize_with_timestamps,
                                 music as gen_music, VOICES)
 from pipeline.hook_gen import fetch_page_text
 from pipeline.product_swap import detect_product_ranges, find_new_clips, swap_product
@@ -180,12 +180,11 @@ def save_key(key: str = Form(...), provider: str = Form("gemini")):
 
 
 def _safe_link_paths(link_paths: list[str]) -> list[str]:
-    """Solo acepta rutas de videos ya BAJADOS que estén dentro de UPLOAD_DIR y existan (seguridad)."""
-    base = os.path.abspath(UPLOAD_DIR)
+    """Solo acepta rutas de videos ya BAJADOS que estén dentro de UPLOAD_DIR/WORK_DIR y existan (seguridad)."""
     out = []
     for p in link_paths or []:
         ap = os.path.abspath(p)
-        if ap.startswith(base) and os.path.exists(ap):
+        if _within(ap, UPLOAD_DIR, WORK_DIR) and os.path.exists(ap):
             out.append(ap)
     return out
 
@@ -250,70 +249,6 @@ async def process(
 
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
 
-def _run_links_job(job_id: str, links_text: str, settings: dict):
-    """Baja los links de TikTok y de UNA entrega: (1) las versiones de video cortadas y
-    (2) los guiones de voz en off. Ambos van en el mismo resultado (el poll renderiza los dos)."""
-    job = JOBS[job_id]
-
-    def progress(msg, pct):
-        job["message"] = msg
-        job["progress"] = pct
-
-    try:
-        urls = [u for u in links_text.split() if u.startswith("http")]
-        if not urls:
-            job["status"] = "error"; job["message"] = "No hay links válidos (pega URLs de TikTok)"
-            return
-        progress(f"Bajando {len(urls)} video(s) de TikTok...", 3)
-        dl = download_urls(urls, os.path.join(UPLOAD_DIR, job_id), progress)
-        paths = [d["path"] for d in dl if d.get("ok") and d.get("path")]
-        if not paths:
-            job["status"] = "error"
-            job["message"] = "No se pudo bajar ningún video (revisa los links o cierra Chrome para las cookies)"
-            return
-
-        # 1) Cortar en versiones de video
-        result = process_job(
-            paths, os.path.join(WORK_DIR, job_id),
-            target_seconds=settings["target_seconds"], max_clip_seconds=settings["max_clip_seconds"],
-            use_gemini=settings["use_gemini"], product_desc=settings["product_desc"],
-            aspect=settings["aspect"], hook_text=settings["hook_text"], hook_pos=settings["hook_pos"],
-            auto_hook=settings["auto_hook"], page_url=settings["page_url"], enhance=settings["enhance"],
-            effects=settings.get("effects", False), blur_captions=settings.get("blur_captions", False),
-            text_mode=settings.get("text_mode", "tapar"), caption_pos=settings.get("caption_pos", "abajo"),
-            gemini_key=_load_env_key(), progress=progress)
-        if not result.get("ok"):
-            job["result"] = result; job["status"] = "error"
-            job["message"] = result.get("error", "Error"); return
-
-        # 2) Generar los guiones de voz en off sobre los mismos videos (si falla, igual entregamos videos)
-        try:
-            progress("Generando los guiones de voz en off...", 88)
-            a = analyze_select(
-                paths, target_seconds=settings["target_seconds"],
-                max_clip_seconds=settings["max_clip_seconds"], use_gemini=settings["use_gemini"],
-                product_desc=settings["product_desc"], gemini_key=_load_env_key(),
-                progress=lambda m, p: progress("Generando los guiones de voz en off...", 90))
-            if a.get("ok"):
-                selected = a["selected"]
-                sample = max(selected, key=lambda s: (s.shows_use, s.score)) if selected else None
-                page_text = fetch_page_text(settings["page_url"]) if settings["page_url"] else ""
-                scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
-                                           settings["target_seconds"], sample, blueprint=None)
-                result["scripts"] = scripts
-                job.update({"selected": selected, "has_audio_by_src": a["has_audio_by_src"],
-                            "used_gemini": a["used_gemini"], "n_sources": a["n_sources"],
-                            "settings": settings, "work_dir": os.path.join(WORK_DIR, job_id)})
-        except Exception:  # noqa: BLE001
-            pass
-
-        job["result"] = result
-        job["status"] = "done"; job["progress"] = 100
-        job["message"] = "Listo · videos + guiones" if result.get("scripts") else "Listo"
-    except Exception as e:  # noqa: BLE001
-        job["status"] = "error"; job["message"] = f"Error: {e}"
-
-
 @app.post("/api/fetch-links")
 async def fetch_links(links: str = Form("")):
     """Baja videos de TikTok al servidor y devuelve sus rutas (para cortarlos luego con /api/process,
@@ -332,57 +267,14 @@ async def fetch_links(links: str = Form("")):
     return {"videos": vids}
 
 
-@app.post("/api/process-links")
-async def process_links(
-    links: str = Form(""),
-    target_seconds: float = Form(15.0),
-    max_clip: float = Form(2.5),
-    use_gemini: bool = Form(True),
-    product_desc: str = Form(""),
-    aspect: str = Form("1:1"),
-    hook_text: str = Form(""),
-    hook_pos: str = Form("arriba"),
-    auto_hook: bool = Form(False),
-    page_url: str = Form(""),
-    enhance: bool = Form(False),
-    effects: bool = Form(False),
-    blur_captions: bool = Form(False),
-    text_mode: str = Form("tapar"),
-    caption_pos: str = Form("abajo"),
-):
-    if not links.strip():
-        raise HTTPException(400, "Pega al menos un link de TikTok")
-    job_id = uuid.uuid4().hex[:12]
-    JOBS[job_id] = {"status": "running", "progress": 0,
-                    "message": "Iniciando...", "result": None, "created": time.time()}
-    settings = {
-        "target_seconds": float(target_seconds),
-        "max_clip_seconds": min(5.0, max(1.0, float(max_clip))),
-        "use_gemini": bool(use_gemini),
-        "product_desc": product_desc.strip(),
-        "aspect": aspect if aspect in ("1:1", "9:16", "4:5", "16:9") else "1:1",
-        "hook_text": hook_text.strip(),
-        "hook_pos": hook_pos if hook_pos in ("arriba", "centro", "abajo") else "arriba",
-        "auto_hook": bool(auto_hook),
-        "page_url": page_url.strip(),
-        "enhance": bool(enhance),
-        "effects": bool(effects),
-        "blur_captions": bool(blur_captions),
-        "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
-        "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
-    }
-    threading.Thread(target=_run_links_job, args=(job_id, links, settings), daemon=True).start()
-    return {"job_id": job_id}
-
-
 @app.get("/api/status/{job_id}")
 def status(job_id: str):
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(404, "Trabajo no encontrado")
     return {
-        "status": job["status"], "progress": job["progress"],
-        "message": job["message"], "result": job.get("result"),
+        "status": job.get("status", "running"), "progress": job.get("progress", 0),
+        "message": job.get("message", ""), "result": job.get("result"),
     }
 
 
@@ -1043,7 +935,7 @@ def foreplay_thumb(url: str):
         raise HTTPException(400, "URL no permitida")
     try:
         import requests as _rq
-        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20, allow_redirects=False)
         if r.status_code != 200:
             raise HTTPException(502, "No se pudo cargar la miniatura")
         return Response(content=r.content, media_type=r.headers.get("Content-Type", "image/jpeg"),
@@ -1063,14 +955,17 @@ def foreplay_video(url: str, dl: int = 0):
         raise HTTPException(400, "URL no permitida")
     try:
         import requests as _rq
-        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=90)
+        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=90,
+                    stream=True, allow_redirects=False)   # stream: no cargar el MP4 entero en RAM
         if r.status_code != 200:
             raise HTTPException(502, "No se pudo cargar el video")
         headers = {"Cache-Control": "public, max-age=3600"}
+        if r.headers.get("Content-Length"):
+            headers["Content-Length"] = r.headers["Content-Length"]
         if dl:
             headers["Content-Disposition"] = 'attachment; filename="creativo.mp4"'
-        return Response(content=r.content, media_type=r.headers.get("Content-Type", "video/mp4"),
-                        headers=headers)
+        return StreamingResponse(r.iter_content(chunk_size=1 << 16),
+                                 media_type=r.headers.get("Content-Type", "video/mp4"), headers=headers)
     except HTTPException:
         raise
     except Exception:  # noqa: BLE001
@@ -1206,7 +1101,8 @@ def editor_export(clips: str = Form(""), paths: str = Form("")):
             items = [{"path": p} for p in _json.loads(paths or "[]") if isinstance(p, str)]
     except Exception:  # noqa: BLE001
         raise HTTPException(400, "Datos de la línea de tiempo inválidos")
-    items = [c for c in items if os.path.exists(c["path"])]
+    # Seguridad: solo clips DENTRO de WORK_DIR/UPLOAD_DIR (no rutas arbitrarias del sistema)
+    items = [c for c in items if _within(c["path"], WORK_DIR, UPLOAD_DIR) and os.path.exists(c["path"])]
     if not items:
         raise HTTPException(400, "La línea de tiempo está vacía")
 
@@ -1246,15 +1142,15 @@ def editor_export(clips: str = Form(""), paths: str = Form("")):
 @app.get("/api/last-project")
 def last_project():
     """Devuelve el job MÁS RECIENTE que tenga clips (para abrirlo en el editor)."""
-    best = None
-    for jid, job in JOBS.items():
+    best, best_created, best_n = None, -1, 0
+    for jid, job in list(JOBS.items()):   # list() evita 'dict changed size during iteration'
         res = job.get("result") or {}
-        if res.get("clips") and (best is None or
-                                 job.get("created", 0) > JOBS[best].get("created", 0)):
-            best = jid
+        clips = res.get("clips") or []
+        if clips and job.get("created", 0) > best_created:
+            best, best_created, best_n = jid, job.get("created", 0), len(clips)
     if not best:
         raise HTTPException(404, "Aún no has creado clips — usa 'Cortar clips' o 'Mi producto' primero")
-    return {"job_id": best, "n_clips": len(JOBS[best]["result"]["clips"])}
+    return {"job_id": best, "n_clips": best_n}
 
 
 @app.post("/api/disruptive-angles")
@@ -1287,41 +1183,6 @@ async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
     JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
                     "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list}
     return {"ctx_id": ctx_id, "conceptos": conceptos}
-
-
-def _corregir_ortografia_ads(conceptos: list[dict], gemini_key: str | None):
-    """Corrige SOLO ortografía/tildes del texto de los ads (titular/sub/cta/quiz) antes de componer.
-    Evita typos como 'despideron', 'almhadilla', 'preico', 'cámbilas'. No cambia el sentido ni el estilo."""
-    if not gemini_key or not conceptos:
-        return
-    import json as _json
-    import re as _re
-    items = [{"titular": c.get("titular", ""), "sub": c.get("sub", ""),
-              "cta": c.get("cta", ""), "quiz": c.get("quiz_opciones") or []} for c in conceptos]
-    try:
-        from google import genai
-        client = genai.Client(api_key=gemini_key)
-        prompt = (
-            "Eres corrector de estilo en ESPAÑOL. Corrige SOLO errores de ORTOGRAFÍA y TILDES en estos "
-            "textos de anuncios. NO cambies el sentido, ni el estilo, ni las MAYÚSCULAS/minúsculas, ni "
-            "agregues o quites palabras: solo arregla la escritura de cada palabra (ej: 'despideron'→"
-            "'despidieron', 'almhadilla'→'almohadilla', 'preico'→'precio', 'cámbilas'→'cámbialas'). "
-            "Devuelve SOLO un JSON array, MISMO orden y MISMAS claves (titular, sub, cta, quiz):\n"
-            + _json.dumps(items, ensure_ascii=False))
-        resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt])
-        m = _re.search(r"\[.*\]", resp.text or "", _re.DOTALL)
-        if not m:
-            return
-        for c, fx in zip(conceptos, _json.loads(m.group(0))):
-            if not isinstance(fx, dict):
-                continue
-            for k in ("titular", "sub", "cta"):
-                if isinstance(fx.get(k), str) and fx[k].strip():
-                    c[k] = fx[k].strip()
-            if isinstance(fx.get("quiz"), list) and fx["quiz"]:
-                c["quiz_opciones"] = fx["quiz"]
-    except Exception:  # noqa: BLE001
-        pass
 
 
 def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
@@ -1407,16 +1268,31 @@ def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
     if not (prod and os.path.exists(prod)):
         raise HTTPException(400, "No subiste foto del producto en el paso 1")
     try:
-        _integrar_producto_ia(v["imagen"], prod, _load_env_key())
+        res = _integrar_producto_ia(v["imagen"], prod, _load_env_key())
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo poner el producto: {e}")
+    if not res:   # bloqueo/cuota/sin imagen → el ad quedó intacto; avisa de verdad
+        raise HTTPException(502, "No se pudo integrar el producto (reintenta o revisa el tope de gasto de Google).")
     return {"imagen": v["imagen"]}
 
 
+def _within(path: str, *bases: str) -> bool:
+    """True si `path` está DENTRO de alguna de las carpetas base (sin traversal ni hermanos tipo 'work2')."""
+    try:
+        full = os.path.abspath(path)
+    except Exception:  # noqa: BLE001
+        return False
+    for b in bases:
+        base = os.path.abspath(b)
+        if full == base or full.startswith(base + os.sep):
+            return True
+    return False
+
+
 def _safe_path(path: str) -> str:
-    """Solo permite servir archivos dentro de WORK_DIR."""
+    """Solo permite servir archivos dentro de WORK_DIR o UPLOAD_DIR."""
     full = os.path.abspath(path)
-    if not full.startswith(os.path.abspath(WORK_DIR)):
+    if not _within(full, WORK_DIR, UPLOAD_DIR):
         raise HTTPException(403, "Ruta no permitida")
     if not os.path.exists(full):
         raise HTTPException(404, "Archivo no existe")

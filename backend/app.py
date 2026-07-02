@@ -801,7 +801,8 @@ async def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(.
     return {"job_id": job_id}
 
 
-def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: str):
+def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: str,
+                 oferta_2x1: bool = False, product_desc: str = ""):
     job = JOBS[job_id]
 
     def progress(msg, pct=None):
@@ -812,6 +813,23 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
     try:
         wd = os.path.join(WORK_DIR, job_id)
         os.makedirs(wd, exist_ok=True)
+        # Oferta 2x1: NO se traduce verbatim; se usa la voz COLOMBIANA que reescribe el guion
+        # (español colombiano) y MENCIONA el 2x1 en el audio.
+        if oferta_2x1:
+            from pipeline.dub_colombia import generar_dub
+            progress("Doblando a español colombiano (con oferta 2x1)...", 15)
+            d = generar_dub(video_path, api_key=_load_env_key(), eleven_key=_load_eleven_key(),
+                            product_desc=product_desc, voz="juan_carlos", oferta_2x1=True,
+                            generar_video=True, work_dir=wd,
+                            progress=lambda m, p=None: progress(m, p if p is not None else 50))
+            if d.get("ok") and d.get("video"):
+                job["result"] = {"ok": True, "path": d["video"], "target_lang": "es-CO · 2x1"}
+                job["status"] = "done"; job["progress"] = 100
+                job["message"] = "Listo (voz colombiana · menciona el 2x1)"
+            else:
+                job["status"] = "error"
+                job["message"] = d.get("error", "Error en el doblaje colombiano")
+            return
         job["progress"] = 15
         progress("Enviando el video a ElevenLabs para doblarlo...", 15)
         out = os.path.join(wd, f"dubbed_{target_lang}.mp4")
@@ -830,7 +848,8 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
 
 @app.post("/api/dub")
 async def dub(video: UploadFile = File(...), target_lang: str = Form("en"),
-              source_lang: str = Form("auto")):
+              source_lang: str = Form("auto"), oferta_2x1: bool = Form(False),
+              product_desc: str = Form("")):
     if not video:
         raise HTTPException(400, "Sube un video")
     job_id = uuid.uuid4().hex[:12]
@@ -841,7 +860,9 @@ async def dub(video: UploadFile = File(...), target_lang: str = Form("en"),
         shutil.copyfileobj(video.file, f)
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_dub_job, args=(job_id, vpath, target_lang, source_lang),
+    threading.Thread(target=_run_dub_job,
+                     args=(job_id, vpath, target_lang, source_lang, bool(oferta_2x1),
+                           product_desc.strip()),
                      daemon=True).start()
     return {"job_id": job_id}
 

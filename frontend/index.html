@@ -947,8 +947,16 @@
         <select id="dubTgt" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px"></select>
       </div>
     </div>
+    <label class="toggle" style="margin-top:14px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="dub2x1" onchange="document.getElementById('dubDescWrap').style.display=this.checked?'block':'none'">
+      🎁 Es oferta 2x1 — usa voz colombiana y lo menciona en el audio
+    </label>
+    <div id="dubDescWrap" style="display:none;margin-top:10px">
+      <input type="text" id="dubDesc" placeholder="¿Qué producto es? (opcional, ayuda al guion del 2x1)"
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+    </div>
     <button class="btn" id="dubGo" style="margin-top:16px" disabled>🎙️  Doblar video</button>
-    <p class="pmsg" style="margin-top:8px">⏱️ El doblaje tarda unos minutos (lo procesa ElevenLabs).</p>
+    <p class="pmsg" style="margin-top:8px">⏱️ El doblaje tarda unos minutos (lo procesa la IA).</p>
     <div class="card hidden" id="dubProg" style="margin-top:14px">
       <div class="bar"><div id="dubBar"></div></div>
       <div class="pmsg" id="dubMsg">Procesando…</div>
@@ -1362,6 +1370,8 @@ document.getElementById("dubGo").onclick = async ()=>{
   fd.append("video", dubFile);
   fd.append("target_lang", document.getElementById("dubTgt").value);
   fd.append("source_lang", document.getElementById("dubSrc").value);
+  fd.append("oferta_2x1", document.getElementById("dub2x1").checked);
+  fd.append("product_desc", document.getElementById("dubDesc").value);
   const r = await fetch("/api/dub",{method:"POST",body:fd});
   const j = await r.json();
   dubPoll(j.job_id);

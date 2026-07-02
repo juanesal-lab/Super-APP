@@ -1102,3 +1102,16 @@ Jack: mejorar el motor de búsqueda para que encuentre. Descubrí que la API (ti
   con visión los 28 MEJORES primero. Ranking final: muestra producto → español → poco texto → más views.
 - Probado (sin visión): "crema veneno de abeja" → 99 candidatos, top = "Bee Venom Treatment Cream",
   "before and after", "Piel más lisa firme y glow" (su producto exacto + beneficios). Solo mi módulo.
+
+### 2026-07-01 · Claude (juanesal-lab) · 🎨 Ads imagen v2: formatos falso-interactivos de la skill
+Juan: "guíate de la skill no más" — los ads salían solo con "falso play". Implementé los formatos
+falso-interactivos que define la skill `ads-disruptivos-imagen` (estilo-juan-aprendido.md):
+- Compositor `componer_ad` ahora hace **dispatch por `formato`**: falso play ▶ / **quiz** (fila de
+  pastillas + cursor-mano) / **slider antes/después** (línea + manija ◄► + ANTES/DESPUÉS) / **chat**
+  (burbujas WhatsApp). Helpers nuevos: `_quiz`, `_quiz_rows`, `_slider`, `_chat_bubbles`, `_cursor_hand`,
+  `_play_bar`.
+- `_TOOL_V2` + `_SISTEMA_V2`: Claude ahora ELIGE `formato` de esos 4 y los VARÍA entre los 10 conceptos;
+  para quiz da `quiz_opciones` (4-6 pastillas). Probado: 10 conceptos → {play:4, slider:2, quiz:2, chat:2}.
+- Solo toqué `backend/pipeline/disruptive_images.py` y `frontend/index.html` (chip de formato + "Seleccionar todas").
+- ⚠️ Falta (opcional, si Juan lo pide): formatos "cursor en botón", "post IG", "toca-para-revelar", y
+  sellos aprobado/garantía. Generación real necesita créditos Google OK.

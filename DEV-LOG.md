@@ -1232,3 +1232,17 @@ en `disruptive_images.py`:
   frases seguidas, silencedetect NO halla silencios largos.
 - No pude probar el dub completo end-to-end: el Gemini de Jack está en el TOPE de gasto (429). Cuando
   suba el cap, el doblaje ya sale fluido. Afecta Crear creativo, Clon y Doblaje 2x1.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🚀 Ads imagen: Nano Banana 2 + producto integrado por IA
+Juan: las imágenes aún faltaban calidad/creatividad y ODIABA el producto pegado plano. Verifiqué que el
+prompt SÍ sigue su skill y los conceptos son buenos → el cuello era el MODELO y mi pegado PIL. Decisiones de
+Juan: usar Nano Banana 2 (aunque cueste) + integrar el producto con IA. Cambios en `disruptive_images.py`:
+- `_IMG_MODEL = "gemini-3-pro-image-preview"` (Nano Banana 2 / Gemini 3 Pro Image). MUCHO más fotorrealista
+  y **escribe el texto bien** (los typos del sub desaparecieron). Misma key de Google. Es más lento (~20-25s
+  por imagen) y cuesta más por imagen (Juan lo aceptó).
+- NUEVO `_integrar_producto_ia`: 2ª pasada — pasa el ad + la foto REAL del producto (limpiada con
+  `_recortar_producto`) a Nano Banana 2 y le pide COLOCARLO integrado en la escena (luz+sombra reales,
+  producto idéntico, sin tocar el resto). Reemplaza el pegado plano `_pegar_producto` (que Juan odiaba).
+- `generar_ad_fullprompt` ahora termina con `_integrar_producto_ia` (2 llamadas Pro por imagen).
+- Probado con el Medicube stick: calidad cine + producto integrado y fiel + ortografía perfecta. Enorme salto.
+- ⚠️ AVISO: 10 imágenes = ~20 llamadas Pro → más gasto/tiempo. Ojo con el tope de Google (ai.studio/spend).

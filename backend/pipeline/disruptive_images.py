@@ -16,8 +16,8 @@ from typing import Callable
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 _CLAUDE = "claude-opus-4-8"
-_IMG_MODEL = "gemini-2.5-flash-image"   # Nano Banana
-_TXT_MODEL = "gemini-2.5-flash"         # para verificar ortografía del render
+_IMG_MODEL = "gemini-3-pro-image-preview"   # Nano Banana 2 (Gemini 3 Pro Image) — calidad pro
+_TXT_MODEL = "gemini-2.5-flash"             # para verificar ortografía del render
 
 _BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _FONT_XB = os.path.join(_BASE, "assets", "fonts", "Poppins-ExtraBold.ttf")
@@ -624,11 +624,52 @@ def _pegar_producto(out_path: str, product_image_path: str | None) -> str:
     return out_path
 
 
+def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_key: str) -> str:
+    """2ª pasada: Nano Banana 2 mete el PRODUCTO REAL integrado en la escena (con luz y sombra reales,
+    no pegado plano). Mantiene el producto idéntico a la foto. Si falla, deja el ad sin producto."""
+    if not (product_image_path and os.path.exists(product_image_path)):
+        return ad_path
+    try:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=gemini_key)
+        ad_b = open(ad_path, "rb").read()
+        prod = _recortar_producto(Image.open(product_image_path))   # producto limpio, sin logos/fondo
+        buf = ad_path + ".prod.png"
+        prod.save(buf)
+        prod_b = open(buf, "rb").read()
+        try:
+            os.remove(buf)
+        except OSError:
+            pass
+        prompt = (
+            "Edit the FIRST image (a vertical social-media video ad). Take the EXACT product shown in the "
+            "SECOND image and place it standing in the LOWER-LEFT corner, about 30% of the width, as if it "
+            "naturally belongs in the scene: match the scene's lighting/white-balance and add a soft realistic "
+            "contact shadow so it doesn't look pasted. Keep the product's shape, colors and label IDENTICAL to "
+            "the reference — do NOT redesign it, do NOT add any logo, watermark or extra text on it. Change "
+            "NOTHING else in the first image: keep all existing captions, the video player, progress bar and "
+            "the CTA button exactly as they are. Output only the edited first image.")
+        r = client.models.generate_content(
+            model=_IMG_MODEL,
+            contents=[prompt,
+                      types.Part.from_bytes(data=ad_b, mime_type="image/png"),
+                      types.Part.from_bytes(data=prod_b, mime_type="image/png")])
+        for p in r.candidates[0].content.parts:
+            if getattr(p, "inline_data", None):
+                with open(ad_path, "wb") as f:
+                    f.write(p.inline_data.data)
+                return ad_path
+    except Exception:  # noqa: BLE001
+        pass
+    return ad_path
+
+
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                           product_image_path: str | None = None, verify: bool = True,
                           max_regen: int = 2) -> str | None:
-    """Genera el ad (Nano Banana dibuja la escena+texto SIN producto) + verifica ortografía/regenera + PEGA
-    el producto REAL del cliente abajo-izquierda (exacto). Devuelve la ruta o None."""
+    """Genera el ad (Nano Banana 2 dibuja la escena+texto SIN producto) + verifica ortografía/regenera +
+    2ª pasada que INTEGRA el producto REAL del cliente en la escena (natural). Devuelve la ruta o None."""
     prompt = variant.get("prompt", "")
     if not prompt:
         return None
@@ -653,7 +694,7 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             break
     if not got:
         return None
-    return _pegar_producto(out_path, product_image_path)   # producto real EXACTO abajo-izquierda
+    return _integrar_producto_ia(out_path, product_image_path, gemini_key)   # 2ª pasada: producto integrado
 
 
 def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,

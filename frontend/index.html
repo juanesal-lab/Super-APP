@@ -229,7 +229,8 @@
       <img id="autoCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ven los subtítulos" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
     </div>
     <div class="autoChk">
-      <label><input type="checkbox" id="auto2x1"> Oferta 2x1</label>
+      <label><input type="checkbox" id="auto2x1"> Oferta 2x1 (en la voz)</label>
+      <label><input type="checkbox" id="autoBanner"> 🏷️ Banner arriba: 2x1 · envío gratis · pagas al recibir</label>
     </div>
 
     <button class="autoBtn" id="autoGo" disabled onclick="autoRun()">✨ Generar Creativo</button>
@@ -260,6 +261,7 @@
       fd.append('voz',document.getElementById('autoVoz').value);
       fd.append('caption_style',document.getElementById('autoCapStyle').value);
       fd.append('oferta_2x1',document.getElementById('auto2x1').checked);
+      fd.append('banner_oferta',document.getElementById('autoBanner').checked);
       fd.append('verticalizar',document.getElementById('autoVert').value);
       document.getElementById('autoGo').disabled=true;
       document.getElementById('autoResult').innerHTML='';

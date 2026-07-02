@@ -365,6 +365,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
                 verticalizar=settings.get("verticalizar", True),
                 caption_style=settings.get("caption_style", "bold_outline"),
                 oferta=settings.get("oferta", ""),
+                banner_oferta=settings.get("banner_oferta", False),
                 work_dir=os.path.join(WORK_DIR, job_id, f"c{i}"),
                 progress=progress,
             )
@@ -390,6 +391,7 @@ async def auto(
     verticalizar: bool = Form(True),
     caption_style: str = Form("bold_outline"),
     oferta: str = Form(""),
+    banner_oferta: bool = Form(False),
 ):
     if not files:
         raise HTTPException(400, "Sube al menos un video ganador")
@@ -403,6 +405,7 @@ async def auto(
         "verticalizar": bool(verticalizar),
         "caption_style": caption_style,
         "oferta": oferta.strip(),
+        "banner_oferta": bool(banner_oferta),
     }
     threading.Thread(target=_run_auto_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}

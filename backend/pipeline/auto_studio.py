@@ -240,6 +240,7 @@ def generar_creativo_auto(
     verticalizar: bool = True,
     caption_style: str = "bold_outline",
     oferta: str = "",
+    banner_oferta: bool = False,
     work_dir: str | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
@@ -357,6 +358,17 @@ def generar_creativo_auto(
             paso("Subtítulos", False, str(e))
     else:
         paso("Subtítulos", False, "sin texto de guion")
+
+    # 6b) BANNER DE OFERTA ARRIBA (opcional) — la IA lo pone donde no tape nada
+    if banner_oferta:
+        report("🏷️ Poniendo el banner de oferta (2x1 · envío gratis)...", 88)
+        try:
+            from .offer_banner import add_offer_banner
+            out = os.path.join(work_dir, "banner.mp4")
+            current = add_offer_banner(current, out, work_dir, gemini_key=gemini_key)
+            paso("Banner oferta", True, "2x1 · envío gratis · pagas al recibir")
+        except Exception as e:  # noqa: BLE001
+            paso("Banner oferta", False, str(e))
 
     # 7) NORMALIZAR AUDIO ----------------------------------------------------
     report("🔊 Normalizando el audio...", 92)

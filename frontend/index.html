@@ -569,6 +569,7 @@
         <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useCaptions" checked> 💬 Subtítulos animados</label>
+        <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="clip2x1"> 🎁 Oferta 2x1</label>
         <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
       </span>
     </div>
@@ -1389,6 +1390,7 @@ function buildForm(){
   fd.append("text_mode", document.getElementById("textMode").value);
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);
+  fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
   return fd;
 }
 

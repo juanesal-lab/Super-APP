@@ -1070,3 +1070,35 @@ Jack pidió look profesional tipo constructor de páginas, con dorado/crema/negr
 - Fix: ahora el video hace LOOP (`-stream_loop -1` + `-shortest`) → sigue MOVIÉNDOSE (repite) hasta que
   termina la voz. Verificado: salida dura lo de la voz y el frame tardío = frame temprano (loopeó, no congeló).
 - AVISO Juan: toqué tu assemble.py (add_voiceover / add_voiceover_and_sfx), interno.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🎯 Búsqueda TikTok = MISMO producto (IA verifica) + 2x1 en guiones
+Jack: (1) la búsqueda daba productos parecidos pero en OTRA forma (pidió crema, salía bótox); quiere sí o
+sí el mismo producto, en español y con poco texto, aunque tarde más. (2) 2x1 seleccionable en los guiones.
+- **`tiktok_search.py` reescrito:** (a) Gemini mira la foto y saca keywords CON la forma/formato +
+  descripción precisa; (b) trae hartos candidatos; (c) **verifica con Gemini** comparando la PORTADA de
+  cada candidato contra la foto → solo deja los del MISMO producto (tipo Y forma), y ordena español +
+  poco texto primero. Probado: crema→match, faja→rechazada, español+poco texto va primero.
+  ⚠️ Cuesta más (una llamada de visión por candidato, ~12-15) pero acierta, como pidió Jack.
+- **2x1 en guiones de voz en off:** `generate_scripts(oferta_2x1)` integra "pides una y llevas otra
+  gratis"; checkbox "🎁 Oferta 2x1" en Cortar clips (junto a Voz en off) → /api/scripts. Probado.
+- (Crear creativo YA tenía el 2x1.) AVISO Juan: toqué tu Cortar clips (checkbox+buildForm) y /api/scripts.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔎➕ Búsqueda TikTok AMPLIADA + verificación más estricta
+Jack: aún se colaba un producto que no era el suyo; quiere ampliar la búsqueda, que salgan escenas con
+BENEFICIOS y que sean SÍ O SÍ su producto.
+- **Amplía:** de la foto/nombre saco VARIAS consultas (producto + "resultados", "antes y después",
+  "reseña", "cómo funciona") → junté ~48 candidatos únicos (antes 15). Videos que muestran el producto/beneficios.
+- **Más estricto:** _verificar ahora usa portada + TÍTULO, exige match INEQUÍVOCO (misma forma) y devuelve
+  `muestra_producto`. El ranking pone primero los que MUESTRAN el producto + español + poco texto.
+- Tope de 24 verificaciones por búsqueda (acota costo). Solo mi módulo tiktok_search.py.
+- ⚠️ Más candidatos = un poco más de tiempo/gasto por búsqueda, pero acierta mejor (lo que pidió Jack).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🚀 Motor de búsqueda TikTok MUCHO más potente
+Jack: mejorar el motor de búsqueda para que encuentre. Descubrí que la API (tikwm) daba mucho más:
+- **Paginación** (cursor) → `buscar_tiktok` ahora trae varias páginas.
+- **Engagement + metadata** por video: play_count, digg, region, duration.
+- `buscar`: junta multi-consulta × páginas → ~99 candidatos únicos (antes 15). PRE-ORDENA por región
+  hispana (_ES_REGIONS) + más views (virales probados), descarta duraciones raras (4-120s), y verifica
+  con visión los 28 MEJORES primero. Ranking final: muestra producto → español → poco texto → más views.
+- Probado (sin visión): "crema veneno de abeja" → 99 candidatos, top = "Bee Venom Treatment Cream",
+  "before and after", "Piel más lisa firme y glow" (su producto exacto + beneficios). Solo mi módulo.

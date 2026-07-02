@@ -589,7 +589,8 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
 
         progress("Generando 10 guiones de voz en off...", 70)
         scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
-                                   settings["target_seconds"], sample, blueprint=blueprint)
+                                   settings["target_seconds"], sample, blueprint=blueprint,
+                                   oferta_2x1=settings.get("oferta_2x1", False))
         # Guardar estado para la fase 2 (renderizado con voz)
         job.update({
             "selected": selected, "has_audio_by_src": a["has_audio_by_src"],
@@ -622,6 +623,7 @@ async def scripts(
     caption_pos: str = Form("abajo"),
     use_music: bool = Form(False),
     use_captions: bool = Form(False),
+    oferta_2x1: bool = Form(False),
     reference_ad: UploadFile | None = File(None),
 ):
     job_id, paths = _save_uploads(files or [])
@@ -649,6 +651,7 @@ async def scripts(
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "use_music": bool(use_music), "captions": bool(use_captions),
+        "oferta_2x1": bool(oferta_2x1),
         "reference_ad": ref_path,
     }
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()

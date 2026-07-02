@@ -10,8 +10,122 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
 _CLAUDE = "claude-opus-4-8"
 _IMG_MODEL = "gemini-2.5-flash-image"   # Nano Banana
+
+_BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_FONT_XB = os.path.join(_BASE, "assets", "fonts", "Poppins-ExtraBold.ttf")
+_FONT_B = os.path.join(_BASE, "assets", "fonts", "Poppins-Bold.ttf")
+
+
+# ─────────────────────  COMPOSICIÓN DE TEXTO (fuentes reales, ortografía perfecta)  ───────────
+def _hex(c, default=(17, 17, 17)):
+    try:
+        s = str(c).lstrip("#")
+        if len(s) == 3:
+            s = "".join(ch * 2 for ch in s)
+        if len(s) == 6:
+            return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+    except (ValueError, TypeError):
+        pass
+    return default
+
+
+def _wrap(draw, text, font, max_w):
+    lines, cur = [], ""
+    for w in text.split():
+        t = (cur + " " + w).strip()
+        if draw.textlength(t, font=font) <= max_w or not cur:
+            cur = t
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _fit(draw, text, font_path, max_w, max_h, start=98, mins=38):
+    """Encuentra el tamaño de fuente que hace caber `text` (con word-wrap) en max_w x max_h."""
+    for size in range(start, mins - 1, -2):
+        font = ImageFont.truetype(font_path, size)
+        lines = _wrap(draw, text, font, max_w)
+        lh = size * 1.12
+        if all(draw.textlength(l, font=font) <= max_w for l in lines) and len(lines) * lh <= max_h:
+            return font, lines, lh
+    font = ImageFont.truetype(font_path, mins)
+    return font, _wrap(draw, text, font, max_w), mins * 1.12
+
+
+def _cursor(draw, x, y, s=52):
+    """Dibuja un cursor-mano/flecha blanco (señal de 'clickeable')."""
+    pts = [(x, y), (x, y + s), (x + s * 0.28, y + s * 0.72), (x + s * 0.44, y + s),
+           (x + s * 0.60, y + s * 0.92), (x + s * 0.44, y + s * 0.64), (x + s * 0.72, y + s * 0.64)]
+    draw.polygon(pts, fill=(255, 255, 255, 255), outline=(0, 0, 0, 255))
+
+
+def componer_ad(scene_path: str, out_path: str, *, titular: str, sub: str = "", cta: str = "VER PRECIO",
+                precio: str = "", ofertas: list[str] | None = None, banda_hex: str = "#111111",
+                cta_hex: str = "#E11D2E", W: int = 1080, H: int = 1350) -> str:
+    """Compone el ad final: escena (IA) + titular arriba + CTA/precio/ofertas abajo, con FUENTES REALES."""
+    ofertas = [o for o in (ofertas or []) if o]
+    scene = Image.open(scene_path).convert("RGB")
+    img = ImageOps.fit(scene, (W, H), Image.LANCZOS)
+    draw = ImageDraw.Draw(img, "RGBA")
+    band = _hex(banda_hex, (17, 17, 17))
+
+    # HEADER: banda de color + titular (auto-fit, Poppins ExtraBold)
+    pad = 46
+    font, lines, lh = _fit(draw, (titular or "").upper(), _FONT_XB, W - 2 * pad, H * 0.24, start=100, mins=42)
+    sub_h = 44 if sub else 0
+    header_h = int(len(lines) * lh + pad * 1.3 + sub_h)
+    draw.rectangle([0, 0, W, header_h], fill=band + (232,))
+    y = int(pad * 0.65)
+    for l in lines:
+        w = draw.textlength(l, font=font)
+        draw.text(((W - w) // 2, y), l, font=font, fill=(255, 255, 255, 255))
+        y += int(lh)
+    if sub:
+        sf = ImageFont.truetype(_FONT_B, 36)
+        sw = draw.textlength(sub, font=sf)
+        draw.text(((W - sw) // 2, y + 2), sub, font=sf, fill=(255, 255, 255, 235))
+
+    # FOOTER (de abajo hacia arriba): precio -> CTA pill -> badges de oferta
+    yb = H - 40
+    # precio
+    if precio:
+        pf = ImageFont.truetype(_FONT_XB, 48)
+        pw = draw.textlength(precio, font=pf)
+        draw.rectangle([0, yb - 66, W, yb], fill=(0, 0, 0, 150))
+        draw.text(((W - pw) // 2, yb - 58), precio, font=pf, fill=(255, 255, 255, 255))
+        yb -= 86
+    # CTA pill + cursor
+    cf = ImageFont.truetype(_FONT_XB, 48)
+    ctatxt = (cta or "VER PRECIO").upper()
+    cw = draw.textlength(ctatxt, font=cf)
+    bh = 100
+    bw = int(cw + 130)
+    bx = (W - bw) // 2
+    by = yb - bh
+    draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=bh // 2, fill=_hex(cta_hex, (225, 29, 46)) + (255,))
+    draw.text((bx + (bw - cw) // 2, by + (bh - 56) // 2), ctatxt, font=cf, fill=(255, 255, 255, 255))
+    _cursor(draw, bx + bw - 40, by + bh - 30)
+    yb = by - 20
+    # badges de oferta (pills amarillas)
+    if ofertas:
+        of = ImageFont.truetype(_FONT_B, 34)
+        widths = [draw.textlength(o.upper(), font=of) + 44 for o in ofertas]
+        total = sum(widths) + 16 * (len(ofertas) - 1)
+        x = (W - total) // 2
+        for o, w in zip(ofertas, widths):
+            draw.rounded_rectangle([x, yb - 56, x + w, yb - 4], radius=26, fill=(255, 214, 10, 255))
+            draw.text((x + 22, yb - 50), o.upper(), font=of, fill=(20, 20, 20, 255))
+            x += w + 16
+
+    img.convert("RGB").save(out_path, quality=92)
+    return out_path
 
 # Estilo de Juan destilado (de la skill ads-disruptivos-imagen) -> system prompt del cerebro creativo.
 _SISTEMA = """Eres un DIRECTOR DE ARTE DISRUPTIVO para ads de IMAGEN ESTÁTICA (Meta/Instagram/TikTok) de \
@@ -94,6 +208,113 @@ _CIERRE = (" Thick bold sans-serif fonts, high contrast, saturated colors, profe
            "advertising composition, 4:5 vertical aspect ratio, render all embedded text crisply and "
            "spelled EXACTLY as written. Avoid: extra fingers, deformed hands, garbled or misspelled text, "
            "random logos, watermarks, nudity, low-resolution artifacts.")
+
+
+# ─────────────────────  V2: 6 ángulos con escena LIMPIA + datos para componer texto  ──────────
+_SISTEMA_V2 = """Eres un DIRECTOR DE ARTE DISRUPTIVO para ads de IMAGEN de dropshipping en Colombia (COD).
+Tu trabajo: convertir un producto en 6 conceptos que FRENAN EL SCROLL — ideas extraordinarias, exageradas,
+casi ABSURDAS (pattern-interrupt), MUY DIFERENTES entre sí, que la gente no puede ignorar.
+
+CLAVE (arquitectura nueva): el TEXTO del anuncio (titular, CTA, precio, ofertas) NO va dentro de la imagen
+generada — se compone aparte con fuentes reales. Así que el `escena_prompt` debe describir SOLO LA ESCENA
+VISUAL disruptiva, en INGLÉS, SIN NINGÚN TEXTO, letra, cartel ni palabra en la imagen (dilo explícito:
+"absolutely no text, no letters, no words"). Deja aire arriba y abajo del encuadre para poner el texto luego.
+
+REGLAS DE ORO:
+- Cada concepto debe ser DISTINTO en mecanismo (miedo, deseo, humor, metáfora surreal, prueba/autoridad,
+  curiosidad, comparación/precio) y en ESCENA. Nada de 6 versiones parecidas — literalmente muy diferentes.
+- Dramatiza el dolor/deseo hasta lo absurdo. Metáforas LITERALES y extremas (ojeras = maletas, piel = cuero
+  agrietado, dolor = ladrillo). Lo inesperado gana. PROHIBIDO el "frasco sobre fondo blanco + persona feliz".
+- COHERENCIA: la escena debe TENER SENTIDO y conectar con el dolor/deseo real del producto (raro con
+  propósito, no raro porque sí). Usa el contexto de la página de venta si te lo doy.
+- Fotorrealista (DSLR o UGC iPhone), alto impacto.
+
+CUMPLIMIENTO Meta: nada de curas absolutas ni % médicos; antes/después de cuerpo/rostro insinuado (no split
+clínico); sin desnudez ni contenido sexual explícito (shock por drama/metáfora, no por piel).
+
+Para cada concepto das: el ángulo, la escena (prompt visual sin texto), y el TEXTO en español colombiano
+(tuteo, corto) para componer: titular (gancho, MAYÚSCULAS), sub opcional, CTA ("VER PRECIO", "TOCA PARA
+VER", "DESLIZA Y MIRÁ"), y 2 colores hex (banda del titular, botón CTA) que combinen con la escena y con
+alto contraste. Devuelve 6."""
+
+_TOOL_V2 = {
+    "name": "proponer_conceptos",
+    "description": "Propone 6 conceptos disruptivos (escena limpia + texto para componer).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "conceptos": {
+                "type": "array",
+                "description": "Exactamente 6 conceptos, MUY diferentes entre sí (mecanismo y escena distintos).",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "angulo": {"type": "string", "description": "nombre corto del ángulo de venta"},
+                        "mecanismo": {"type": "string", "description": "miedo/deseo/humor/metáfora/prueba/curiosidad/precio"},
+                        "concepto": {"type": "string", "description": "la idea visual disruptiva en 1 frase (español)"},
+                        "por_que": {"type": "string", "description": "por qué frena el scroll y convierte"},
+                        "escena_prompt": {"type": "string", "description": "prompt VISUAL en inglés, SIN texto/letras en la imagen"},
+                        "titular": {"type": "string", "description": "titular para componer (español, corto, MAYÚSCULAS)"},
+                        "sub": {"type": "string", "description": "sub/apoyo opcional (español, corto)"},
+                        "cta": {"type": "string", "description": "texto del botón CTA (español)"},
+                        "banda_hex": {"type": "string", "description": "color hex de la banda del titular"},
+                        "cta_hex": {"type": "string", "description": "color hex del botón CTA"},
+                    },
+                    "required": ["angulo", "mecanismo", "concepto", "escena_prompt", "titular", "cta"],
+                },
+            }
+        },
+        "required": ["conceptos"],
+    },
+}
+
+
+def generar_conceptos_v2(producto: str, page_text: str, ofertas: list[str],
+                         anthropic_key: str) -> list[dict]:
+    """Claude propone 6 conceptos v2 (escena limpia + texto para componer). Devuelve [] si falla."""
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=anthropic_key)
+        ctx = f"PRODUCTO: {producto}\n"
+        if (page_text or "").strip():
+            ctx += f"PÁGINA DE VENTA (contexto real del producto):\n{page_text.strip()[:2800]}\n"
+        if ofertas:
+            ctx += f"OFERTAS que se mostrarán (no las metas en la escena, se componen aparte): {', '.join(ofertas)}\n"
+        resp = client.messages.create(
+            model=_CLAUDE, max_tokens=8000, system=_SISTEMA_V2,
+            tools=[_TOOL_V2], tool_choice={"type": "tool", "name": "proponer_conceptos"},
+            messages=[{"role": "user", "content": ctx + "\nPropón 6 conceptos disruptivos MUY diferentes."}],
+        )
+        for block in resp.content:
+            if getattr(block, "type", None) == "tool_use" and block.name == "proponer_conceptos":
+                return list(block.input.get("conceptos", []))
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  Conceptos v2 (Claude) no disponibles: {e}")
+    return []
+
+
+def generar_ad_compuesto(concepto: dict, out_path: str, *, gemini_key: str, precio: str = "",
+                         ofertas: list[str] | None = None, product_image_path: str | None = None) -> str | None:
+    """Genera la ESCENA (Nano Banana, sin texto) y le COMPONE el texto con fuentes reales."""
+    scene = out_path + ".scene.png"
+    sp = concepto.get("escena_prompt", "") + " Absolutely no text, no letters, no words, no captions anywhere."
+    img = generar_imagen(sp, gemini_key, scene, product_image_path)
+    if not img:
+        return None
+    try:
+        componer_ad(scene, out_path,
+                    titular=concepto.get("titular", ""), sub=concepto.get("sub", ""),
+                    cta=concepto.get("cta", "VER PRECIO"), precio=precio, ofertas=ofertas,
+                    banda_hex=concepto.get("banda_hex", "#111111"),
+                    cta_hex=concepto.get("cta_hex", "#E11D2E"))
+        try:
+            os.remove(scene)
+        except OSError:
+            pass
+        return out_path
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  Composición falló: {e}")
+        return scene   # al menos la escena
 
 
 def generar_conceptos(producto: str, anthropic_key: str,
@@ -197,3 +418,38 @@ def generar_ads_disruptivos(producto: str, work_dir: str, *, anthropic_key: str,
     ok = [v for v in variantes if v.get("imagen")]
     rep("Listo", 100)
     return {"ok": True, "variantes": variantes, "n_ok": len(ok), "n_total": n}
+
+
+def generar_ads_v2(conceptos: list[dict], work_dir: str, *, gemini_key: str, precio: str = "",
+                   ofertas: list[str] | None = None, product_image_path: str | None = None,
+                   progress: Callable[[str, int], None] | None = None) -> dict:
+    """Paso 2: para los conceptos ELEGIDOS, genera escena (Nano Banana) + compone el texto. Nunca lanza."""
+    def rep(m, p):
+        if progress:
+            progress(m, int(p))
+
+    os.makedirs(work_dir, exist_ok=True)
+    if not gemini_key:
+        return {"ok": False, "error": "Falta la API key de Gemini para generar las imágenes."}
+    n = len(conceptos)
+    done = [0]
+    rep(f"Generando {n} imágenes (escena + texto compuesto)...", 8)
+
+    def _one(item):
+        i, c = item
+        out = os.path.join(work_dir, f"ad_{i:02d}.png")
+        try:
+            c["imagen"] = generar_ad_compuesto(c, out, gemini_key=gemini_key, precio=precio,
+                                               ofertas=ofertas, product_image_path=product_image_path)
+        except Exception as e:  # noqa: BLE001
+            c["imagen"] = None
+            c["error"] = str(e)[:150]
+        done[0] += 1
+        rep(f"Imagen {done[0]}/{n} lista...", 8 + int(done[0] / max(1, n) * 88))
+        return c
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        conceptos = list(ex.map(_one, enumerate(conceptos)))
+    ok = [c for c in conceptos if c.get("imagen")]
+    rep("Listo", 100)
+    return {"ok": True, "variantes": conceptos, "n_ok": len(ok), "n_total": n}

@@ -28,7 +28,8 @@ from pipeline.auto_studio import generar_creativo_auto
 from pipeline.narrative import analyze_narrative
 from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
-from pipeline.disruptive_images import generar_ads_disruptivos, generar_imagen
+from pipeline.disruptive_images import (generar_conceptos_v2, generar_ads_v2, generar_ad_compuesto,
+                                        generar_imagen)
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -1103,8 +1104,38 @@ def last_project():
     return {"job_id": best, "n_clips": len(JOBS[best]["result"]["clips"])}
 
 
-def _run_disruptive_job(job_id: str, producto: str, image_path: str | None):
-    """Claude inventa 10 conceptos disruptivos + Nano Banana genera las 10 imágenes."""
+@app.post("/api/disruptive-angles")
+async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
+                            ofertas: str = Form(""), precio: str = Form(""),
+                            product_image: UploadFile | None = File(None)):
+    """Paso 1: analiza producto/link → 6 conceptos disruptivos para que el usuario elija."""
+    if not producto.strip() and not link.strip():
+        raise HTTPException(400, "Escribe tu producto o pega el link de la página")
+    ctx_id = uuid.uuid4().hex[:12]
+    image_path = None
+    if product_image and product_image.filename:
+        up = os.path.join(UPLOAD_DIR, ctx_id)
+        os.makedirs(up, exist_ok=True)
+        image_path = os.path.join(up, "prod_" + os.path.basename(product_image.filename))
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(product_image.file, f)
+    ofertas_list = [o.strip() for o in ofertas.split(",") if o.strip()]
+    page_text = ""
+    if link.strip():
+        try:
+            page_text = fetch_page_text(link.strip(), max_chars=3000)
+        except Exception:  # noqa: BLE001
+            page_text = ""
+    conceptos = generar_conceptos_v2(producto.strip() or link.strip(), page_text,
+                                     ofertas_list, _load_anthropic_key())
+    if not conceptos:
+        raise HTTPException(502, "No se pudieron generar los conceptos (revisa la key de Claude)")
+    JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
+                    "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list}
+    return {"ctx_id": ctx_id, "conceptos": conceptos}
+
+
+def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
     job = JOBS[job_id]
 
     def progress(m, p):
@@ -1112,11 +1143,8 @@ def _run_disruptive_job(job_id: str, producto: str, image_path: str | None):
         job["progress"] = p
 
     try:
-        r = generar_ads_disruptivos(
-            producto, os.path.join(WORK_DIR, job_id),
-            anthropic_key=_load_anthropic_key(), gemini_key=_load_env_key(),
-            product_image_path=image_path, progress=progress,
-        )
+        r = generar_ads_v2(conceptos, os.path.join(WORK_DIR, job_id), gemini_key=_load_env_key(),
+                           precio=precio, ofertas=ofertas, product_image_path=image_path, progress=progress)
         job["result"] = r
         job["status"] = "done" if r.get("ok") else "error"
         if not r.get("ok"):
@@ -1127,29 +1155,31 @@ def _run_disruptive_job(job_id: str, producto: str, image_path: str | None):
 
 
 @app.post("/api/disruptive-images")
-async def disruptive_images(producto: str = Form(...),
-                            product_image: UploadFile | None = File(None)):
-    """Genera 10 ads disruptivos de imagen (Claude conceptos + Nano Banana imágenes) de CUALQUIER producto."""
-    if not producto.strip():
-        raise HTTPException(400, "Describe tu producto (qué es y qué dolor resuelve)")
-    job_id = uuid.uuid4().hex[:12]
-    image_path = None
-    if product_image and product_image.filename:
-        up = os.path.join(UPLOAD_DIR, job_id)
-        os.makedirs(up, exist_ok=True)
-        image_path = os.path.join(up, "prod_" + os.path.basename(product_image.filename))
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(product_image.file, f)
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
-                    "result": None, "created": time.time(), "_image_path": image_path}
-    threading.Thread(target=_run_disruptive_job, args=(job_id, producto.strip(), image_path),
-                     daemon=True).start()
-    return {"job_id": job_id}
+async def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
+    """Paso 2: genera las imágenes (escena + texto compuesto) de los conceptos ELEGIDOS."""
+    import json as _json
+    ctx = JOBS.get(ctx_id)
+    if not ctx or not (ctx.get("result") or {}).get("variantes"):
+        raise HTTPException(404, "Primero analiza el producto (paso 1)")
+    try:
+        idxs = [int(i) for i in _json.loads(indices)]
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Selección inválida")
+    todos = ctx["result"]["variantes"]
+    elegidos = [dict(todos[i]) for i in idxs if 0 <= i < len(todos)]
+    if not elegidos:
+        raise HTTPException(400, "Elige al menos un concepto")
+    ctx.update({"status": "running", "progress": 0, "message": "Iniciando...",
+                "result": {"variantes": elegidos}})
+    threading.Thread(target=_run_disruptive_v2_job,
+                     args=(ctx_id, elegidos, ctx.get("_precio", ""), ctx.get("_ofertas", []),
+                           ctx.get("_image_path")), daemon=True).start()
+    return {"job_id": ctx_id}
 
 
 @app.post("/api/regenerate-image")
 def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
-    """Regenera UNA sola imagen (la variante `index` de un job de ads disruptivos). Síncrono."""
+    """Regenera UNA sola imagen (escena limpia + texto compuesto). Síncrono."""
     job = JOBS.get(job_id)
     if not job or not (job.get("result") or {}).get("variantes"):
         raise HTTPException(404, "No hay un proyecto de ads para ese job")
@@ -1158,13 +1188,19 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
         raise HTTPException(400, "Índice fuera de rango")
     v = variantes[index]
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     try:
-        img = generar_imagen(v.get("prompt", ""), _load_env_key(), out,
-                             product_image_path=job.get("_image_path"))
+        if v.get("escena_prompt"):   # concepto v2 → escena + composición de texto
+            img = generar_ad_compuesto(v, out, gemini_key=_load_env_key(),
+                                       precio=job.get("_precio", ""), ofertas=job.get("_ofertas", []),
+                                       product_image_path=job.get("_image_path"))
+        else:                         # v1 → imagen directa
+            img = generar_imagen(v.get("prompt", ""), _load_env_key(), out,
+                                 product_image_path=job.get("_image_path"))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo regenerar: {e}")
     if not img:
-        raise HTTPException(502, "Google no devolvió imagen (reintenta)")
+        raise HTTPException(502, "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
     return {"imagen": img}
 

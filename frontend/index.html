@@ -732,29 +732,52 @@
   <div class="panel" id="p-disruptivo" style="display:none">
   <div class="autoHero">
     <h2>🎨 <span>Ads de imagen disruptivos</span> — de cualquier producto</h2>
-    <p class="lead">Escribe tu producto y la IA hace TODO: <b>Claude inventa 10 conceptos disruptivos</b>
-      (ángulos de venta distintos, que rompen el patrón) y <b>Google AI genera las 10 imágenes</b> listas
-      para Meta/TikTok — con el texto ya incrustado, en tu estilo (formatos falso-interactivos, cierre COD).</p>
+    <p class="lead">Pega tu producto/link y la IA hace TODO: <b>Claude te da 6 ángulos disruptivos</b>, tú
+      eliges los que más te gusten, y <b>Google AI genera las imágenes</b> con el texto <b>compuesto en
+      fuentes reales</b> (ortografía perfecta) — en tu estilo (formatos falso-interactivos, cierre COD).</p>
 
-    <textarea id="disProd" class="full" rows="3" placeholder="¿Qué es tu producto y qué dolor resuelve? Ej: MultiBalm, barra hidratante para el rostro (mujeres 40-60), da glow y disimula ojeras y líneas de expresión. $89.900 pago contraentrega."></textarea>
+    <textarea id="disProd" class="full" rows="2" placeholder="¿Qué es tu producto y qué dolor resuelve? Ej: MultiBalm, barra hidratante para el rostro (mujeres 40-60), glow y disimula ojeras."></textarea>
+    <div class="prodGrid" style="margin-top:10px">
+      <input type="text" id="disLink" class="full" placeholder="🔗 Link de tu página de venta (opcional — da contexto real)">
+      <input type="text" id="disPrecio" class="full" placeholder="💲 Precio a mostrar (ej. $89.900 · Pago contraentrega)">
+    </div>
+
+    <div class="disOfertas">
+      <span style="font-weight:700;font-size:13px;color:var(--muted)">Ofertas:</span>
+      <label><input type="checkbox" class="disOf" value="2x1"> 2x1</label>
+      <label><input type="checkbox" class="disOf" value="Envío gratis"> Envío gratis</label>
+      <label><input type="checkbox" class="disOf" value="50% OFF"> 50% OFF</label>
+      <label><input type="checkbox" class="disOf" value="Paga 2 lleva 3"> Paga 2 lleva 3</label>
+      <label><input type="checkbox" class="disOf" value="Pago contraentrega"> Contraentrega</label>
+    </div>
 
     <input type="file" id="disImg" accept="image/*" class="hidden">
     <label class="autoDrop" id="disImgDrop" for="disImg" style="margin-top:12px">
       <b id="disImgName">🖼️ Sube una foto de tu producto (opcional)</b>
-      <div class="s">Para que el producto salga real y consistente en las imágenes</div>
+      <div class="s">Para que el producto salga real en las escenas</div>
     </label>
 
-    <button class="autoBtn" id="disGo" onclick="disRun()">🎨 Generar 10 ads disruptivos</button>
+    <button class="autoBtn" id="disGo" onclick="disAnalyze()">🔍 Analizar y darme 6 ángulos</button>
 
     <div class="autoProg hidden" id="disProg">
       <div class="autoBarWrap"><div class="autoBar" id="disBar"></div></div>
       <div class="autoMsg" id="disMsg">Iniciando…</div>
     </div>
+    <div id="disAngulos"></div>
     <div id="disResult"></div>
   </div>
 
   <style>
-    #disProd{font-size:14px;line-height:1.5;min-height:78px;resize:vertical;margin-bottom:12px}
+    #disProd{font-size:14px;line-height:1.5;min-height:56px;resize:vertical}
+    .disOfertas{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:12px;font-size:13px}
+    .disOfertas label{display:flex;align-items:center;gap:5px;cursor:pointer}
+    .disConceptos{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;margin-top:14px}
+    .disConcepto{background:var(--card2);border:2px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:border-color .15s}
+    .disConcepto.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+    .disConcepto .cang{font-weight:800;font-size:13px;color:var(--accent)}
+    .disConcepto .ctit{font-weight:700;font-size:14px;color:var(--txt);margin:4px 0 6px}
+    .disConcepto .ccon{font-size:12px;color:var(--muted);line-height:1.45}
+    .disConcepto .cmec{display:inline-block;font-size:10px;font-weight:700;background:var(--line);color:var(--muted);padding:1px 8px;border-radius:20px;margin-top:8px}
     .disGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;margin-top:16px}
     .disCard{background:var(--card2);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
     .disCard img{width:100%;display:block;background:#000}
@@ -777,21 +800,53 @@
       f.addEventListener('change',e=>{ const x=e.target.files[0];
         document.getElementById('disImgName').textContent = x?'🖼️ '+x.name:'🖼️ Sube una foto de tu producto (opcional)'; });
     })();
-    async function disRun(){
-      const prod=document.getElementById('disProd').value.trim();
+    function disOfertas(){ return [...document.querySelectorAll('.disOf:checked')].map(c=>c.value); }
+    let disConceptos=[], disCacheBust=0;
+    async function disAnalyze(){
+      const prod=document.getElementById('disProd').value.trim(), link=document.getElementById('disLink').value.trim();
       const msg=document.getElementById('disMsg'), prog=document.getElementById('disProg');
-      if(!prod){ prog.classList.remove('hidden'); msg.textContent='Escribe tu producto 👆'; return; }
-      const fd=new FormData(); fd.append('producto',prod);
+      if(!prod && !link){ prog.classList.remove('hidden'); msg.textContent='Escribe tu producto o pega el link 👆'; return; }
+      const fd=new FormData();
+      fd.append('producto',prod); fd.append('link',link);
+      fd.append('precio',document.getElementById('disPrecio').value.trim());
+      fd.append('ofertas',disOfertas().join(','));
       const img=document.getElementById('disImg').files[0]; if(img) fd.append('product_image',img);
       document.getElementById('disGo').disabled=true;
-      document.getElementById('disResult').innerHTML='';
-      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='0%'; msg.textContent='Iniciando…';
+      document.getElementById('disAngulos').innerHTML=''; document.getElementById('disResult').innerHTML='';
+      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='45%'; msg.textContent='🧠 Claude analiza y crea 6 ángulos disruptivos...';
       try{
-        const r=await fetch('/api/disruptive-images',{method:'POST',body:fd}); const j=await r.json();
-        if(j.job_id) disPoll(j.job_id); else { msg.textContent=j.detail||'Error'; document.getElementById('disGo').disabled=false; }
-      }catch(e){ msg.textContent='Error: '+e; document.getElementById('disGo').disabled=false; }
+        const r=await fetch('/api/disruptive-angles',{method:'POST',body:fd}); const j=await r.json();
+        document.getElementById('disGo').disabled=false;
+        if(!j.ctx_id){ msg.innerHTML='<span style="color:var(--warn)">'+(j.detail||'Error')+'</span>'; return; }
+        document.getElementById('disBar').style.width='100%'; msg.textContent='';
+        window._disCtx=j.ctx_id; disConceptos=j.conceptos||[]; disRenderConceptos();
+      }catch(e){ document.getElementById('disGo').disabled=false; msg.textContent='Error: '+e; }
     }
-    let disCacheBust=0;
+    function disRenderConceptos(){
+      const box=document.getElementById('disAngulos');
+      let h='<div class="pmsg" style="margin-top:14px">🎯 Elige los ángulos que más te llamen (los que marques se generan):</div><div class="disConceptos">';
+      disConceptos.forEach((c,i)=>{
+        h+=`<div class="disConcepto" data-i="${i}" onclick="this.classList.toggle('sel')">
+             <div class="cang">${i+1}. ${c.angulo||''}</div>
+             <div class="ctit">"${c.titular||''}"</div>
+             <div class="ccon">${c.concepto||''}</div>
+             <span class="cmec">${c.mecanismo||''}</span></div>`;
+      });
+      h+='</div><button class="autoBtn" style="margin-top:14px" onclick="disGenerate()">🎨 Generar imágenes de los elegidos</button>';
+      box.innerHTML=h;
+    }
+    async function disGenerate(){
+      const sel=[...document.querySelectorAll('.disConcepto.sel')].map(el=>+el.dataset.i);
+      const msg=document.getElementById('disMsg'), prog=document.getElementById('disProg');
+      if(!sel.length){ prog.classList.remove('hidden'); msg.textContent='Marca al menos un ángulo 👆'; return; }
+      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='0%'; msg.textContent='Iniciando…';
+      document.getElementById('disResult').innerHTML='';
+      try{
+        const fd=new FormData(); fd.append('ctx_id',window._disCtx); fd.append('indices',JSON.stringify(sel));
+        const r=await fetch('/api/disruptive-images',{method:'POST',body:fd}); const j=await r.json();
+        if(j.job_id) disPoll(j.job_id); else msg.textContent=j.detail||'Error';
+      }catch(e){ msg.textContent='Error: '+e; }
+    }
     async function disPoll(id){
       const r=await fetch('/api/status/'+id); const j=await r.json();
       document.getElementById('disBar').style.width=(j.progress||0)+'%';

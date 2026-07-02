@@ -1461,3 +1461,18 @@ física del dispositivo. Reforcé `tiktok_search.py` (módulo de Jack):
   completa puso de #1 el dispositivo EXACTO (video UGC mostrándolo), ya no un rectangular random.
 - AVISO Jack: toqué tu tiktok_search.py (2 prompts: analizar_foto y _verificar). No cambié el flujo ni el
   ranking, solo la estrictez del matcheo por forma.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🎞️ Cortar clips: "gifs" ahora WebM 1:1 ≤500KB + con SENTIDO (por fase)
+Juan (con mucho cuidado de no romper el flujo que funciona): los "gifs" (que él llama gif pero el formato es
+otro) que sean WebM en vez de WebP, 1:1, ≤500KB buena compresión, y que tengan SENTIDO (problema/solución/
+producto). Cambios SOLO en la sección de clips SUELTOS (las versiones principales intactas):
+- `gif_export.py`: NUEVO `to_webm()` (ffmpeg VP9, recorte cuadrado 1:1, sube CRF si excede 500KB, sin audio).
+  Dejé `to_animated_webp` intacto por si acaso. `webm_available()` chequea ffmpeg.
+- `orchestrator.py`: los clips sueltos ahora se eligen por FASE en round-robin (problema=ni producto ni uso,
+  solucion=shows_use, producto=product_visible) para que los gifs cuenten la historia; el gif se hace con
+  `to_webm` (.webm); cada loose_clip lleva `fase` + `fase_label`.
+- Frontend: label "GIF (WebM)", badge de fase por clip, Guía actualizada.
+- PROBADO E2E real (process_job con 3 videos): ok=True, 8 versiones + 16 clips, gifs .webm todos ≤500KB, 1:1
+  540x540, calidad nítida. Las fases se diversifican con Gemini activo (sin Gemini todas caen en "problema").
+- AVISO Jack: toqué gif_export.py (+to_webm) y orchestrator.py (selección de loose_set + gif webm). NO toqué
+  build_variations ni las versiones — solo los clips sueltos/gifs.

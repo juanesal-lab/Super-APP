@@ -271,8 +271,23 @@ def render_versions(
 
     report("Recortando clips..." + (" (mejorando calidad)" if enhance else ""), 62)
     clip_dims = dims_for("1:1")   # los clips sueltos siempre en 1:1 (cuadrado)
-    # con muchos videos el pool es grande; para los "clips sueltos" mostramos los mejores 24
-    loose_set = sorted(selected, key=lambda s: s.score, reverse=True)[:24]
+    # Clips sueltos: en vez de solo los de mayor score, elegimos una MEZCLA por FASE
+    # (problema / solución-uso / producto) para que los "gifs" tengan SENTIDO y cuenten la historia.
+    def _fase(s):
+        if s.shows_use:
+            return "solucion"
+        if s.product_visible:
+            return "producto"
+        return "problema"
+    _grupos = {"problema": [], "solucion": [], "producto": []}
+    for s in sorted(selected, key=lambda s: s.score, reverse=True):
+        _grupos[_fase(s)].append(s)
+    loose_set, _idx = [], {k: 0 for k in _grupos}   # round-robin: intercala fases, mejor score primero
+    while len(loose_set) < 24 and any(_idx[k] < len(_grupos[k]) for k in _grupos):
+        for k in ("problema", "solucion", "producto"):
+            if _idx[k] < len(_grupos[k]) and len(loose_set) < 24:
+                loose_set.append(_grupos[k][_idx[k]])
+                _idx[k] += 1
     outs = [os.path.join(clips_dir, f"clip_{idx:02d}_score{int(seg.score)}.mp4")
             for idx, seg in enumerate(loose_set)]
 
@@ -284,20 +299,22 @@ def render_versions(
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         list(ex.map(_render_one, zip(loose_set, outs)))
 
-    # GIFs (WebP animado, como video-studio) de cada clip suelto — ADEMÁS del .mp4.
+    # "GIFs" (en formato WebM 1:1, ≤500KB) de cada clip suelto — ADEMÁS del .mp4.
     gifs = [None] * len(outs)
-    if gif_export.available():
-        report("Generando GIFs (WebP animado) de los clips...", 68)
+    if gif_export.webm_available():
+        report("Generando los GIFs (WebM 1:1) de los clips...", 68)
 
         def _gif_one(item):
             i, mp4 = item
-            return i, gif_export.to_animated_webp(mp4, os.path.splitext(mp4)[0] + ".webp")
+            return i, gif_export.to_webm(mp4, os.path.splitext(mp4)[0] + ".webm")
 
         with ThreadPoolExecutor(max_workers=WORKERS) as ex:
             for i, g in ex.map(_gif_one, list(enumerate(outs))):
                 gifs[i] = g
 
-    loose_clips = [{"path": o, "gif": g, "segment": s.to_dict()}
+    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución / uso", "producto": "📦 Producto"}
+    loose_clips = [{"path": o, "gif": g, "segment": s.to_dict(),
+                    "fase": _fase(s), "fase_label": _FASE_LBL.get(_fase(s), "")}
                    for s, o, g in zip(loose_set, outs, gifs)]
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)

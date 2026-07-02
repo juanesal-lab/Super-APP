@@ -25,6 +25,36 @@ def available() -> bool:
     return shutil.which("img2webp") is not None
 
 
+def webm_available() -> bool:
+    """True si ffmpeg puede encodear WebM/VP9 (para el 'gif' en formato WebM)."""
+    return shutil.which("ffmpeg") is not None
+
+
+def to_webm(mp4_path: str, out_webm: str, *, fps: int = 20, max_seconds: float = 3.0,
+            side: int = 540, max_kb: int = 500) -> str | None:
+    """Convierte un clip .mp4 en WebM (VP9) animado, CUADRADO 1:1, buena compresión y ≤ max_kb.
+
+    El 'gif' que pide Juan: mismo espíritu que el WebP pero en WebM. Recorta al cuadrado centrado,
+    escala a `side` px, sin audio, y sube el CRF si se pasa de peso. Nunca lanza (no rompe el pipeline)."""
+    if not (shutil.which("ffmpeg") and os.path.exists(mp4_path)):
+        return None
+    # 1:1 (recorte cuadrado centrado) + escala; VP9 rápido (cpu-used) sin audio.
+    vf = f"fps={fps},crop='min(iw,ih)':'min(iw,ih)',scale={side}:{side}:flags=lanczos"
+    for crf in (34, 40, 46, 52):   # más CRF = más comprimido: sube si excede max_kb
+        try:
+            run(["ffmpeg", "-nostdin", "-y", "-t", f"{max_seconds:.2f}", "-i", mp4_path,
+                 "-vf", vf, "-an", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", str(crf),
+                 "-pix_fmt", "yuv420p", "-row-mt", "1", "-deadline", "good", "-cpu-used", "4",
+                 out_webm])
+        except Exception:  # noqa: BLE001
+            return None
+        if not os.path.exists(out_webm):
+            return None
+        if os.path.getsize(out_webm) <= max_kb * 1024:
+            return out_webm
+    return out_webm   # devuelve el último aunque pase un poco (mejor algo que nada)
+
+
 def to_animated_webp(mp4_path: str, out_webp: str, *, fps: int = _FPS, q: int = _Q,
                      max_seconds: float = 3.0, max_dim: int = 720) -> str | None:
     """Convierte un clip .mp4 en WebP animado (loop infinito). Devuelve la ruta o None.

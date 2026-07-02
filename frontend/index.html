@@ -1508,7 +1508,7 @@
       <div class="tip"><span class="em">🪝</span><span>El <b>gancho</b> (primer segundo) frena el scroll. Déjalo vacío y marca "Generar con IA" para que la IA lo escriba por ti.</span></div>
       <div class="tip"><span class="em">🇨🇴</span><span>¿Ad gringo con texto quemado? Usa <b>Textos del proveedor → Traducir a español</b> para que quede 100% en español.</span></div>
       <div class="tip"><span class="em">📐</span><span>En Voz en off puedes <b>clonar la estructura de un ad ganador</b>: sube uno y la IA copia su arco (hook → dolor → solución → deseo → CTA).</span></div>
-      <div class="tip"><span class="em">🎞️</span><span>Cada clip suelto trae su <b>GIF (WebP)</b> liviano para landings — descárgalo con el botón bajo el clip.</span></div>
+      <div class="tip"><span class="em">🎞️</span><span>Cada clip suelto trae su <b>GIF (WebM 1:1, ≤500KB)</b> liviano — organizados por fase (problema/solución/producto) para que cuenten la historia. Descárgalo con el botón bajo el clip.</span></div>
     </div>
   </div><!-- /p-guia -->
 </div>
@@ -1823,11 +1823,12 @@ function renderResults(res, rootId){
       const s = c.segment;
       const prod = s.product_visible ? '<span style="color:var(--accent2)">●&nbsp;producto</span>' : '';
       const use = s.shows_use ? '<span style="color:var(--accent)">●&nbsp;en uso</span>' : '';
-      const tag = s.tag ? `<div class="sc" style="color:var(--txt)">${s.tag}</div>` : '';
-      const gifName = c.gif ? c.gif.split('/').pop() : 'clip.webp';
-      const gif = c.gif ? `<a href="/api/file?path=${enc(c.gif)}" download="${gifName}" style="display:block;text-align:center;margin-top:4px;color:var(--accent2);font-size:12px;font-weight:600;text-decoration:none">⬇️ GIF (WebP)</a>` : '';
+      const fase = c.fase_label ? `<div class="sc" style="font-weight:800;color:var(--txt)">${c.fase_label}</div>` : '';
+      const tag = s.tag ? `<div class="sc" style="color:var(--muted)">${s.tag}</div>` : '';
+      const gifName = c.gif ? c.gif.split('/').pop() : 'clip.webm';
+      const gif = c.gif ? `<a href="/api/file?path=${enc(c.gif)}" download="${gifName}" style="display:block;text-align:center;margin-top:4px;color:var(--accent2);font-size:12px;font-weight:600;text-decoration:none">⬇️ GIF (WebM)</a>` : '';
       html += `<div class="clip" style="aspect-ratio:${ar}"><video src="${file}" controls muted loop style="aspect-ratio:${ar}"></video>
-        ${tag}<div class="sc">score ${s.score} · ${s.duration}s ${prod} ${use}</div>${gif}</div>`;
+        ${fase}${tag}<div class="sc">score ${s.score} · ${s.duration}s ${prod} ${use}</div>${gif}</div>`;
     });
     html += `</div></div>`;
   }

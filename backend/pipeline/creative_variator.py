@@ -72,15 +72,21 @@ _TOOL = {
 
 
 def generar_variaciones(arco_texto: str, product_desc: str, anthropic_key: str, *,
-                        page_text: str = "", n: int = 6, con_escenas: bool = True) -> list[dict]:
+                        page_text: str = "", n: int = 6, con_escenas: bool = True,
+                        evitar: list[str] | None = None) -> list[dict]:
     """De un creativo GANADOR (su arco/guion en texto) + el producto → N variaciones de hook/guion/copy
-    (+ brief de escenas por fase si `con_escenas`). Devuelve [] si falla (nunca lanza)."""
+    (+ brief de escenas por fase si `con_escenas`). `evitar`: hooks ya mostrados que NO gustaron → da otros
+    totalmente distintos. Devuelve [] si falla (nunca lanza)."""
     if not (anthropic_key and (arco_texto.strip() or product_desc.strip())):
         return []
+    evitar = [e for e in (evitar or []) if e and e.strip()]
     ctx = f"PRODUCTO: {product_desc}\n"
     if page_text.strip():
         ctx += f"\nCONTEXTO DE LA PÁGINA:\n{page_text[:2000]}\n"
     ctx += f"\nCREATIVO GANADOR (arco/guion que YA funciona — CONSÉRVALO):\n{arco_texto[:4000]}\n"
+    if evitar:
+        ctx += ("\n🚫 YA se mostraron estos HOOKS y NO gustaron. NO los repitas ni sus variaciones; da ganchos "
+                "con OTRO ángulo/enfoque totalmente distinto:\n" + "\n".join(f'- "{e}"' for e in evitar[:30]) + "\n")
     ctx += (f"\nSaca EXACTAMENTE {n} variaciones MUY distintas. "
             + ("Incluye el brief de ESCENAS por fase (modo hook + tomas)."
                if con_escenas else "NO incluyas escenas (solo varío el hook/guion/copy)."))

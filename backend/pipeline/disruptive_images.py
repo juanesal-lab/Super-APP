@@ -166,9 +166,14 @@ _CIERRE = (" Thick bold sans-serif fonts, high contrast, 4:5 vertical aspect rat
 
 def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
                       ofertas: list[str] | None = None, precio: str = "",
-                      mercado: str = "Colombia · español colombiano · pago contraentrega (COD)") -> list[dict]:
-    """Claude inventa las 10 variantes full-prompt (concepto + copy + prompt rico). Devuelve [] si falla."""
+                      mercado: str = "Colombia · español colombiano · pago contraentrega (COD)",
+                      evitar: list[str] | None = None, n: int = 10, plantillas_fijas: bool = True) -> list[dict]:
+    """Claude inventa N variantes full-prompt (concepto + copy + prompt rico). Devuelve [] si falla.
+
+    `evitar`: titulares/ángulos YA mostrados que NO gustaron → Claude da cosas TOTALMENTE distintas.
+    `plantillas_fijas`: si True incluye las 2 plantillas ganadoras de primeras; si False, todo surreal."""
     ofertas = [o for o in (ofertas or []) if o]
+    evitar = [e for e in (evitar or []) if e and e.strip()]
     ctx = f"PRODUCTO: {producto}\nMERCADO: {mercado}\n"
     if page_text.strip():
         ctx += f"\nCONTEXTO DE LA PÁGINA DE VENTA (para entender dolor/beneficio real):\n{page_text[:2500]}\n"
@@ -183,15 +188,24 @@ def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
                 "parte de la imagen ni en el 'prompt'. El CTA NO debe decir 'VER PRECIO' (usa 'TOCA PARA "
                 "VER', 'PEDIR AHORA', 'DESLIZA Y MIRA', 'LO QUIERO', etc.). Si hay una oferta tipo '2x1' o "
                 "'envío gratis' SÍ puedes mostrarla (es texto, no cifra de precio), pero jamás un valor.\n")
+    if evitar:
+        ctx += ("\n🚫 YA SE MOSTRARON estos conceptos y NO gustaron. NO los repitas ni hagas variaciones de "
+                "ellos (ni el mismo dolor/escena con otras palabras). Dame ángulos, dolores, mecanismos y "
+                "escenas TOTALMENTE DIFERENTES a estos:\n" + "\n".join(f'- "{e}"' for e in evitar[:40]) + "\n")
+    if plantillas_fijas:
+        pedido = (f"\nInventa las {n} variantes: las 2 PRIMERAS son las plantillas FIJAS (no_compres, "
+                  f"capturas) y de la 3 a la {n} surreales con los 6 motores, todas MUY distintas entre sí.")
+    else:
+        pedido = (f"\nEsta vez IGNORA la regla de las 2 plantillas fijas. Dame {n} conceptos TODOS surreales "
+                  "y arriesgados, con mecanismos y escenas MUY distintos entre sí (y distintos a cualquiera "
+                  "ya mostrado).")
     try:
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key)
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=16000, system=_SISTEMA,
             tools=[_TOOL], tool_choice={"type": "tool", "name": "entregar_creativos"},
-            messages=[{"role": "user", "content":
-                       ctx + "\nInventa las 10 variantes disruptivas al nivel de los 5 ejemplos "
-                       "(mecanismos y escenas distintos, todas surreales y arriesgadas)."}],
+            messages=[{"role": "user", "content": ctx + pedido}],
         )
         for block in resp.content:
             if getattr(block, "type", None) == "tool_use" and block.name == "entregar_creativos":

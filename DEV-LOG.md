@@ -1420,3 +1420,17 @@ Jack: Cortar clips repetía escenas, solo 2 SFX, sin música, y quería 8 videos
 - PENDIENTE (grandes, siguientes): (1) PREVIEW visual de los estilos de subtítulos; (2) banner opcional
   2x1/envío-gratis ARRIBA con IA que lo suba para no tapar nada; (3) feature "variar el hook del winner"
   (4 videos, buscar hooks en TikTok por ángulo, traducir, tapar texto en pantalla).
+
+### 2026-07-02 · Claude (juanesal-lab) · 🎲 Regenerar INTELIGENTE: "otro ángulo diferente" (no repite lo rechazado)
+Juan: cuando no le gusta un ad/ángulo, que el cambio sea INTELIGENTE y NO repita lo mismo que no gustó.
+- `generar_conceptos(..., evitar=[], n=10, plantillas_fijas=True)`: nuevo `evitar` (titulares ya mostrados) →
+  el prompt le dice a Claude "NO repitas estos ni variaciones; da ángulos/dolores/escenas TOTALMENTE
+  distintos". `plantillas_fijas` para saltarse las 2 fijas al regenerar. Probado: evitando 4 títulos, dio 3
+  conceptos nuevos sin relación (casa propia, modo ahorro de batería, leopardo).
+- NUEVO endpoint `/api/disruptive-swap-concept` (job_id, index): genera 1 concepto NUEVO evitando TODOS los
+  titulares del lote + lo renderiza + reemplaza ese slot. `disruptive-angles` ahora guarda `_producto`/
+  `_page_text` para poder pensar el ángulo nuevo.
+- Frontend Ads imagen: botón por imagen **"🎲 Otro ángulo diferente"** (`disSwapConcept`), además del 🔄
+  Regenerar (mismo concepto) y ➕ Producto.
+- Mismo `evitar` agregado a `creative_variator.generar_variaciones` (para variar HOOKs de video sin repetir).
+- ÁNGEL: si tu motor de video re-varía y algo no gusta, pásame los hooks rechazados en `evitar` y te doy otros.

@@ -827,6 +827,8 @@
     .disRegen:hover{background:var(--accent);color:#fff}
     .disDl{color:var(--accent2)}
     .disDl:hover{background:var(--accent2);color:#fff}
+    .disSwap{color:var(--accent);border-top:1px solid var(--line)}
+    .disSwap:hover{background:var(--accent);color:#fff}
     .disProd{color:var(--txt);border-top:1px solid var(--line)}
     .disProd:hover{background:var(--txt);color:var(--bg)}
     .disFail{padding:14px;text-align:center;color:var(--warn);font-size:12px;border-top:1px solid var(--line)}
@@ -915,6 +917,7 @@
                <div class="disActions">
                  <button class="disAct disRegen" onclick="disRegen(${i},this)">🔄 Regenerar</button>
                  <a class="disAct disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a>
+                 <button class="disAct disSwap" style="grid-column:1/-1" onclick="disSwapConcept(${i},this)">🎲 Otro ángulo diferente</button>
                  <button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">➕ Poner mi producto</button>
                </div></div>`;
         } else {
@@ -950,6 +953,19 @@
           disRender(s.result);
         } else { btn.innerHTML='✗ '+((j&&j.detail)||'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
       }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
+    }
+    async function disSwapConcept(i, btn){
+      if(!window._disJob) return;
+      const t=btn.innerHTML; btn.innerHTML='⏳ Pensando otro ángulo…'; btn.disabled=true;
+      try{
+        const fd=new FormData(); fd.append('job_id',window._disJob); fd.append('index',i);
+        const r=await fetch('/api/disruptive-swap-concept',{method:'POST',body:fd}); const j=await r.json();
+        if(r.ok && j.variante){
+          disCacheBust=Date.now();
+          const s=await (await fetch('/api/status/'+window._disJob)).json();
+          disRender(s.result);
+        } else { btn.innerHTML='✗ '+((j&&j.detail)||'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
+      }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
     }
   </script>
   </div><!-- /p-disruptivo -->

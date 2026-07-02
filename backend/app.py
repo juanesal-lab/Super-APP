@@ -1222,7 +1222,8 @@ async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
     if not conceptos:
         raise HTTPException(502, "No se pudieron generar los conceptos (revisa la key de Claude)")
     JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
-                    "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list}
+                    "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list,
+                    "_producto": producto.strip() or link.strip(), "_page_text": page_text}
     return {"ctx_id": ctx_id, "conceptos": conceptos}
 
 
@@ -1315,6 +1316,42 @@ def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
     if not res:   # bloqueo/cuota/sin imagen → el ad quedó intacto; avisa de verdad
         raise HTTPException(502, "No se pudo integrar el producto (reintenta o revisa el tope de gasto de Google).")
     return {"imagen": v["imagen"]}
+
+
+@app.post("/api/disruptive-swap-concept")
+def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
+    """Cambia UN concepto por otro TOTALMENTE DIFERENTE (evita los ya mostrados) y lo renderiza. Síncrono."""
+    job = JOBS.get(job_id)
+    if not job or not (job.get("result") or {}).get("variantes"):
+        raise HTTPException(404, "No hay un proyecto de ads para ese job")
+    variantes = job["result"]["variantes"]
+    if index < 0 or index >= len(variantes):
+        raise HTTPException(400, "Índice fuera de rango")
+    producto = job.get("_producto", "")
+    if not producto:
+        raise HTTPException(400, "Este proyecto es viejo; vuelve a analizar el producto para usar 'otro ángulo'")
+    # evita TODOS los ángulos/titulares ya mostrados (para que salga algo distinto)
+    evitar = [c.get("titular", "") for c in variantes if c.get("titular")]
+    try:
+        nuevos = generar_conceptos(producto, _load_anthropic_key(), page_text=job.get("_page_text", ""),
+                                   evitar=evitar, n=3, plantillas_fijas=False)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo pensar otro ángulo: {e}")
+    if not nuevos:
+        raise HTTPException(502, "Claude no devolvió otro concepto (revisa la key de Claude)")
+    nuevo = nuevos[0]
+    out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    try:
+        img = generar_ad_fullprompt(nuevo, out, gemini_key=_load_env_key(),
+                                    product_image_path=job.get("_image_path"))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo generar el nuevo ángulo: {e}")
+    if not img:
+        raise HTTPException(502, nuevo.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
+    nuevo["imagen"] = img
+    variantes[index] = nuevo   # reemplaza el concepto viejo por el nuevo
+    return {"variante": nuevo}
 
 
 def _within(path: str, *bases: str) -> bool:

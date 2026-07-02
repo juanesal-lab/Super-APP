@@ -1222,3 +1222,13 @@ en `disruptive_images.py`:
   salvajes (rellenar con cemento, cara de pasa, GPS en la cara).
 - ⚠️ Ojo: la ortografía del render aún puede fallar en textos largos (sub). Tip UX: subir foto de producto
   LIMPIA (sin logos) da mejor recorte.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🎙️ Doblaje FLUIDO (sin huecos largos entre frases)
+- Jack: el doblaje dejaba silencios largos entre frase y frase. Causa: cada frase se anclaba al tiempo
+  EXACTO de su fase del video (adelay=inicio); si la voz era más corta que la fase, quedaba dead air.
+- Fix (dub_colombia): ahora las frases van SECUENCIALES — cada una arranca donde terminó la anterior +
+  pausa natural corta (0.16s). `_voz` devuelve la duración y tiempos RELATIVOS; se anclan en secuencia.
+  Los word_timings (subtítulos) se recalculan a la nueva posición. Verificado con audio sintético:
+  frases seguidas, silencedetect NO halla silencios largos.
+- No pude probar el dub completo end-to-end: el Gemini de Jack está en el TOPE de gasto (429). Cuando
+  suba el cap, el doblaje ya sale fluido. Afecta Crear creativo, Clon y Doblaje 2x1.

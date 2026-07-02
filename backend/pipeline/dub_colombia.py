@@ -270,30 +270,38 @@ def generar_dub(
         try:
             # Con timestamps: capturamos el tiempo de CADA palabra (para subtítulos sincronizados)
             words = synthesize_with_timestamps(eleven_key, texto, voz, raw)
-            _, tempo = _fit_audio(raw, dur, fit)
-            # Reescalar por el atempo y anclar al inicio de la fase -> tiempo ABSOLUTO en el video
+            dfin, tempo = _fit_audio(raw, dur, fit)
+            # Tiempos RELATIVOS al inicio de la frase (se anclan después, en secuencia)
             palabras = []
             for w in (words or []):
                 st, en = w.get("start"), w.get("end")
                 if st is None or en is None:
                     continue
-                palabras.append({"word": w.get("word", ""),
-                                 "start": ini + st / tempo, "end": ini + en / tempo})
-            return (fit, ini, palabras)
+                palabras.append({"word": w.get("word", ""), "start": st / tempo, "end": en / tempo})
+            return (fit, ini, dfin, palabras)
         except Exception:  # noqa: BLE001
             return None
 
     with ThreadPoolExecutor(max_workers=min(6, max(1, total))) as ex:
         res = [r for r in ex.map(_voz, list(enumerate(segments))) if r]
 
-    clips = [(fit, ini) for (fit, ini, _w) in res]          # (ruta_fit, inicio_seg)
-    word_timings = [w for (_f, _i, ws) in res for w in ws]  # tiempos por palabra, absolutos
-    word_timings.sort(key=lambda w: w["start"])
-
-    if not clips:
+    if not res:
         return {"ok": False, "error": "No se pudo generar ninguna voz (revisa la key de ElevenLabs)."}
 
-    # 4) Montar la pista completa: cada frase en el inicio EXACTO de su fase
+    # 4) SECUENCIAL: las frases van SEGUIDAS (con una pausa natural corta), sin silencios largos
+    #    entre ellas. Cada frase arranca donde terminó la anterior + PAUSA -> doblaje fluido.
+    PAUSA = 0.16
+    clips: list[tuple[str, float]] = []      # (ruta_fit, posición en segundos)
+    word_timings: list[dict] = []
+    pos = min(res[0][1], 0.5)                 # arranca cerca del inicio (no arrancar tarde)
+    for (fit, _ini, dfin, rel) in res:
+        clips.append((fit, pos))
+        for w in rel:
+            word_timings.append({"word": w["word"], "start": pos + w["start"], "end": pos + w["end"]})
+        pos += dfin + PAUSA
+    word_timings.sort(key=lambda w: w["start"])
+
+    # 4b) Montar la pista completa: cada frase en su posición SECUENCIAL
     vid_dur = probe(video_path).duration if video_path else 0.0
     inputs, fc, labels = [], [], []
     for k, (path, ini) in enumerate(clips):

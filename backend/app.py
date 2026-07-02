@@ -611,7 +611,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             music_path=music_path,
             blur_captions=s.get("blur_captions", False), text_mode=s.get("text_mode", "tapar"),
             caption_pos=s.get("caption_pos", "abajo"),
-            captions=s.get("captions", False),
+            captions=s.get("captions", False), caption_style=s.get("caption_style", "hormozi"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
             progress=progress)

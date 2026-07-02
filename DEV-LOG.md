@@ -1298,6 +1298,7 @@ Jack: Mi producto solo cortaba clips (sin música/voz/subs, volumen alto). Empec
 - PENDIENTE (siguiente increment): voz en off opcional + subtítulos opcionales en Mi producto (necesitan
   guion/transcripción por versión — build aparte).
 
+<<<<<<< HEAD
 ### 2026-07-02 · Claude (juanesal-lab) · 🔧 Revisión completa: fixes visuales + bugs + seguridad + limpieza
 Juan pidió revisar TODO (3 revisores en paralelo). Arreglado SIN romper lo que funciona:
 **Visual (frontend):** copy viejo de Ads imagen actualizado (6→10 conceptos, "Nano Banana 2 dibuja el ad",
@@ -1323,3 +1324,15 @@ sound_effect); `_corregir_ortografia_ads` (de Jack, muerta tras full-prompt); en
 _SISTEMA_V2, _TOOL_V2, generar_ads_disruptivos, _pegar_producto) — ~400 líneas muertas, limpiar en pasada
 aparte. También: "Clon Ganador" enterrado en pestaña Claves sin botón de nav; Guía sin pestañas nuevas;
 JOBS nunca se limpia (fuga de RAM en uso largo). Todo eso queda para después.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 💬 Selector de 5 estilos de subtítulos (mejor CTR)
+- 5 estilos seleccionables (los más usados/mejor CTR en TikTok/Meta): Hormozi (palabra x palabra keyword
+  amarilla), Karaoke, Caja (highlight_box), Bold (bold_outline), Amarillo (yellow_highlight).
+- Selector en la UI de Crear creativo (autoCapStyle) y Cortar clips voz en off (capStyle).
+- Cableado: `render_versions` ahora acepta `caption_style` y quema los subtítulos con
+  `caption_styles.burn_word_captions(style=...)` (motor de 10 estilos) en vez de add_captions; fallback
+  al viejo si falla. /api/scripts y /api/auto ya pasan caption_style. Verificado UI + compila.
+  AVISO Juan: cambié el motor de subtítulos en render_versions (orchestrator) + 2 selectores en el front.
+- Foreplay/Colombia: HONESTO — todavía NO excluye Colombia (Foreplay no expone país; solo idioma español).
+  Coordinar contigo, Juan, para el filtro de país. TikTok search sí excluye CO.
+- PENDIENTE: voz en off + subtítulos en "Mi producto" (build pesado, necesita guion/transcripción).

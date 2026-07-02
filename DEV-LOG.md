@@ -1298,7 +1298,6 @@ Jack: Mi producto solo cortaba clips (sin música/voz/subs, volumen alto). Empec
 - PENDIENTE (siguiente increment): voz en off opcional + subtítulos opcionales en Mi producto (necesitan
   guion/transcripción por versión — build aparte).
 
-<<<<<<< HEAD
 ### 2026-07-02 · Claude (juanesal-lab) · 🔧 Revisión completa: fixes visuales + bugs + seguridad + limpieza
 Juan pidió revisar TODO (3 revisores en paralelo). Arreglado SIN romper lo que funciona:
 **Visual (frontend):** copy viejo de Ads imagen actualizado (6→10 conceptos, "Nano Banana 2 dibuja el ad",

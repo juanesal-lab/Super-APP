@@ -30,7 +30,7 @@ _ETIQUETAS = ["HOOK", "DOLOR", "SOLUCIÓN", "PRUEBA", "DESEO/RESULTADO", "CTA"]
 _PHASE_CFG: dict[str, dict] = {
     "HOOK": {
         "efecto": {"zoom": "in_fuerte", "intensidad": "alta"},
-        "sfx_prefer": "whoosh",
+        "sfx_prefer": "riser",
         "musica": {"estilo": "enganchante, energía media-alta, que frene el scroll", "energia": 0.7},
         "por_que": "HOOK: entra con impacto (whoosh + zoom de entrada) y música enganchante "
                    "para frenar el scroll en los primeros segundos.",
@@ -43,28 +43,28 @@ _PHASE_CFG: dict[str, dict] = {
     },
     "SOLUCIÓN": {
         "efecto": {"zoom": "punch_in", "intensidad": "alta"},
-        "sfx_prefer": "impact",
+        "sfx_prefer": "boom",
         "musica": {"estilo": "que sube, esperanzadora (llega el producto)", "energia": 0.75},
         "por_que": "SOLUCIÓN: momento del producto → impacto (golpe + punch-in) y música que sube "
                    "para marcar que aparece la solución.",
     },
     "PRUEBA": {
         "efecto": {"zoom": "in_suave", "intensidad": "media"},
-        "sfx_prefer": "swoosh",
+        "sfx_prefer": "ding",
         "musica": {"estilo": "creíble y positiva, que da confianza (reseñas/evidencia)", "energia": 0.6},
         "por_que": "PRUEBA: evidencia/reseñas → zoom suave para enfocar la prueba y música creíble "
                    "que refuerza la confianza, sin exagerar.",
     },
     "DESEO/RESULTADO": {
         "efecto": {"zoom": "in_suave", "intensidad": "media"},
-        "sfx_prefer": "swoosh",
+        "sfx_prefer": "sparkle",
         "musica": {"estilo": "en clímax, positiva y aspiracional", "energia": 0.9},
         "por_que": "DESEO/RESULTADO: la transformación → zoom suave y música en clímax para vender "
                    "el resultado deseado.",
     },
     "CTA": {
         "efecto": {"zoom": "ninguno", "intensidad": "media"},
-        "sfx_prefer": "whoosh",
+        "sfx_prefer": "swoosh",
         "musica": {"estilo": "cierre resolutivo con un toque de urgencia", "energia": 0.6},
         "por_que": "CTA: whoosh de cierre y música resolutiva que acompaña el llamado a la acción.",
     },

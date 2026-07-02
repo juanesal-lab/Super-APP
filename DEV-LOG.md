@@ -1266,3 +1266,11 @@ en español, que NO se re-doble y siga. (Él puso uno y "se mantuvo igual" porqu
 - Verificado el detector: 4/4 (español→conserva, inglés→dobla). Solo mi módulo.
 - No pude correr el clon end-to-end (Gemini de Jack en tope 429). PENDIENTE aún: "Mi producto" (música
   auto + voz + subtítulos + bajar volumen) — es el siguiente build grande.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔊 Librería de SFX ampliada + dinámica
+- Jack: más efectos y más dinámicos (riser, pop, whoosh, boom, ding...) tipo CapCut.
+- Generé 12 SFX royalty-free con ffmpeg (sin copyright, sin API): riser, riser_fast, whoosh, whoosh_fast,
+  swoosh, pop, click, boom, bass_drop, ding, sparkle, impact. En assets/sfx/.
+- phase_effects: cada fase ahora usa un SFX distinto y con sentido: HOOK→riser, SOLUCIÓN→boom,
+  PRUEBA→ding, DESEO→sparkle, CTA→swoosh (DOLOR sin golpe). Cortar clips (orchestrator) rota entre los 12
+  en las transiciones -> más variedad automática. Verificado.

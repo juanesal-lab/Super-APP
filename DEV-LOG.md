@@ -1434,3 +1434,17 @@ Juan: cuando no le gusta un ad/ángulo, que el cambio sea INTELIGENTE y NO repit
   Regenerar (mismo concepto) y ➕ Producto.
 - Mismo `evitar` agregado a `creative_variator.generar_variaciones` (para variar HOOKs de video sin repetir).
 - ÁNGEL: si tu motor de video re-varía y algo no gusta, pásame los hooks rechazados en `evitar` y te doy otros.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 👁️ #1 Preview visual de los estilos de subtítulos
+- Endpoint `/api/caption-preview?style=X` renderiza un PNG de muestra ("MIRA ESTO GRATIS") en el estilo
+  elegido (usa caption_styles._render_wordgroup). En la UI: al cambiar el selector de estilo (Cortar clips
+  y Crear creativo) se actualiza una miniatura de cómo se ven los subtítulos. Verificado los 5 estilos.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🏷️ #2 Banner de oferta ARRIBA (opcional, IA lo ubica sin tapar)
+- NUEVO `offer_banner.py`: pill roja "ENVÍO GRATIS · PAGAS AL RECIBIR" + "OFERTA 2X1" (Poppins, como la
+  foto de Jack). `safe_top_y()` le pregunta a Gemini a qué y-fracción ponerlo para NO tapar cara/producto.
+- Conectado a Crear creativo (auto_studio, paso 6b opcional `banner_oferta`) + toggle "🏷️ Banner arriba"
+  en la UI + /api/auto. Verificado: el banner sale arriba sobre el video (arreglé un bug de -map que
+  descartaba el overlay). Demo ~/Downloads/prueba/BANNER_oferta.png.
+- AVISO Juan: nuevo módulo + paso en auto_studio + toggle. #3 (variar hook) = tu creative_variator es el
+  cerebro; falta la capa de VIDEO (buscar toma/hook en TikTok, traducir, tapar texto, 4 videos) — coordinamos.

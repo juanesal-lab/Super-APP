@@ -175,6 +175,27 @@ def get_config():
     }
 
 
+@app.get("/api/caption-preview")
+def caption_preview(style: str = "hormozi"):
+    """Preview PNG de un estilo de subtítulo (para elegir viendo cómo se ve)."""
+    import io
+    from PIL import Image
+    from pipeline.caption_styles import _render_wordgroup, ESTILOS
+    st = style if style in ESTILOS else "hormozi"
+    W, H = 640, 260
+    grp = [{"word": "MIRA"}, {"word": "ESTO"}, {"word": "GRATIS"}]
+    try:
+        cap = _render_wordgroup(grp, 1, W, H, st)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(500, "no se pudo renderizar el preview")
+    bg = Image.new("RGB", (W, H), (32, 30, 36))
+    bg.paste(cap, (0, 0), cap)
+    buf = io.BytesIO()
+    bg.save(buf, "PNG")
+    return Response(content=buf.getvalue(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
@@ -344,6 +365,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
                 verticalizar=settings.get("verticalizar", True),
                 caption_style=settings.get("caption_style", "bold_outline"),
                 oferta=settings.get("oferta", ""),
+                banner_oferta=settings.get("banner_oferta", False),
                 work_dir=os.path.join(WORK_DIR, job_id, f"c{i}"),
                 progress=progress,
             )
@@ -369,6 +391,7 @@ async def auto(
     verticalizar: bool = Form(True),
     caption_style: str = Form("bold_outline"),
     oferta: str = Form(""),
+    banner_oferta: bool = Form(False),
 ):
     if not files:
         raise HTTPException(400, "Sube al menos un video ganador")
@@ -382,6 +405,7 @@ async def auto(
         "verticalizar": bool(verticalizar),
         "caption_style": caption_style,
         "oferta": oferta.strip(),
+        "banner_oferta": bool(banner_oferta),
     }
     threading.Thread(target=_run_auto_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}

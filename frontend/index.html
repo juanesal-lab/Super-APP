@@ -219,16 +219,18 @@
         <option value="true">Formato: 9:16 (vertical)</option>
         <option value="false">Formato: dejar como está</option>
       </select>
-      <select id="autoCapStyle" class="full">
+      <select id="autoCapStyle" class="full" onchange="document.getElementById('autoCapPrev').src='/api/caption-preview?style='+this.value">
         <option value="hormozi">Subtítulos: Hormozi (palabra x palabra, keyword amarilla)</option>
         <option value="karaoke">Subtítulos: Karaoke (resalta la palabra que suena)</option>
         <option value="highlight_box">Subtítulos: Caja (palabra en caja de color)</option>
         <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
         <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
       </select>
+      <img id="autoCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ven los subtítulos" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
     </div>
     <div class="autoChk">
-      <label><input type="checkbox" id="auto2x1"> Oferta 2x1</label>
+      <label><input type="checkbox" id="auto2x1"> Oferta 2x1 (en la voz)</label>
+      <label><input type="checkbox" id="autoBanner"> 🏷️ Banner arriba: 2x1 · envío gratis · pagas al recibir</label>
     </div>
 
     <button class="autoBtn" id="autoGo" disabled onclick="autoRun()">✨ Generar Creativo</button>
@@ -259,6 +261,7 @@
       fd.append('voz',document.getElementById('autoVoz').value);
       fd.append('caption_style',document.getElementById('autoCapStyle').value);
       fd.append('oferta_2x1',document.getElementById('auto2x1').checked);
+      fd.append('banner_oferta',document.getElementById('autoBanner').checked);
       fd.append('verticalizar',document.getElementById('autoVert').value);
       document.getElementById('autoGo').disabled=true;
       document.getElementById('autoResult').innerHTML='';
@@ -594,13 +597,14 @@
         <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useCaptions" checked> 💬 Subtítulos animados</label>
-        <select id="capStyle" title="Estilo de subtítulos (los que más CTR tienen en TikTok/Meta)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <select id="capStyle" title="Estilo de subtítulos (los que más CTR tienen en TikTok/Meta)" onchange="document.getElementById('capPrev').src='/api/caption-preview?style='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
           <option value="hormozi">Estilo: Hormozi (palabra x palabra, keyword amarilla)</option>
           <option value="karaoke">Estilo: Karaoke (resalta la palabra que suena)</option>
           <option value="highlight_box">Estilo: Caja (palabra en caja de color)</option>
           <option value="bold_outline">Estilo: Bold (blanco con borde grueso)</option>
           <option value="yellow_highlight">Estilo: Amarillo (claves resaltadas)</option>
         </select>
+        <img id="capPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="clip2x1"> 🎁 Oferta 2x1</label>
         <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
       </span>

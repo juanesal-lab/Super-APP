@@ -54,7 +54,7 @@ REGLA MADRE: el creativo NO debe PARECER un anuncio. Debe parecer CONTENIDO ORG�
 alguien grabó) que por lo surreal frena el scroll. NADA de "banda de color de anuncio arriba con el titular".
 
 FÓRMULA VISUAL por formato:
-- FORMATO VIDEO (el más usado): es el SCREENSHOT de un VIDEO REAL (TikTok/Reel/YouTube). La ESCENA surreal
+- FORMATO VIDEO: es el SCREENSHOT de un VIDEO REAL (TikTok/Reel/YouTube). La ESCENA surreal
   LLENA todo el cuadro; encima va el chrome de video NATIVO — botón de play ▶ translúcido al centro, barra de
   progreso con tiempo ("0:08 / 2:04"), iconitos de volumen/pantalla completa en una esquina. El TITULAR va
   como CAPTION NATIVO: texto blanco grueso con contorno/sombra ENCIMA del video (estilo subtítulo de TikTok),
@@ -87,7 +87,17 @@ Cada 'prompt' que entregues:
   exactly as written, looks like an authentic organic social media video screenshot NOT a polished ad. Avoid:
   extra fingers, deformed hands, garbled or misspelled text, random logos, watermarks, nudity, low-res artifacts.
 
-Devuelve EXACTAMENTE 10 variantes, 10 mecanismos/escenas MUY distintos, todas al nivel de los 5 ejemplos."""
+DISTRIBUCIÓN OBLIGATORIA de los 10 (para que NO salgan todos iguales):
+- FORMATOS: MÁXIMO 4 en "video". Los otros 6 REPARTIDOS entre "slider" (antes/después con manija ◄►),
+  "quiz" (fila de pastillas con cursor-mano), "chat" (WhatsApp) y "cursor" (dedo sobre un botón). Usa AL
+  MENOS 4 formatos distintos en total. Pon el `formato` EXACTO como una de esas palabras.
+- MECANISMOS: cada concepto un motor DISTINTO de los 6 (no repitas el mismo dos veces).
+- SURREAL OBLIGATORIO: MÍNIMO 6 de los 10 deben ser SURREALES/absurdos de verdad — una metáfora física
+  IMPOSIBLE (la piel es un desierto agrietado, la cara una estatua que se rompe en pedazos, el reflejo un
+  hipopótamo o una momia, la persona se desinfla como globo). Un concepto que es solo "alguien preocupado
+  mirándose al espejo" NO cuenta como disruptivo: súbelo a surreal o cámbialo. Prioriza que dé "¿qué diablos?".
+
+Devuelve EXACTAMENTE 10 variantes al nivel de los 5 ejemplos (hipopótamo, bus, cemento, globo, momia)."""
 
 _TOOL = {
     "name": "entregar_creativos",
@@ -102,7 +112,8 @@ _TOOL = {
                     "type": "object",
                     "properties": {
                         "angulo": {"type": "string", "description": "nombre corto del ángulo de venta"},
-                        "formato": {"type": "string", "description": "formato falso-interactivo usado"},
+                        "formato": {"type": "string", "description": "formato falso-interactivo EXACTO: 'video' | 'slider' | 'quiz' | 'chat' | 'cursor'. Máx 4 'video'; varía el resto."},
+                        "mecanismo": {"type": "string", "description": "el motor psicológico: personificación | metáfora | consecuencia absurda | escena social | reflejo surreal | reacción extrema. DISTINTO por concepto."},
                         "concepto": {"type": "string", "description": "la idea loca en 1-2 frases (español)"},
                         "por_que": {"type": "string", "description": "por qué frena el scroll y convierte"},
                         "titular": {"type": "string", "description": "titular incrustado (español, corto, MAYÚSCULAS)"},

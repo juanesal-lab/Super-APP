@@ -156,6 +156,7 @@ def render_versions(
     text_mode: str = "tapar",   # "tapar" (blur) | "traducir" (reescribe el texto en español)
     caption_pos: str = "abajo",
     captions: bool = False,
+    caption_style: str = "hormozi",
     word_timings: list | None = None,
     used_gemini: bool = False,
     n_sources: int = 0,
@@ -339,9 +340,16 @@ def render_versions(
             v["voiceover"] = False
         if captions and wt:
             cap_out = v["path"].replace(".mp4", "_cap.mp4")
-            new_path, ok = add_captions(v["path"], cap_out, work_dir, wt, "centro")
-            v["path"] = new_path
-            v["captions"] = ok
+            try:
+                from .caption_styles import burn_word_captions
+                prev = v["path"]
+                np = burn_word_captions(prev, wt, work_dir, cap_out, style=caption_style)
+                v["path"] = np
+                v["captions"] = (np != prev)
+            except Exception:  # noqa: BLE001 — fallback al motor viejo
+                new_path, ok = add_captions(v["path"], cap_out, work_dir, wt, "centro")
+                v["path"] = new_path
+                v["captions"] = ok
 
     if version_vos:                                  # un guion/voz distinto por version
         for v_i, v in enumerate(versions):

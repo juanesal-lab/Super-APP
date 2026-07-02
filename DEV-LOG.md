@@ -1297,3 +1297,15 @@ Jack: Mi producto solo cortaba clips (sin música/voz/subs, volumen alto). Empec
   AVISO Juan: toqué producto_clips.py + /api/producto-clips + la sección Mi producto (2 toggles).
 - PENDIENTE (siguiente increment): voz en off opcional + subtítulos opcionales en Mi producto (necesitan
   guion/transcripción por versión — build aparte).
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 💬 Selector de 5 estilos de subtítulos (mejor CTR)
+- 5 estilos seleccionables (los más usados/mejor CTR en TikTok/Meta): Hormozi (palabra x palabra keyword
+  amarilla), Karaoke, Caja (highlight_box), Bold (bold_outline), Amarillo (yellow_highlight).
+- Selector en la UI de Crear creativo (autoCapStyle) y Cortar clips voz en off (capStyle).
+- Cableado: `render_versions` ahora acepta `caption_style` y quema los subtítulos con
+  `caption_styles.burn_word_captions(style=...)` (motor de 10 estilos) en vez de add_captions; fallback
+  al viejo si falla. /api/scripts y /api/auto ya pasan caption_style. Verificado UI + compila.
+  AVISO Juan: cambié el motor de subtítulos en render_versions (orchestrator) + 2 selectores en el front.
+- Foreplay/Colombia: HONESTO — todavía NO excluye Colombia (Foreplay no expone país; solo idioma español).
+  Coordinar contigo, Juan, para el filtro de país. TikTok search sí excluye CO.
+- PENDIENTE: voz en off + subtítulos en "Mi producto" (build pesado, necesita guion/transcripción).

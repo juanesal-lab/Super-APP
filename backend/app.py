@@ -28,6 +28,7 @@ from pipeline.auto_studio import generar_creativo_auto
 from pipeline.narrative import analyze_narrative
 from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
+from pipeline.disruptive_images import generar_ads_disruptivos, generar_imagen
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -1103,6 +1104,72 @@ def last_project():
     if not best:
         raise HTTPException(404, "Aún no has creado clips — usa 'Cortar clips' o 'Mi producto' primero")
     return {"job_id": best, "n_clips": len(JOBS[best]["result"]["clips"])}
+
+
+def _run_disruptive_job(job_id: str, producto: str, image_path: str | None):
+    """Claude inventa 10 conceptos disruptivos + Nano Banana genera las 10 imágenes."""
+    job = JOBS[job_id]
+
+    def progress(m, p):
+        job["message"] = m
+        job["progress"] = p
+
+    try:
+        r = generar_ads_disruptivos(
+            producto, os.path.join(WORK_DIR, job_id),
+            anthropic_key=_load_anthropic_key(), gemini_key=_load_env_key(),
+            product_image_path=image_path, progress=progress,
+        )
+        job["result"] = r
+        job["status"] = "done" if r.get("ok") else "error"
+        if not r.get("ok"):
+            job["message"] = r.get("error", "Error desconocido")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+
+
+@app.post("/api/disruptive-images")
+async def disruptive_images(producto: str = Form(...),
+                            product_image: UploadFile | None = File(None)):
+    """Genera 10 ads disruptivos de imagen (Claude conceptos + Nano Banana imágenes) de CUALQUIER producto."""
+    if not producto.strip():
+        raise HTTPException(400, "Describe tu producto (qué es y qué dolor resuelve)")
+    job_id = uuid.uuid4().hex[:12]
+    image_path = None
+    if product_image and product_image.filename:
+        up = os.path.join(UPLOAD_DIR, job_id)
+        os.makedirs(up, exist_ok=True)
+        image_path = os.path.join(up, "prod_" + os.path.basename(product_image.filename))
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(product_image.file, f)
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time(), "_image_path": image_path}
+    threading.Thread(target=_run_disruptive_job, args=(job_id, producto.strip(), image_path),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/regenerate-image")
+def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
+    """Regenera UNA sola imagen (la variante `index` de un job de ads disruptivos). Síncrono."""
+    job = JOBS.get(job_id)
+    if not job or not (job.get("result") or {}).get("variantes"):
+        raise HTTPException(404, "No hay un proyecto de ads para ese job")
+    variantes = job["result"]["variantes"]
+    if index < 0 or index >= len(variantes):
+        raise HTTPException(400, "Índice fuera de rango")
+    v = variantes[index]
+    out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
+    try:
+        img = generar_imagen(v.get("prompt", ""), _load_env_key(), out,
+                             product_image_path=job.get("_image_path"))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo regenerar: {e}")
+    if not img:
+        raise HTTPException(502, "Google no devolvió imagen (reintenta)")
+    v["imagen"] = img
+    return {"imagen": img}
 
 
 def _safe_path(path: str) -> str:

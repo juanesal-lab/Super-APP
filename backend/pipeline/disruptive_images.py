@@ -578,12 +578,15 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
     textos = [variant.get("titular", ""), variant.get("apoyo", ""),
               variant.get("boton_cta", ""), variant.get("precio_cta", "")]
     last = None
+    errs: list = []
     for intento in range(max_regen + 1):
         p = prompt if intento == 0 else (
             prompt + f" IMPORTANT (retry {intento}): make ABSOLUTELY every letter of the Spanish embedded "
             "text correct, complete and legible; do not misspell or repeat letters.")
-        img = generar_imagen(p, gemini_key, out_path, product_image_path)
+        img = generar_imagen(p, gemini_key, out_path, product_image_path, errors=errs)
         if not img:
+            if errs:             # deja el motivo (tope de gasto, cuota, key...) para el UI
+                variant["error"] = _error_amigable(errs[0])
             return last          # error de generación (créditos/bloqueo) -> no insiste
         last = img
         if not verify:
@@ -626,14 +629,34 @@ def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: s
         variants = list(ex.map(_one, enumerate(variants)))
     ok = [v for v in variants if v.get("imagen")]
     rep("Listo", 100)
-    return {"ok": True, "variantes": variants, "n_ok": len(ok), "n_total": n}
+    res = {"ok": len(ok) > 0, "variantes": variants, "n_ok": len(ok), "n_total": n}
+    if not ok:   # ninguna salió → sube el motivo real (ej. tope de gasto de Google) al UI
+        res["error"] = next((v["error"] for v in variants if v.get("error")),
+                            "No se generó ninguna imagen (revisa créditos de Google en ai.studio/spend).")
+    return res
+
+
+def _error_amigable(msg: str) -> str:
+    """Traduce el error crudo de Google a algo accionable para Juan."""
+    m = (msg or "").lower()
+    if "spend" in m or "spending cap" in m:
+        return "Se agotó el TOPE DE GASTO mensual de Google. Súbelo en ai.studio/spend y reintenta."
+    if "resource_exhausted" in m or "quota" in m or "exceeded" in m:
+        return "Sin cuota/créditos de Google ahora. Revisa ai.studio/spend (o reintenta más tarde)."
+    if "api key" in m or "api_key" in m or "permission" in m or "401" in m or "403" in m:
+        return "Problema con la API key de Google (revísala en 🔑 Claves)."
+    if "safety" in m or "blocked" in m or "prohibited" in m:
+        return "Google bloqueó ese concepto por políticas. Regenera o cámbialo."
+    return "Google no devolvió imagen (reintenta)."
 
 
 def generar_imagen(prompt: str, gemini_key: str, out_path: str,
-                   product_image_path: str | None = None, tries: int = 4) -> str | None:
+                   product_image_path: str | None = None, tries: int = 4,
+                   errors: list | None = None) -> str | None:
     """Nano Banana convierte el prompt en imagen (usa la foto del producto como referencia si hay).
 
-    Reintenta ante errores transitorios de Google (500 INTERNAL / 503 / 429) con backoff."""
+    Reintenta ante errores transitorios de Google (500 INTERNAL / 503 / rate-limit) con backoff.
+    Si `errors` es una lista, guarda ahí el último error crudo (para dar mensaje amigable)."""
     import time
     from google import genai
     from google.genai import types
@@ -659,7 +682,12 @@ def generar_imagen(prompt: str, gemini_key: str, out_path: str,
             return None   # respondió pero sin imagen (bloqueo de contenido) -> no reintenta
         except Exception as e:  # noqa: BLE001
             msg = str(e)
-            transitorio = any(c in msg for c in ("500", "INTERNAL", "503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"))
+            if errors is not None:
+                errors[:] = [msg]
+            # El tope de gasto mensual NO se arregla reintentando -> falla rápido
+            tope = ("spend" in msg.lower()) or ("spending cap" in msg.lower())
+            transitorio = (not tope) and any(
+                c in msg for c in ("500", "INTERNAL", "503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"))
             if transitorio and attempt < tries - 1:
                 time.sleep(2.0 * (attempt + 1))   # backoff: 2s, 4s, 6s
                 continue

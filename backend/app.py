@@ -1235,7 +1235,7 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo regenerar: {e}")
     if not img:
-        raise HTTPException(502, "Google no devolvió imagen (reintenta o revisa créditos)")
+        raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
     return {"imagen": img}
 

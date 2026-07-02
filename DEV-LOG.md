@@ -1161,3 +1161,14 @@ salían menos arriesgados y con typos. Juan eligió full-prompt. Cambios:
 - ⚠️ BLOQUEO: el proyecto Google de la key llegó al TOPE DE GASTO MENSUAL (429 spend cap). Juan debe subirlo
   en https://ai.studio/spend para seguir generando. Falta validar el verificador en vivo cuando se destape.
 - Los helpers del compositor (componer_ad/_quiz/_slider/_chat) quedan sin uso en este flujo (no los borré).
+
+### 2026-07-02 · Claude (juanesal-lab) · ⚠️ Ads imagen: mensaje claro cuando Google topa el gasto
+Juan probó y "no me generó las imágenes": los conceptos salían pero las 10 imágenes fallaban con
+"No se generó". Diagnóstico: NO es bug — el proyecto de Google llegó al TOPE DE GASTO MENSUAL (429
+spending cap). Mejoré el manejo en `disruptive_images.py`:
+- `generar_imagen(..., errors=list)` guarda el error crudo; el tope de gasto ya NO se reintenta (fallaba
+  rápido en vez de 4 backoffs inútiles). Nuevo `_error_amigable()` traduce el error.
+- `generar_ad_fullprompt` guarda `variant["error"]` amigable; `generar_ads_fullprompt` devuelve ok=False +
+  `error` cuando NINGUNA salió → el UI muestra en rojo "Se agotó el TOPE DE GASTO mensual de Google.
+  Súbelo en ai.studio/spend". `/api/regenerate-image` también da el motivo real.
+- Juan debe subir el tope en https://ai.studio/spend para que Nano Banana genere.

@@ -1018,3 +1018,14 @@ el TIMELINE completo. Fase 1 lista y probada en vivo:
 - `/api/dub` + `_run_dub_job` ahora aceptan `oferta_2x1` + `product_desc` y ramifican. AVISO Juan: toqué
   tu panel p-dub (solo agregué checkbox+campo) y tu endpoint /api/dub (aditivo, no cambié el default).
 - Verificado con captura que el checkbox y el campo se ven bien.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📢 CTA fijo obligatorio en TODOS los copies/guiones
+Jack: todos los copies deben cerrar con esta frase EXACTA:
+"por tu compra hoy te regalamos el envío, y para tu seguridad ante estafas pagas al recibir".
+- **`scripts.py`**: constante `CTA_OBLIGATORIO` + helper `_con_cta()`. El prompt de `generate_scripts`
+  obliga a cerrar con la frase exacta, y el post-proceso la garantiza (la añade si el modelo no la puso
+  igual; no la duplica).
+- **`dub_colombia.py`**: importa el CTA; el prompt obliga a que la ÚLTIMA fase termine con la frase
+  exacta, + red de seguridad que la añade a la última fase si no aparece en ninguna.
+- Cubre: guiones de voz (Cortar clips, links) + doblaje colombiano (Crear creativo, Clon, Doblaje 2x1).
+- Los hooks (openers cortos) NO la llevan (es un cierre, no un gancho). Probado local (exacto, sin duplicar).

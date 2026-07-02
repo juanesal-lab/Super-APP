@@ -643,13 +643,15 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
         except OSError:
             pass
         prompt = (
-            "Edit the FIRST image (a vertical social-media video ad). Take the EXACT product shown in the "
-            "SECOND image and place it standing in the LOWER-LEFT corner, about 30% of the width, as if it "
-            "naturally belongs in the scene: match the scene's lighting/white-balance and add a soft realistic "
-            "contact shadow so it doesn't look pasted. Keep the product's shape, colors and label IDENTICAL to "
+            "Edit the FIRST image (a vertical social-media video). Take the EXACT product from the SECOND image "
+            "and place it SMALL (about 20% of the width) resting on a real flat surface in the LOWER part of the "
+            "scene — a table, counter, floor, sink or shelf edge — integrated with matching lighting and a soft "
+            "realistic contact shadow, as if it were really there. STRICT RULES: never place it over a person, "
+            "face, hands, or over any text, caption, progress bar or button; put it in an empty area of the "
+            "lower third; keep it small and unobtrusive. Keep the product's shape, colors and label IDENTICAL to "
             "the reference — do NOT redesign it, do NOT add any logo, watermark or extra text on it. Change "
-            "NOTHING else in the first image: keep all existing captions, the video player, progress bar and "
-            "the CTA button exactly as they are. Output only the edited first image.")
+            "NOTHING else in the image: keep all existing captions, the video player, progress bar and the CTA "
+            "button exactly as they are. Output only the edited first image.")
         r = client.models.generate_content(
             model=_IMG_MODEL,
             contents=[prompt,
@@ -667,9 +669,10 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
 
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                           product_image_path: str | None = None, verify: bool = True,
-                          max_regen: int = 2) -> str | None:
-    """Genera el ad (Nano Banana 2 dibuja la escena+texto SIN producto) + verifica ortografía/regenera +
-    2ª pasada que INTEGRA el producto REAL del cliente en la escena (natural). Devuelve la ruta o None."""
+                          max_regen: int = 2, integrar_producto: bool = False) -> str | None:
+    """Genera el ad (Nano Banana 2 dibuja la escena+texto SIN producto) + verifica ortografía/regenera.
+    Por defecto NO mete el producto (queda limpio); si `integrar_producto`, hace la 2ª pasada que lo integra
+    en la escena. Devuelve la ruta o None."""
     prompt = variant.get("prompt", "")
     if not prompt:
         return None
@@ -694,7 +697,9 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             break
     if not got:
         return None
-    return _integrar_producto_ia(out_path, product_image_path, gemini_key)   # 2ª pasada: producto integrado
+    if integrar_producto:            # solo si se pide: 2ª pasada que integra el producto en la escena
+        return _integrar_producto_ia(out_path, product_image_path, gemini_key)
+    return out_path                  # por defecto: ad LIMPIO sin producto
 
 
 def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,

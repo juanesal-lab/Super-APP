@@ -29,7 +29,7 @@ from pipeline.narrative import analyze_narrative
 from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
 from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
-                                        generar_ad_fullprompt)
+                                        generar_ad_fullprompt, _integrar_producto_ia)
 from pipeline import foreplay_search as fp
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1385,6 +1385,28 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
         raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
     return {"imagen": img}
+
+
+@app.post("/api/disruptive-add-product")
+def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
+    """Mete el PRODUCTO real integrado en UNA imagen ya generada (2ª pasada). Síncrono."""
+    job = JOBS.get(job_id)
+    if not job or not (job.get("result") or {}).get("variantes"):
+        raise HTTPException(404, "No hay un proyecto de ads para ese job")
+    variantes = job["result"]["variantes"]
+    if index < 0 or index >= len(variantes):
+        raise HTTPException(400, "Índice fuera de rango")
+    v = variantes[index]
+    if not v.get("imagen"):
+        raise HTTPException(400, "Esa imagen aún no está generada")
+    prod = job.get("_image_path")
+    if not (prod and os.path.exists(prod)):
+        raise HTTPException(400, "No subiste foto del producto en el paso 1")
+    try:
+        _integrar_producto_ia(v["imagen"], prod, _load_env_key())
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo poner el producto: {e}")
+    return {"imagen": v["imagen"]}
 
 
 def _safe_path(path: str) -> str:

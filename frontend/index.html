@@ -802,6 +802,8 @@
     .disRegen:hover{background:var(--accent);color:#fff}
     .disDl{color:var(--accent2)}
     .disDl:hover{background:var(--accent2);color:#fff}
+    .disProd{color:var(--txt);border-top:1px solid var(--line)}
+    .disProd:hover{background:var(--txt);color:var(--bg)}
     .disFail{padding:14px;text-align:center;color:var(--warn);font-size:12px;border-top:1px solid var(--line)}
   </style>
 
@@ -878,7 +880,7 @@
       if(!res||!res.variantes){ return; }
       const box=document.getElementById('disResult');
       const bust = disCacheBust ? '&_='+disCacheBust : '';
-      let h=`<div class="pmsg" style="margin-top:14px">✅ ${res.n_ok}/${res.n_total} imágenes listas — 🔄 regenera la que no te guste, ⬇️ descarga las buenas</div><div class="disGrid">`;
+      let h=`<div class="pmsg" style="margin-top:14px">✅ ${res.n_ok}/${res.n_total} imágenes listas — salen LIMPIAS; con <b>➕ Producto</b> lo metes solo donde se vea bien, 🔄 regenera, ⬇️ descarga</div><div class="disGrid">`;
       res.variantes.forEach((v,i)=>{
         const head=`<div class="disAng">${i+1}. ${v.angulo||''}</div><div class="disTit">"${v.titular||''}"</div>`;
         if(v.imagen){
@@ -888,6 +890,7 @@
                <div class="disActions">
                  <button class="disAct disRegen" onclick="disRegen(${i},this)">🔄 Regenerar</button>
                  <a class="disAct disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a>
+                 <button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">➕ Poner mi producto</button>
                </div></div>`;
         } else {
           h+=`<div class="disCard"><div class="body">${head}<div class="disWhy" style="color:var(--warn)">✗ No se generó la imagen</div></div>
@@ -909,6 +912,19 @@
           disRender(s.result);
         } else { btn.innerHTML='✗ reintenta'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }
       }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }
+    }
+    async function disAddProd(i, btn){
+      if(!window._disJob) return;
+      const t=btn.innerHTML; btn.innerHTML='⏳ Poniendo el producto…'; btn.disabled=true;
+      try{
+        const fd=new FormData(); fd.append('job_id',window._disJob); fd.append('index',i);
+        const r=await fetch('/api/disruptive-add-product',{method:'POST',body:fd}); const j=await r.json();
+        if(r.ok && j.imagen){
+          disCacheBust=Date.now();
+          const s=await (await fetch('/api/status/'+window._disJob)).json();
+          disRender(s.result);
+        } else { btn.innerHTML='✗ '+((j&&j.detail)||'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
+      }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
     }
   </script>
   </div><!-- /p-disruptivo -->

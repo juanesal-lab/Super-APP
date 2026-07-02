@@ -1266,3 +1266,15 @@ en español, que NO se re-doble y siga. (Él puso uno y "se mantuvo igual" porqu
 - Verificado el detector: 4/4 (español→conserva, inglés→dobla). Solo mi módulo.
 - No pude correr el clon end-to-end (Gemini de Jack en tope 429). PENDIENTE aún: "Mi producto" (música
   auto + voz + subtítulos + bajar volumen) — es el siguiente build grande.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🎨 Ads imagen: producto OFF por defecto + botón "➕ Producto" por imagen
+Juan: Nano Banana 2 va "súper mega bien", pero la 2ª pasada metía el producto en lugares raros (flotando
+sobre la persona). Pidió: que NO aparezca el producto salvo que se vea bien. (Su skill igual dice "la escena
+vende, el producto cierra"). Cambios:
+- `generar_ad_fullprompt(..., integrar_producto=False)`: por DEFECTO los ads salen LIMPIOS sin producto
+  (más barato: 1 llamada Pro en vez de 2). Solo integra si se pide.
+- `_integrar_producto_ia`: colocación más estricta (producto PEQUEÑO ~20%, sobre una superficie real del
+  tercio inferior, NUNCA sobre personas/cara/manos/texto/botones).
+- NUEVO endpoint `/api/disruptive-add-product` (job_id, index) + botón **"➕ Poner mi producto"** por imagen
+  en el frontend → Juan lo agrega SOLO donde se vea bien (su criterio). `disAddProd` recarga con cache-bust.
+- Así nunca queda mal puesto y el lote sale limpio/rápido.

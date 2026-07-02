@@ -707,8 +707,14 @@
         <button class="btn" onclick="edExport()" style="background:var(--accent2)">💾 Exportar video</button>
         <span id="edInfo" style="color:var(--muted);font-size:13px;margin-left:auto"></span>
       </div>
-      <div class="edHint">👇 Arrastra los clips para reordenar · clic para ver uno · ✕ para borrar</div>
-      <div class="edTl" id="edTl"></div>
+      <div class="edHint">👇 Los clips van por su duración real · arrastra para reordenar · clic para ver uno · ✕ para borrar · la línea roja es el cabezal</div>
+      <div class="edTlWrap" id="edTlWrap">
+        <div class="edTlInner" id="edTlInner">
+          <div class="edRuler" id="edRuler"></div>
+          <div class="edTrack" id="edTrack"></div>
+          <div class="edPlayhead" id="edPlayhead"></div>
+        </div>
+      </div>
       <div id="edResult"></div>
     </div>
   </div>
@@ -718,15 +724,21 @@
     .edPreviewWrap video{max-height:50vh;max-width:100%;display:block}
     .edBar{display:flex;align-items:center;gap:10px;margin:12px 0 6px}
     .edHint{font-size:12px;color:var(--muted);margin:4px 0}
-    .edTl{display:flex;gap:8px;overflow-x:auto;padding:12px;background:var(--card2);border:1px solid var(--line);border-radius:12px;min-height:120px}
-    .edClip{position:relative;flex:0 0 auto;width:92px;border-radius:8px;overflow:hidden;cursor:grab;border:2px solid transparent;background:#000}
-    .edClip.sel{border-color:var(--accent)}
-    .edClip.drag{opacity:.35}
-    .edClip img{width:92px;height:112px;object-fit:cover;display:block}
-    .edNum{position:absolute;top:3px;left:3px;background:var(--accent);color:#fff;font-size:10px;padding:1px 5px;border-radius:5px;font-weight:800}
-    .edDur{position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;padding:1px 5px;border-radius:5px}
-    .edDel{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.72);color:#fff;border:0;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;padding:0}
+    /* Línea de tiempo tipo CapCut: clips por su duración, regla, cabezal */
+    .edTlWrap{overflow-x:auto;overflow-y:hidden;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:8px 10px 12px}
+    .edTlInner{position:relative;min-height:116px}
+    .edRuler{position:relative;height:15px;margin-bottom:6px}
+    .edTick{position:absolute;top:0;font-size:9px;color:var(--muted);border-left:1px solid var(--line);padding-left:3px;height:98px}
+    .edTrack{position:relative;height:92px}
+    .edClip{position:absolute;top:0;height:92px;border-radius:7px;overflow:hidden;cursor:grab;border:2px solid transparent;background:#000;background-size:cover;background-position:center}
+    .edClip.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+    .edClip.drag{opacity:.4}
+    .edNum{position:absolute;top:2px;left:2px;background:var(--accent);color:#fff;font-size:9px;padding:0 4px;border-radius:4px;font-weight:800}
+    .edDur{position:absolute;bottom:2px;left:2px;background:rgba(0,0,0,.72);color:#fff;font-size:9px;padding:0 4px;border-radius:4px}
+    .edDel{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.72);color:#fff;border:0;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:10px;line-height:1;padding:0}
     .edDel:hover{background:var(--warn)}
+    .edPlayhead{position:absolute;top:0;width:2px;background:#ff3b30;height:113px;left:0;pointer-events:none;z-index:5}
+    .edPlayhead::before{content:'';position:absolute;top:0;left:-4px;border:5px solid transparent;border-top-color:#ff3b30}
   </style>
 
   <script>
@@ -752,32 +764,46 @@
       edRenderTl(); if(edClips.length) edSelect(0);
     }
     function edTotal(){ return edClips.reduce((s,c)=>s+(c.duration||0),0); }
+    const EDPX=55;   // píxeles por segundo (escala de la línea de tiempo)
+    function edStarts(){ const t=[]; let a=0; edClips.forEach(c=>{t.push(a);a+=c.duration||0;}); return t; }
     function edRenderTl(){
-      const tl=document.getElementById('edTl');
-      tl.innerHTML=edClips.map((c,i)=>`
-        <div class="edClip" draggable="true" data-i="${i}" onclick="edSelect(${i})">
-          <span class="edNum">${i+1}</span>
-          <img src="/api/file?path=${enc(c.thumb||c.path)}" onerror="this.style.opacity=.15">
-          <span class="edDur">${(c.duration||0).toFixed(1)}s</span>
-          <button class="edDel" onclick="event.stopPropagation();edDelete(${i})">✕</button>
-        </div>`).join('');
+      const total=edTotal(), w=Math.max(280,total*EDPX);
+      document.getElementById('edTlInner').style.width=w+'px';
+      let rh=''; for(let s=0;s<=Math.ceil(total);s++) rh+=`<span class="edTick" style="left:${s*EDPX}px">${s}s</span>`;
+      document.getElementById('edRuler').innerHTML=rh;
+      const st=edStarts();
+      document.getElementById('edTrack').innerHTML=edClips.map((c,i)=>{
+        const cw=Math.max(14,(c.duration||0.5)*EDPX), x=st[i]*EDPX;
+        const bg=c.thumb?`background-image:url(/api/file?path=${enc(c.thumb)})`:'';
+        return `<div class="edClip ${i===edCur?'sel':''}" draggable="true" data-i="${i}" style="left:${x}px;width:${cw}px;${bg}" onclick="edSelect(${i})">
+          <span class="edNum">${i+1}</span><span class="edDur">${(c.duration||0).toFixed(1)}s</span>
+          <button class="edDel" onclick="event.stopPropagation();edDelete(${i})">✕</button></div>`;
+      }).join('');
       edWireDrag();
-      document.getElementById('edInfo').textContent=edClips.length+' clips · '+edTotal().toFixed(1)+'s';
+      document.getElementById('edInfo').textContent=edClips.length+' clips · '+total.toFixed(1)+'s';
+      edUpdatePlayhead();
+    }
+    function edUpdatePlayhead(){
+      const v=document.getElementById('edVideo'), st=edStarts();
+      const g=(st[edCur]||0)+((v&&v.currentTime)||0);
+      const ph=document.getElementById('edPlayhead'); if(ph) ph.style.left=(g*EDPX)+'px';
     }
     function edGoto(i){
       edCur=i;
-      document.querySelectorAll('#edTl .edClip').forEach((el,k)=>el.classList.toggle('sel',k===i));
+      document.querySelectorAll('#edTrack .edClip').forEach((el,k)=>el.classList.toggle('sel',k===i));
       const v=document.getElementById('edVideo');
-      v.src='/api/file?path='+enc(edClips[i].path); v.currentTime=0; v.play().catch(()=>{});
+      v.src='/api/file?path='+enc(edClips[i].path); v.currentTime=0;
+      v.ontimeupdate=edUpdatePlayhead;
+      v.play().catch(()=>{}); edUpdatePlayhead();
     }
     function edSelect(i){ edPlaying=false; edGoto(i); }
     function edDelete(i){
       edClips.splice(i,1);
       if(!edClips.length){ document.getElementById('edStage').style.display='none'; return; }
-      edRenderTl(); edSelect(Math.min(edCur,edClips.length-1));
+      const ni=Math.min(edCur,edClips.length-1); edRenderTl(); edSelect(ni);
     }
     function edWireDrag(){
-      document.querySelectorAll('#edTl .edClip').forEach(el=>{
+      document.querySelectorAll('#edTrack .edClip').forEach(el=>{
         el.ondragstart=()=>{ edDragI=+el.dataset.i; el.classList.add('drag'); };
         el.ondragend=()=>el.classList.remove('drag');
         el.ondragover=e=>e.preventDefault();

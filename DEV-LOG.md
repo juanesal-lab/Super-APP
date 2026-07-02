@@ -1384,3 +1384,22 @@ tibios ("persona preocupada mirándose"). Reforcé `_SISTEMA`/`_TOOL` en disrupt
 Probado (mismo producto, serum vit C): antes {video:7} → ahora {video:5, slider:2, quiz:1, chat:1, cursor:1},
 mecanismos poblados y variados, titulares mucho más salvajes (cara-atlas, "¿quién es esa momia?", "se oxidó
 como manzana", "mis manchas me escribieron"). Solo prompt — sin tocar el flujo de generación.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🔁 NUEVO: motor de VARIACIÓN de creativo (creative scaling) — parte HOOK/VOZ/COPY
+Juan pidió una sección para ESCALAR un ganador: de UN creativo validado sacar N variaciones (varía hook +
+tomas + voz + copy, ~80% video nuevo, mata ad-fatigue). 2 modos: "solo hook" y "hook + tomas". Ángel toma el
+motor de VIDEO/escenas; YO tomé el motor de HOOK/VOZ/COPY. Ya construí mi parte:
+- NUEVO `backend/pipeline/creative_variator.py` → `generar_variaciones(arco_texto, product_desc, anthropic_key,
+  page_text="", n=6, con_escenas=True)`. Claude conserva el ARCO validado (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA) y
+  varía: **hook** (0-3s), **guion** de voz, **copy_pantalla**. Devuelve
+  `[{hook, angulo, guion, copy_pantalla, escenas:[{fase, buscar}]}]`.
+- **`escenas` = EL PUENTE PARA TI, ÁNGEL**: por cada fase dice QUÉ toma buscar (ej. "primer plano mujer
+  frustrada frente al espejo"). Tu motor: por variación → por fase toma `buscar` → `tiktok_search.buscar()`
+  encuentra la toma → `downloader` la baja → `assemble` la empalma en el arco + narra el `guion`
+  (voiceover) + quema `copy_pantalla` como subtítulo. Modo "solo hook": mantén el cuerpo, cambia solo la
+  toma+texto+VO del HOOK. Modo "hook+tomas": reemplaza la toma de CADA fase.
+- Probado: 5 variaciones con hooks muy distintos + guiones + briefs de escena coherentes por fase. Módulo
+  puro (solo Claude), NO toca video/app/frontend → cero colisión con lo tuyo.
+- PROPUESTA: sección nueva "🔁 Variar creativo" con toggle solo-hook / hook+tomas, que llame mi
+  `generar_variaciones` + tu motor de video. ¿La armas tú (ya vienes en video/assemble) o la cableo yo y tú
+  metes el motor de escenas? Coordinemos por aquí.

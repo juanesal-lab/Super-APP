@@ -1448,3 +1448,16 @@ Juan: cuando no le gusta un ad/ángulo, que el cambio sea INTELIGENTE y NO repit
   descartaba el overlay). Demo ~/Downloads/prueba/BANNER_oferta.png.
 - AVISO Juan: nuevo módulo + paso en auto_studio + toggle. #3 (variar hook) = tu creative_variator es el
   cerebro; falta la capa de VIDEO (buscar toma/hook en TikTok, traducir, tapar texto, 4 videos) — coordinamos.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🔎 Búsqueda TikTok: matcheo por FORMA FÍSICA (no solo categoría)
+Juan: la búsqueda no matcheaba bien — subió un LÁSER cuadrado/clamshell para hongos de uñas y le devolvió
+un aparato RECTANGULAR que ni era láser. Causa: la verificación comparaba "misma categoría" pero NO la forma
+física del dispositivo. Reforcé `tiktok_search.py` (módulo de Jack):
+- `analizar_foto`: ahora describe la FORMA FÍSICA exacta del aparato (cuadrado/rectangular/tipo lápiz/pinza…),
+  color y rasgos (botón/luz), y da keywords específicas (tipo + uso, ej. "laser hongos uñas" no solo "laser").
+- `_verificar`: match=true SOLO si la portada muestra el MISMO producto con la MISMA FORMA/FORMATO FÍSICO
+  (un dispositivo cuadrado ≠ rectangular ≠ tipo lápiz; láser ≠ otro aparato). "Sé DURO: mejor descartar."
+- Probado con el láser real: descripción captó "forma de pinza/clamshell, blanco, luz azul"; la búsqueda
+  completa puso de #1 el dispositivo EXACTO (video UGC mostrándolo), ya no un rectangular random.
+- AVISO Jack: toqué tu tiktok_search.py (2 prompts: analizar_foto y _verificar). No cambié el flujo ni el
+  ranking, solo la estrictez del matcheo por forma.

@@ -42,14 +42,18 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
         with open(image_path, "rb") as f:
             data = f.read()
         prompt = (
-            "Mira la foto de este producto de dropshipping. Identifica el producto EXACTO y sobre todo "
-            "su FORMA/FORMATO (crema, gel, cápsulas, spray, aparato, collar, etc.). "
+            "Mira la foto de este producto de dropshipping y descríbelo con PRECISIÓN FÍSICA. Identifica: "
+            "(1) qué ES exactamente y su CATEGORÍA (crema, gel, cápsulas, spray, aparato/dispositivo, collar…); "
+            "(2) si es un APARATO/DISPOSITIVO, su FORMA física exacta (cuadrado, rectangular, redondo, tipo "
+            "lápiz/pen, tipo pistola, de mano…), color(es) y algún rasgo distintivo (botón, luz, pantalla, cable). "
             f"El usuario lo llama: \"{nombre}\". Devuelve SOLO un JSON:\n"
-            '{"keywords":"3-5 palabras en español, INCLUYENDO la forma",'
+            '{"keywords":"3-5 palabras en español ESPECÍFICAS: tipo de producto + para qué sirve (ej. '
+            '\'laser hongos uñas\', no solo \'laser\')",'
             '"variants":["4 búsquedas DISTINTAS en español para encontrar videos que MUESTREN este '
-            'MISMO producto y sus BENEFICIOS/resultados/demostración (todas con la forma; ej. añade '
-            '\'resultados\', \'antes y después\', \'cómo funciona\', \'reseña\')"],'
-            '"desc":"una línea: qué es, en qué forma/formato viene, y para qué sirve"}')
+            'MISMO producto y sus resultados/demostración (añade \'resultados\', \'antes y después\', '
+            '\'cómo funciona\', \'reseña\')"],'
+            '"desc":"1-2 líneas: qué es + su FORMA FÍSICA exacta (ej. \'dispositivo láser CUADRADO de mano, '
+            'azul, con botón y luz\') + para qué sirve"}')
         resp = _client(api_key).models.generate_content(
             model=_MODEL, contents=[prompt, types.Part.from_bytes(data=data, mime_type="image/jpeg")])
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
@@ -131,12 +135,14 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
             return None
         titulo = (cand.get("title") or "")[:120]
         prompt = (
-            f"Foto 1 = producto de REFERENCIA que quiero: \"{ref_desc}\". "
+            f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
             f"Foto 2 = portada de un video de TikTok (título: \"{titulo}\"). "
-            "Sé MUY ESTRICTO: match=true SOLO si la Foto 2 muestra INEQUÍVOCAMENTE el MISMO tipo de "
-            "producto Y en la MISMA FORMA/FORMATO que la Foto 1 (ej: si la referencia es CREMA, un "
-            "bótox/inyección/pastilla/otra cosa NO cuenta). Si la portada no deja ver claro el producto, "
-            "o hay duda, o es otro producto → match=false. "
+            "Compara FÍSICAMENTE los dos productos. match=true SOLO si la Foto 2 muestra CLARAMENTE el MISMO "
+            "producto que la Foto 1: mismo tipo de objeto, misma CATEGORÍA, y —MUY IMPORTANTE— la MISMA FORMA/"
+            "FORMATO FÍSICO. Ejemplos de lo que NO cuenta (match=false): un dispositivo CUADRADO vs uno "
+            "rectangular o tipo lápiz/pistola; un láser vs otro aparato distinto; una crema vs pastillas/spray. "
+            "Si la Foto 2 muestra OTRO producto, otra forma, otro aparato, no se ve claro el producto, o hay "
+            "CUALQUIER duda → match=false. Sé DURO: mejor descartar que dejar pasar un producto equivocado. "
             "TEXTO SOBREPUESTO: distingue el texto AÑADIDO DIGITALMENTE encima del video (subtítulos, "
             "captions, títulos, stickers de texto — lo típico que pone el creador de TikTok) del texto que "
             "es parte REAL de la escena (la etiqueta o empaque del producto, letreros del lugar). SOLO cuenta "

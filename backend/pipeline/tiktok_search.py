@@ -32,10 +32,9 @@ def _client(api_key):
 
 
 def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
-    """Gemini: descripción precisa (producto + FORMA) + keywords en español. Fallback: el nombre."""
-    base = {"keywords": nombre, "desc": nombre}
+    """Gemini: descripción precisa (producto + FORMA) + VARIAS búsquedas (amplía) + desc. Fallback: nombre."""
     if not (api_key and image_path and os.path.exists(image_path)):
-        return base
+        return {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
     try:
         from google.genai import types
         with open(image_path, "rb") as f:
@@ -43,19 +42,37 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
         prompt = (
             "Mira la foto de este producto de dropshipping. Identifica el producto EXACTO y sobre todo "
             "su FORMA/FORMATO (crema, gel, cápsulas, spray, aparato, collar, etc.). "
-            f"El usuario lo llama: \"{nombre}\". Devuelve SOLO un JSON: "
-            '{"keywords":"3-5 palabras en español para buscarlo en TikTok, INCLUYENDO la forma",'
-            '"desc":"una línea: qué es y en qué forma/formato viene"}')
+            f"El usuario lo llama: \"{nombre}\". Devuelve SOLO un JSON:\n"
+            '{"keywords":"3-5 palabras en español, INCLUYENDO la forma",'
+            '"variants":["4 búsquedas DISTINTAS en español para encontrar videos que MUESTREN este '
+            'MISMO producto y sus BENEFICIOS/resultados/demostración (todas con la forma; ej. añade '
+            '\'resultados\', \'antes y después\', \'cómo funciona\', \'reseña\')"],'
+            '"desc":"una línea: qué es, en qué forma/formato viene, y para qué sirve"}')
         resp = _client(api_key).models.generate_content(
             model=_MODEL, contents=[prompt, types.Part.from_bytes(data=data, mime_type="image/jpeg")])
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
         if m:
             d = json.loads(m.group(0))
-            kw = str(d.get("keywords", "")).strip()
-            return {"keywords": kw or nombre, "desc": str(d.get("desc", "")).strip() or nombre}
+            kw = str(d.get("keywords", "")).strip() or nombre
+            variants = [str(v).strip() for v in (d.get("variants") or []) if str(v).strip()]
+            variants = _expandir(kw, variants)
+            return {"keywords": kw, "variants": variants,
+                    "desc": str(d.get("desc", "")).strip() or nombre}
     except Exception:  # noqa: BLE001
         pass
-    return base
+    return {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
+
+
+def _expandir(kw: str, variants: list[str]) -> list[str]:
+    """Garantiza VARIAS consultas (amplía) con términos de beneficios/demostración, sin duplicar."""
+    kw = (kw or "").strip()
+    extra = [kw, f"{kw} resultados", f"{kw} antes y después", f"{kw} reseña", f"{kw} cómo funciona"]
+    out: list[str] = []
+    for q in [kw] + variants + extra:
+        q = (q or "").strip()
+        if q and q.lower() not in {x.lower() for x in out}:
+            out.append(q)
+    return out[:5]
 
 
 def buscar_tiktok(keywords: str, count: int = 20) -> list[dict]:
@@ -80,7 +97,7 @@ def buscar_tiktok(keywords: str, count: int = 20) -> list[dict]:
 
 
 def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dict | None:
-    """¿La portada del candidato es EL MISMO producto (tipo Y forma) que la foto? + español + poco texto."""
+    """¿El video es SÍ O SÍ el mismo producto (tipo Y forma)? + muestra el producto + español + poco texto."""
     cover = cand.get("cover")
     if not cover:
         return None
@@ -89,13 +106,16 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         cimg = requests.get(cover, headers=_UA, timeout=15).content
         if not cimg:
             return None
+        titulo = (cand.get("title") or "")[:120]
         prompt = (
             f"Foto 1 = producto de REFERENCIA que quiero: \"{ref_desc}\". "
-            "Foto 2 = portada de un video de TikTok. "
-            "¿La Foto 2 muestra EXACTAMENTE el mismo TIPO de producto Y en la misma FORMA/FORMATO que la "
-            "Foto 1? (ej: si la referencia es una CREMA, un bótox/inyección NO cuenta). Sé estricto. "
-            "Además, ¿el texto/idioma del video parece ESPAÑOL? ¿tiene POCO texto sobrepuesto en pantalla? "
-            'Responde SOLO JSON: {"match":true/false,"es":true/false,"poco_texto":true/false}')
+            f"Foto 2 = portada de un video de TikTok (título: \"{titulo}\"). "
+            "Sé MUY ESTRICTO: match=true SOLO si la Foto 2 muestra INEQUÍVOCAMENTE el MISMO tipo de "
+            "producto Y en la MISMA FORMA/FORMATO que la Foto 1 (ej: si la referencia es CREMA, un "
+            "bótox/inyección/pastilla/otra cosa NO cuenta). Si la portada no deja ver claro el producto, "
+            "o hay duda, o es otro producto → match=false. "
+            "Responde SOLO JSON: "
+            '{"match":true/false,"muestra_producto":true/false,"es":true/false,"poco_texto":true/false}')
         resp = _client(api_key).models.generate_content(
             model=_MODEL,
             contents=[prompt,
@@ -105,8 +125,8 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         if not m:
             return None
         d = json.loads(m.group(0))
-        return {"match": bool(d.get("match")), "es": bool(d.get("es")),
-                "poco_texto": bool(d.get("poco_texto"))}
+        return {"match": bool(d.get("match")), "muestra": bool(d.get("muestra_producto")),
+                "es": bool(d.get("es")), "poco_texto": bool(d.get("poco_texto"))}
     except Exception:  # noqa: BLE001
         return None
 
@@ -117,45 +137,50 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
+    queries = _expandir(nombre, [])
     if image_path and os.path.exists(image_path):
         info = analizar_foto(image_path, nombre, api_key)
-        kw, ref_desc = info["keywords"], info["desc"]
+        ref_desc = info["desc"]
+        queries = info.get("variants") or [info["keywords"]]
         try:
             with open(image_path, "rb") as f:
                 ref_bytes = f.read()
         except Exception:  # noqa: BLE001
             ref_bytes = None
-    else:
-        kw = (nombre or "").strip()
-    kw = (kw or nombre or "").strip()
+    queries = [q for q in queries if q][:5] or [(nombre or "").strip()]
+    kw = queries[0]
 
-    # Traemos MÁS candidatos para poder filtrar y quedarnos con los que coincidan
-    cands = buscar_tiktok(kw, min(30, max(count * 2, 15)))
+    # AMPLIAR: varias consultas (producto + beneficios/resultados) y juntamos candidatos únicos
+    cands: dict[str, dict] = {}
+    for q in queries:
+        for c in buscar_tiktok(q, 15):
+            cands.setdefault(c["url"], c)
+    cand_list = list(cands.values())
     verificado = False
 
-    if ref_bytes and api_key and cands:
+    if ref_bytes and api_key and cand_list:
         verificado = True
+        pool = cand_list[:24]                 # tope de verificaciones (acota costo)
         matches: list[dict] = []
         with ThreadPoolExecutor(max_workers=6) as ex:
-            futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c for c in cands}
+            futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c for c in pool}
             for fut in as_completed(futs):
                 v = fut.result()
                 if v and v.get("match"):
                     c = futs[fut]
-                    c["_es"], c["_poco"] = v.get("es", False), v.get("poco_texto", False)
+                    c["_rank"] = (v.get("muestra", False), v.get("es", False), v.get("poco_texto", False))
                     matches.append(c)
-        # español + poco texto primero
-        matches.sort(key=lambda c: (c.get("_es", False), c.get("_poco", False)), reverse=True)
+        # los que MUESTRAN el producto + español + poco texto van primero
+        matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
         links = matches[:count]
-        # si la verificación dejó muy pocos, completamos con candidatos sin verificar (mejor algo que nada)
-        if len(links) < min(3, count):
-            extra = [c for c in cands if c not in links]
+        if len(links) < min(3, count):       # si quedaron muy pocos, completa con candidatos
+            extra = [c for c in cand_list if c["url"] not in {l["url"] for l in links}]
             links = (links + extra)[:count]
     else:
-        links = cands[:count]
+        links = cand_list[:count]
 
     for c in links:
-        c.pop("_es", None); c.pop("_poco", None)
+        c.pop("_rank", None)
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
             "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}"}
 

@@ -1082,3 +1082,13 @@ sí el mismo producto, en español y con poco texto, aunque tarde más. (2) 2x1 
 - **2x1 en guiones de voz en off:** `generate_scripts(oferta_2x1)` integra "pides una y llevas otra
   gratis"; checkbox "🎁 Oferta 2x1" en Cortar clips (junto a Voz en off) → /api/scripts. Probado.
 - (Crear creativo YA tenía el 2x1.) AVISO Juan: toqué tu Cortar clips (checkbox+buildForm) y /api/scripts.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🔎➕ Búsqueda TikTok AMPLIADA + verificación más estricta
+Jack: aún se colaba un producto que no era el suyo; quiere ampliar la búsqueda, que salgan escenas con
+BENEFICIOS y que sean SÍ O SÍ su producto.
+- **Amplía:** de la foto/nombre saco VARIAS consultas (producto + "resultados", "antes y después",
+  "reseña", "cómo funciona") → junté ~48 candidatos únicos (antes 15). Videos que muestran el producto/beneficios.
+- **Más estricto:** _verificar ahora usa portada + TÍTULO, exige match INEQUÍVOCO (misma forma) y devuelve
+  `muestra_producto`. El ranking pone primero los que MUESTRAN el producto + español + poco texto.
+- Tope de 24 verificaciones por búsqueda (acota costo). Solo mi módulo tiktok_search.py.
+- ⚠️ Más candidatos = un poco más de tiempo/gasto por búsqueda, pero acierta mejor (lo que pidió Jack).

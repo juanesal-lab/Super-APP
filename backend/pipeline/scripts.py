@@ -97,7 +97,8 @@ def _frame_bytes(seg: Segment) -> bytes | None:
 
 def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str = "",
                      target_seconds: float = 15.0, sample_seg: Segment | None = None,
-                     n: int = 10, blueprint: dict | None = None) -> list[dict]:
+                     n: int = 10, blueprint: dict | None = None,
+                     oferta_2x1: bool = False) -> list[dict]:
     """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}]. [] si falla.
 
     `blueprint`: opcional, el análisis narrativo (narrative.py) de un ANUNCIO GANADOR de
@@ -141,7 +142,9 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "voz colombiana real de Juan (modismos: 'Y señores', 'Oiga', '¡Ojo!', 'Le tengo malas "
         "noticias', 'es físico y ya', 'No te voy a mentir', 'es extrañamente satisfactorio'); ancla "
         "de precio comparativa. "
-        f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
+        + ("OFERTA 2x1: integra de forma natural que al pedir uno se lleva OTRO GRATIS (2x1). "
+           if oferta_2x1 else "")
+        + f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
         f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
         f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, MÁXIMO {max_words} palabras, sin "
         "emojis, sin overlays ni acotaciones de escena, listo para narrar de corrido.\n"

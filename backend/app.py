@@ -175,6 +175,27 @@ def get_config():
     }
 
 
+@app.get("/api/caption-preview")
+def caption_preview(style: str = "hormozi"):
+    """Preview PNG de un estilo de subtítulo (para elegir viendo cómo se ve)."""
+    import io
+    from PIL import Image
+    from pipeline.caption_styles import _render_wordgroup, ESTILOS
+    st = style if style in ESTILOS else "hormozi"
+    W, H = 640, 260
+    grp = [{"word": "MIRA"}, {"word": "ESTO"}, {"word": "GRATIS"}]
+    try:
+        cap = _render_wordgroup(grp, 1, W, H, st)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(500, "no se pudo renderizar el preview")
+    bg = Image.new("RGB", (W, H), (32, 30, 36))
+    bg.paste(cap, (0, 0), cap)
+    buf = io.BytesIO()
+    bg.save(buf, "PNG")
+    return Response(content=buf.getvalue(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado

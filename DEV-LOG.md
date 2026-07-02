@@ -1420,3 +1420,8 @@ Jack: Cortar clips repetía escenas, solo 2 SFX, sin música, y quería 8 videos
 - PENDIENTE (grandes, siguientes): (1) PREVIEW visual de los estilos de subtítulos; (2) banner opcional
   2x1/envío-gratis ARRIBA con IA que lo suba para no tapar nada; (3) feature "variar el hook del winner"
   (4 videos, buscar hooks en TikTok por ángulo, traducir, tapar texto en pantalla).
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 👁️ #1 Preview visual de los estilos de subtítulos
+- Endpoint `/api/caption-preview?style=X` renderiza un PNG de muestra ("MIRA ESTO GRATIS") en el estilo
+  elegido (usa caption_styles._render_wordgroup). En la UI: al cambiar el selector de estilo (Cortar clips
+  y Crear creativo) se actualiza una miniatura de cómo se ven los subtítulos. Verificado los 5 estilos.

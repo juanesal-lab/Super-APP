@@ -1145,6 +1145,12 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
         job["message"] = m
         job["progress"] = p
 
+    # Si NO se muestra precio (precio vacío), que el CTA tampoco diga "VER PRECIO"
+    if not (precio or "").strip():
+        for c in conceptos:
+            cta = str(c.get("cta", "") or "")
+            if "PRECIO" in cta.upper():
+                c["cta"] = "PEDIR AHORA"
     try:
         r = generar_ads_v2(conceptos, os.path.join(WORK_DIR, job_id), gemini_key=_load_env_key(),
                            precio=precio, ofertas=ofertas, product_image_path=image_path, progress=progress)

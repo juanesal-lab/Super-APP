@@ -1115,3 +1115,10 @@ falso-interactivos que define la skill `ads-disruptivos-imagen` (estilo-juan-apr
 - Solo toqué `backend/pipeline/disruptive_images.py` y `frontend/index.html` (chip de formato + "Seleccionar todas").
 - ⚠️ Falta (opcional, si Juan lo pide): formatos "cursor en botón", "post IG", "toca-para-revelar", y
   sellos aprobado/garantía. Generación real necesita créditos Google OK.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 💲 Ads imagen: precio OPCIONAL (2x1 sin precio)
+- Jack: en Ads imagen, que decir el precio sea OPCIONAL (que pueda salir la oferta 2x1 pero sin el precio).
+- Frontend (p-disruptivo, de Juan): toggle "💲 Mostrar el precio en el ad" (default on). Si se apaga, se
+  manda precio="" → no se dibuja el precio; las ofertas (2x1, etc.) siguen saliendo. Atenúa el campo.
+- `_run_disruptive_v2_job` (app.py): si no hay precio, el CTA que diga "VER PRECIO" pasa a "PEDIR AHORA".
+- AVISO Juan: toqué tu sección Ads imagen (toggle) y el job v2 (CTA). Verificado con captura.

@@ -1138,6 +1138,41 @@ async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
     return {"ctx_id": ctx_id, "conceptos": conceptos}
 
 
+def _corregir_ortografia_ads(conceptos: list[dict], gemini_key: str | None):
+    """Corrige SOLO ortografía/tildes del texto de los ads (titular/sub/cta/quiz) antes de componer.
+    Evita typos como 'despideron', 'almhadilla', 'preico', 'cámbilas'. No cambia el sentido ni el estilo."""
+    if not gemini_key or not conceptos:
+        return
+    import json as _json
+    import re as _re
+    items = [{"titular": c.get("titular", ""), "sub": c.get("sub", ""),
+              "cta": c.get("cta", ""), "quiz": c.get("quiz_opciones") or []} for c in conceptos]
+    try:
+        from google import genai
+        client = genai.Client(api_key=gemini_key)
+        prompt = (
+            "Eres corrector de estilo en ESPAÑOL. Corrige SOLO errores de ORTOGRAFÍA y TILDES en estos "
+            "textos de anuncios. NO cambies el sentido, ni el estilo, ni las MAYÚSCULAS/minúsculas, ni "
+            "agregues o quites palabras: solo arregla la escritura de cada palabra (ej: 'despideron'→"
+            "'despidieron', 'almhadilla'→'almohadilla', 'preico'→'precio', 'cámbilas'→'cámbialas'). "
+            "Devuelve SOLO un JSON array, MISMO orden y MISMAS claves (titular, sub, cta, quiz):\n"
+            + _json.dumps(items, ensure_ascii=False))
+        resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt])
+        m = _re.search(r"\[.*\]", resp.text or "", _re.DOTALL)
+        if not m:
+            return
+        for c, fx in zip(conceptos, _json.loads(m.group(0))):
+            if not isinstance(fx, dict):
+                continue
+            for k in ("titular", "sub", "cta"):
+                if isinstance(fx.get(k), str) and fx[k].strip():
+                    c[k] = fx[k].strip()
+            if isinstance(fx.get("quiz"), list) and fx["quiz"]:
+                c["quiz_opciones"] = fx["quiz"]
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
     job = JOBS[job_id]
 
@@ -1145,6 +1180,7 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
         job["message"] = m
         job["progress"] = p
 
+    _corregir_ortografia_ads(conceptos, _load_env_key())   # arregla typos del texto ANTES de componer
     # Si NO se muestra precio (precio vacío), que el CTA tampoco diga "VER PRECIO"
     if not (precio or "").strip():
         for c in conceptos:

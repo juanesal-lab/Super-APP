@@ -1038,18 +1038,51 @@ def editor_project(job_id: str):
 
 
 @app.post("/api/editor-export")
-def editor_export(paths: str = Form(...)):
-    """Renderiza la línea de tiempo: concatena los clips en el ORDEN dado. Devuelve la ruta."""
+def editor_export(clips: str = Form(""), paths: str = Form("")):
+    """Renderiza la línea de tiempo: recorta cada clip (in/out) y concatena en el ORDEN dado.
+
+    `clips` = JSON [{path, in, out}] (con recorte). `paths` = JSON [ruta,...] (compat, sin recorte).
+    """
     import json as _json
     try:
-        plist = [p for p in _json.loads(paths) if isinstance(p, str) and os.path.exists(p)]
+        if clips.strip():
+            items = [c for c in _json.loads(clips) if isinstance(c, dict) and c.get("path")]
+        else:
+            items = [{"path": p} for p in _json.loads(paths or "[]") if isinstance(p, str)]
     except Exception:  # noqa: BLE001
-        raise HTTPException(400, "Orden de clips inválido")
-    if not plist:
+        raise HTTPException(400, "Datos de la línea de tiempo inválidos")
+    items = [c for c in items if os.path.exists(c["path"])]
+    if not items:
         raise HTTPException(400, "La línea de tiempo está vacía")
+
     job_id = uuid.uuid4().hex[:12]
     wd = os.path.join(WORK_DIR, job_id)
     os.makedirs(wd, exist_ok=True)
+
+    plist = []
+    for k, it in enumerate(items):
+        p = it["path"]
+        try:
+            full = _probe(p).duration
+        except Exception:  # noqa: BLE001
+            full = None
+        ci = max(0.0, float(it.get("in", 0) or 0))
+        co = it.get("out")
+        co = float(co) if co is not None else (full or 0)
+        # ¿hay recorte real? (si no, usa el clip tal cual — más rápido y sin re-encode)
+        if full and (ci > 0.05 or co < full - 0.05) and co > ci + 0.1:
+            tp = os.path.join(wd, f"trim_{k:03d}.mp4")
+            try:
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{ci:.3f}", "-i", p,
+                                "-t", f"{co - ci:.3f}", "-c:v", "libx264", "-preset", "veryfast",
+                                "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000",
+                                "-ac", "2", tp], check=True, capture_output=True, timeout=90)
+                plist.append(tp)
+            except Exception:  # noqa: BLE001
+                plist.append(p)
+        else:
+            plist.append(p)
+
     out = os.path.join(wd, "editor_export.mp4")
     concat_clips(plist, out, wd)
     return {"path": out}

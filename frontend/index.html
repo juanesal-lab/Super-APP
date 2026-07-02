@@ -589,7 +589,7 @@
     </div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useVO"> 🎙️ Voz en off (genera 10 guiones y narra)</label>
-      <span id="voiceWrap" style="display:none;align-items:center;gap:8px">
+      <span id="voiceWrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="lbl" style="margin:0">Voz:</span>
         <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
@@ -1557,7 +1557,7 @@ blurCaptions.onchange = ()=>{
 // --- Voz en off toggle ---
 const useVO = document.getElementById("useVO");
 useVO.onchange = ()=>{
-  document.getElementById("voiceWrap").style.display = useVO.checked ? "inline-flex" : "none";
+  document.getElementById("voiceWrap").style.display = useVO.checked ? "flex" : "none";
   document.getElementById("go").textContent = useVO.checked ? "📝  Generar guiones de voz" : "✂️  Generar clips";
 };
 

@@ -1384,3 +1384,17 @@ tibios ("persona preocupada mirándose"). Reforcé `_SISTEMA`/`_TOOL` en disrupt
 Probado (mismo producto, serum vit C): antes {video:7} → ahora {video:5, slider:2, quiz:1, chat:1, cursor:1},
 mecanismos poblados y variados, titulares mucho más salvajes (cara-atlas, "¿quién es esa momia?", "se oxidó
 como manzana", "mis manchas me escribieron"). Solo prompt — sin tocar el flujo de generación.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🎬🔊 Cortar clips: 8 videos + música de fondo + SFX en cortes + más variedad
+Jack: Cortar clips repetía escenas, solo 2 SFX, sin música, y quería 8 videos.
+- **8 versiones** (antes 6): _N_VERSIONS y build_variations NV=8 (+ nombres G_mixta, H_alterna). Más
+  variedad: umbral de pool disjunto en n≥24; con pocos clips, ventana rotada por versión.
+- **Música de fondo + SFX en cortes:** nuevo `assemble.add_music_sfx` (música baja + SFX variados de la
+  librería de 12 en cada corte, CONSERVANDO el audio del clip + dynaudnorm). Se aplica en `_run_job`
+  (`_agregar_musica_sfx`) tras process_job (genera 1 pista con ElevenLabs por producto). Fix: `probe` no
+  estaba importado en assemble (NameError silencioso) + `_has_audio_stream` ahora usa ffprobe directo.
+- Verificado E2E: /api/process → versiones=8, paso "Poniendo música" corrió, mezcla con audio OK.
+  AVISO Juan: toqué assemble.py (add_music_sfx, NV=8), orchestrator (_N_VERSIONS=8), app.py (_run_job).
+- PENDIENTE (grandes, siguientes): (1) PREVIEW visual de los estilos de subtítulos; (2) banner opcional
+  2x1/envío-gratis ARRIBA con IA que lo suba para no tapar nada; (3) feature "variar el hook del winner"
+  (4 videos, buscar hooks en TikTok por ángulo, traducir, tapar texto en pantalla).

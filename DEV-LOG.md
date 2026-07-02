@@ -1172,3 +1172,17 @@ spending cap). Mejoré el manejo en `disruptive_images.py`:
   `error` cuando NINGUNA salió → el UI muestra en rojo "Se agotó el TOPE DE GASTO mensual de Google.
   Súbelo en ai.studio/spend". `/api/regenerate-image` también da el motivo real.
 - Juan debe subir el tope en https://ai.studio/spend para que Nano Banana genere.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🚫💲 NUNCA precio (global) + Cortar clips: tomas DIFERENTES
+- **REGLA GLOBAL — nunca precio:** generate_scripts ahora PROHÍBE mencionar precio/cifras ($, COP,
+  descuentos con número). Ads imagen: quité el campo/toggle de precio del frontend y fuerzo precio=""
+  en /api/disruptive-angles (backend). dub_colombia ya decía "nunca precios". CTA "VER PRECIO" ya no
+  aparece (precio vacío → mi sanitización lo cambia a "PEDIR AHORA").
+  AVISO Juan: en tu generar_conceptos/generar_ads_fullprompt, asegúrate de que el prompt NO meta precio
+  ni "VER PRECIO" (ya no le paso precio, pero el prompt podría inventarlo).
+- **Cortar clips — tomas diferentes:** build_variations (assemble.py) armaba varias versiones con las
+  MISMAS tomas top (subconjuntos solapados). Ahora: umbral de "pool grande" bajó a n≥18 (buckets
+  disjuntos) y, con pocos clips, cada versión toma una VENTANA ROTADA de un orden distinto → tomas
+  diferentes. Simulado n=10: solape bajó de ~100% a ~70%.
+- PENDIENTE (siguiente, es grande): "Mi producto" con música auto por género + voz en off opcional +
+  subtítulos opcionales + bajar volumen de los clips. Y disruptive/búsqueda están en tu refactor, Juan.

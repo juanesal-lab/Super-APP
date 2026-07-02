@@ -1112,6 +1112,7 @@ async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
                             ofertas: str = Form(""), precio: str = Form(""),
                             product_image: UploadFile | None = File(None)):
     """Paso 1: analiza producto/link → 6 conceptos disruptivos para que el usuario elija."""
+    precio = ""   # REGLA GLOBAL: NUNCA se muestra precio en ningún ad
     if not producto.strip() and not link.strip():
         raise HTTPException(400, "Escribe tu producto o pega el link de la página")
     ctx_id = uuid.uuid4().hex[:12]

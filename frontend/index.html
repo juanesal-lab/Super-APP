@@ -751,13 +751,7 @@
     <textarea id="disProd" class="full" rows="2" placeholder="¿Qué es tu producto y qué dolor resuelve? Ej: MultiBalm, barra hidratante para el rostro (mujeres 40-60), glow y disimula ojeras."></textarea>
     <div class="prodGrid" style="margin-top:10px">
       <input type="text" id="disLink" class="full" placeholder="🔗 Link de tu página de venta (opcional — da contexto real)">
-      <input type="text" id="disPrecio" class="full" placeholder="💲 Precio a mostrar (ej. $89.900 · Pago contraentrega)">
     </div>
-    <label class="toggle" style="margin-top:10px;display:inline-flex;width:auto;cursor:pointer">
-      <input type="checkbox" id="disMostrarPrecio" checked
-        onchange="document.getElementById('disPrecio').style.opacity=this.checked?'1':'.4'">
-      💲 Mostrar el precio en el ad <span style="color:var(--muted)">(apágalo para solo la oferta 2x1, sin precio)</span>
-    </label>
 
     <div class="disOfertas">
       <span style="font-weight:700;font-size:13px;color:var(--muted)">Ofertas:</span>
@@ -825,7 +819,7 @@
       if(!prod && !link){ prog.classList.remove('hidden'); msg.textContent='Escribe tu producto o pega el link 👆'; return; }
       const fd=new FormData();
       fd.append('producto',prod); fd.append('link',link);
-      fd.append('precio', document.getElementById('disMostrarPrecio').checked ? document.getElementById('disPrecio').value.trim() : '');
+      fd.append('precio', '');   // NUNCA se muestra precio (regla global del dueño)
       fd.append('ofertas',disOfertas().join(','));
       const img=document.getElementById('disImg').files[0]; if(img) fd.append('product_image',img);
       document.getElementById('disGo').disabled=true;

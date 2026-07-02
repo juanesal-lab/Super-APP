@@ -499,9 +499,11 @@ def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
         ctx += (f"\nPRECIO: {precio.strip()} — inclúyelo en la línea de precio junto con la oferta y "
                 "'Paga al recibir' / 'Pago contraentrega'.\n")
     else:
-        ctx += ("\nSIN PRECIO: NO pongas ninguna cifra de precio en la imagen. El CTA NO debe decir "
-                "'VER PRECIO' (usa 'TOCA PARA VER', 'PEDIR AHORA', 'DESLIZA Y MIRA', etc.); si hay oferta "
-                "(ej. 2x1) sí puedes mostrarla, pero sin cifra.\n")
+        ctx += ("\nREGLA ESTRICTA — SIN PRECIO: aunque los 5 EJEMPLOS de arriba muestren precios, TÚ NO "
+                "pongas NINGUNA cifra de dinero ($, COP, número de precio, descuento con número) en NINGUNA "
+                "parte de la imagen ni en el 'prompt'. El CTA NO debe decir 'VER PRECIO' (usa 'TOCA PARA "
+                "VER', 'PEDIR AHORA', 'DESLIZA Y MIRA', 'LO QUIERO', etc.). Si hay una oferta tipo '2x1' o "
+                "'envío gratis' SÍ puedes mostrarla (es texto, no cifra de precio), pero jamás un valor.\n")
     try:
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key)

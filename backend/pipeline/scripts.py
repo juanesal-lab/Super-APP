@@ -140,9 +140,10 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "distinto del banco de arriba. OBLIGATORIO: pasa el test anti-anuncio (la 1ra frase es opinión/mala "
         "noticia/pregunta incómoda, NO el producto; el producto aparece DESPUÉS del gancho); usa la "
         "voz colombiana real de Juan (modismos: 'Y señores', 'Oiga', '¡Ojo!', 'Le tengo malas "
-        "noticias', 'es físico y ya', 'No te voy a mentir', 'es extrañamente satisfactorio'); ancla "
-        "de precio comparativa. "
-        + ("OFERTA 2x1: integra de forma natural que al pedir uno se lleva OTRO GRATIS (2x1). "
+        "noticias', 'es físico y ya', 'No te voy a mentir', 'es extrañamente satisfactorio'). "
+        "PROHIBIDO mencionar PRECIO, cifras de dinero, pesos, '$', descuentos con número ni "
+        "comparaciones de precio. Vende por deseo/dolor, NUNCA por precio. "
+        + ("OFERTA 2x1: integra de forma natural que al pedir uno se lleva OTRO GRATIS (2x1), sin decir precio. "
            if oferta_2x1 else "")
         + f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
         f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"

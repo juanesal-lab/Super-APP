@@ -242,37 +242,25 @@ def build_variations(selected: list[Segment], work_dir: str,
                       key=lambda i: (selected[i].source_index, selected[i].start))
         return [best] + rest
 
-    if n >= NV * 4:
+    if n >= NV * 3:
         # POOL GRANDE: cada version usa clips DISJUNTOS (de videos distintos) -> máxima diversidad
         buckets = [[] for _ in range(NV)]
         for rank, i in enumerate(by_score):
             buckets[rank % NV].append(i)
         version_orders = [(names[vi], order_version(buckets[vi][:cpv])) for vi in range(NV)]
     else:
-        # POCOS CLIPS: subconjuntos solapados pero con gancho/orden/largo distintos
-        def build(lead, body):
-            return [lead] + [i for i in body if i != lead]
-        leads = []
-        for c in by_use[:1] + by_score:
-            if len(leads) >= NV:
-                break
-            if c not in leads:
-                leads.append(c)
-        while len(leads) < NV:
-            leads.append(by_score[len(leads) % n])
-        weak = set(by_score[-max(1, n // 4):]) if n >= 4 else set()
-        alt0 = [i for k, i in enumerate(by_score) if k % 2 == 0]
-        alt1 = [i for k, i in enumerate(by_score) if k % 2 == 1]
-        half = max(4, (n + 1) // 2)
-        third = max(3, n // 3 + 1)
-        version_orders = [
-            (names[0], build(leads[0], by_score)),
-            (names[1], build(leads[1], [i for i in by_time if i not in weak])),
-            (names[2], build(leads[2], alt0)[:half]),
-            (names[3], build(leads[3], alt1 + alt0)),
-            (names[4], build(leads[4], list(reversed(by_time)))),
-            (names[5], build(leads[5], by_score)[:third]),
-        ]
+        # POCOS CLIPS: cada versión toma una VENTANA DISTINTA (rotada) de un orden distinto, para que
+        # NO se repitan las mismas 4-5 tomas entre versiones (dentro de lo posible con pocos clips).
+        alt = ([i for k, i in enumerate(by_score) if k % 2 == 0]
+               + [i for k, i in enumerate(by_score) if k % 2 == 1])
+        bases = [by_score, by_time, by_use, list(reversed(by_time)), alt, list(reversed(by_score))]
+        step = max(1, n // NV)          # cada versión arranca en un punto distinto del ranking
+        version_orders = []
+        for vi in range(NV):
+            base = bases[vi % len(bases)]
+            off = (vi * step) % n
+            rot = base[off:] + base[:off]        # rotación -> ventana de clips distinta por versión
+            version_orders.append((names[vi], order_version(rot[:cpv])))
 
     # Renderizar SOLO los clips que de verdad se usan (no todo el pool) -> más rápido
     used_idx = sorted({i for _, order in version_orders for i in order})

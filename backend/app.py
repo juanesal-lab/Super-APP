@@ -84,6 +84,31 @@ def _load_foreplay_key() -> str | None:
     return _load_key("FOREPLAY_API_KEY")
 
 
+def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
+    """Cortar clips: música de fondo (baja) + SFX variados en los cortes, conservando el audio del clip."""
+    from pipeline.assemble import add_music_sfx
+    sfx = list_sfx()
+    ek = _load_eleven_key()
+    music_path = None
+    if ek:
+        try:
+            progress("Poniendo música de fondo...", 95)
+            music_path = os.path.join(work_dir, "bed.mp3")
+            gen_music(ek, f"música de fondo instrumental moderna y energética para un anuncio de "
+                      f"{product_desc or 'producto'}, viral, sin voz", music_path, length_ms=30000)
+        except Exception:  # noqa: BLE001
+            music_path = None
+    for v in versions:
+        cuts, acc = [], 0.0
+        for sg in (v.get("segments") or [])[:-1]:
+            acc += float(sg.get("duration", 0)); cuts.append(acc)
+        try:
+            out = v["path"][:-4] + "_mx.mp4"
+            v["path"] = add_music_sfx(v["path"], out, music_path=music_path, sfx_paths=sfx, cut_times=cuts)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _run_job(job_id: str, paths: list[str], settings: dict):
     job = JOBS[job_id]
 
@@ -112,6 +137,10 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             gemini_key=_load_env_key(),
             progress=progress,
         )
+        if isinstance(result, dict) and result.get("ok") and result.get("versions") \
+                and settings.get("musica", True):
+            _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
+                                settings.get("product_desc", ""), progress)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):

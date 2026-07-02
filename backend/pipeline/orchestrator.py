@@ -32,7 +32,7 @@ _CAPITAN_MAX_REVISIONES = 5
 _DUP_THRESHOLD = 8
 
 
-_N_VERSIONS = 6
+_N_VERSIONS = 8
 
 
 def _select_for_target(segments: list[Segment], target_seconds: float,

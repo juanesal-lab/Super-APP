@@ -225,8 +225,9 @@ def build_variations(selected: list[Segment], work_dir: str,
     """
     os.makedirs(work_dir, exist_ok=True)
     n = len(selected)
-    NV = 6
-    names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express"]
+    NV = 8
+    names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express",
+             "G_mixta", "H_alterna"]
     cpv = max(4, min(10, round(target_seconds / 2.2)))   # clips por version
 
     by_score = sorted(range(n), key=lambda i: selected[i].score, reverse=True)
@@ -390,6 +391,55 @@ def blur_boxes_timed(in_path: str, out_path: str, timed_boxes: list[dict],
         *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy",
         out_path,
     ])
+    return out_path
+
+
+def _has_audio_stream(path: str) -> bool:
+    try:
+        import subprocess as _sp
+        r = _sp.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+                     "stream=index", "-of", "csv=p=0", path],
+                    capture_output=True, text=True, timeout=20)
+        return bool((r.stdout or "").strip())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
+                  sfx_paths: list[str] | None = None, cut_times: list[float] | None = None) -> str:
+    """MÚSICA de fondo (baja) + SFX en cada corte, CONSERVANDO el audio del clip (para Cortar clips
+    sin voz en off). Varía el SFX por corte (rota la librería). Devuelve la ruta o el original si no aplica."""
+    sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
+    cut_times = [t for t in (cut_times or []) if t > 0.2][:10]
+    has_music = bool(music_path and os.path.exists(music_path))
+    has_sfx = bool(sfx_paths and cut_times)
+    if not has_music and not has_sfx:
+        return video_path
+    from .ffmpeg_utils import probe
+    try:
+        vdur = probe(video_path).duration
+    except Exception:  # noqa: BLE001
+        return video_path
+    inputs = ["-i", video_path]
+    fc, mix, idx = [], [], 1
+    if _has_audio_stream(video_path):
+        fc.append("[0:a]volume=1.0[clip]"); mix.append("[clip]")
+    if has_music:
+        inputs += ["-stream_loop", "-1", "-i", music_path]
+        fc.append(f"[{idx}:a]volume=0.20[mus]"); mix.append("[mus]"); idx += 1
+    if has_sfx:
+        import random as _rnd
+        seq = sfx_paths[:]; _rnd.shuffle(seq)   # variar los SFX (no siempre el mismo)
+        for k, t in enumerate(cut_times):
+            inputs += ["-i", seq[k % len(seq)]]
+            ms = int(t * 1000)
+            fc.append(f"[{idx}:a]adelay={ms}|{ms},volume=0.85[sf{k}]"); mix.append(f"[sf{k}]"); idx += 1
+    if not mix:
+        return video_path
+    fc.append("".join(mix) + f"amix=inputs={len(mix)}:normalize=0,dynaudnorm=f=200[a]")
+    run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(fc), "-map", "0:v:0", "-map", "[a]",
+         "-t", f"{vdur:.2f}", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+         out_path])
     return out_path
 
 

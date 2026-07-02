@@ -1054,3 +1054,11 @@ Jack pidió look profesional tipo constructor de páginas, con dorado/crema/negr
 - Arreglé choques del tema anterior (autoHero tenía fondo blanco/lavanda y botón morado; badges con
   texto blanco sobre dorado → ahora texto negro).
 - Verificado con capturas: Cortar clips, Ajustes, Crear creativo — todo cohesivo y legible.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · ⚡ Descarga de links MUCHO más rápida (paralela)
+- Jack: bajar los links en Cortar clips tardaba demasiado. Era SECUENCIAL (uno por uno, ~3.5s c/u).
+- `downloader.download_urls` ahora baja en PARALELO (ThreadPoolExecutor, hasta 5 a la vez) + flags
+  rápidos en yt-dlp (`-N 4` fragmentos paralelos, `--no-part`, formato progresivo mp4 PRIMERO para
+  evitar el merge lento). Misma firma y retorno, solo más rápido.
+- Medido: 4 videos en 4.4s (antes ~15-18s) = ~4x. Beneficia fetch-links, process-links y Descargar.
+  AVISO Juan: optimicé tu downloader.py (interno, no cambié la interfaz).

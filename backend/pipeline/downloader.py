@@ -11,9 +11,11 @@ import glob
 import os
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 _TIMEOUT = 300  # s por video
+_MAX_PARALELO = 5  # cuántos videos bajar a la vez (más = más rápido, pero TikTok puede limitar)
 
 
 def available() -> bool:
@@ -33,8 +35,10 @@ def _clean_urls(raw: list[str]) -> list[str]:
 
 def _download_one(url: str, out_tpl: str) -> tuple[bool, str | None, str]:
     """Baja UN video. Devuelve (ok, ruta, error). Reintenta con --impersonate si falla."""
-    base = ["yt-dlp", "--no-playlist", "--no-warnings", "-q",
-            "-f", "mp4/bv*+ba/b", "--merge-output-format", "mp4", "-o", out_tpl]
+    # Flags rápidos: fragmentos en paralelo (-N), sin .part, y formato progresivo mp4 PRIMERO
+    # (b[ext=mp4]) para evitar el merge de video+audio (que es lento). Merge solo como último recurso.
+    base = ["yt-dlp", "--no-playlist", "--no-warnings", "-q", "-N", "4", "--no-part",
+            "-f", "mp4/b[ext=mp4]/bv*+ba/b", "--merge-output-format", "mp4", "-o", out_tpl]
     last = ""
     for extra in ([], ["--impersonate", "chrome"]):   # 2º intento con impersonate (anti-bot)
         try:
@@ -69,15 +73,26 @@ def download_urls(urls: list[str], out_dir: str,
 
     os.makedirs(out_dir, exist_ok=True)
     clean = _clean_urls(urls)
-    results = []
-    for i, url in enumerate(clean):
-        report(f"Descargando video {i + 1}/{len(clean)}...", int(5 + (i / max(1, len(clean))) * 90))
+    n = len(clean)
+    if n == 0:
+        return []
+    results: list[dict | None] = [None] * n
+
+    def _task(i: int, url: str) -> tuple[int, dict]:
         out_tpl = os.path.join(out_dir, f"dl_{i:03d}.%(ext)s")
         ok, path, err = _download_one(url, out_tpl)
-        results.append({
-            "url": url, "ok": ok, "path": path,
-            "filename": os.path.basename(path) if path else "",
-            "error": err,
-        })
+        return i, {"url": url, "ok": ok, "path": path,
+                   "filename": os.path.basename(path) if path else "", "error": err}
+
+    # PARALELO: baja varios videos a la vez (antes era uno por uno = lento)
+    report(f"Bajando {n} video(s) en paralelo...", 6)
+    done = 0
+    with ThreadPoolExecutor(max_workers=min(_MAX_PARALELO, n)) as ex:
+        futs = [ex.submit(_task, i, u) for i, u in enumerate(clean)]
+        for f in as_completed(futs):
+            i, res = f.result()
+            results[i] = res
+            done += 1
+            report(f"Bajados {done}/{n}...", int(6 + (done / n) * 90))
     report("Descarga terminada", 100)
-    return results
+    return [r for r in results if r is not None]

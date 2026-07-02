@@ -762,7 +762,11 @@
     .disAng{font-weight:800;font-size:12.5px;color:var(--accent);margin-bottom:3px}
     .disTit{font-weight:700;font-size:13px;color:var(--txt);margin-bottom:6px}
     .disWhy{font-size:11.5px;color:var(--muted);line-height:1.45}
-    .disDl{display:block;text-align:center;padding:9px;font-size:12.5px;font-weight:700;color:var(--accent2);text-decoration:none;border-top:1px solid var(--line)}
+    .disActions{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+    .disAct{text-align:center;padding:9px;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer;border:0;background:transparent;font-family:inherit}
+    .disRegen{color:var(--accent);border-right:1px solid var(--line)}
+    .disRegen:hover{background:var(--accent);color:#fff}
+    .disDl{color:var(--accent2)}
     .disDl:hover{background:var(--accent2);color:#fff}
     .disFail{padding:14px;text-align:center;color:var(--warn);font-size:12px;border-top:1px solid var(--line)}
   </style>
@@ -787,6 +791,7 @@
         if(j.job_id) disPoll(j.job_id); else { msg.textContent=j.detail||'Error'; document.getElementById('disGo').disabled=false; }
       }catch(e){ msg.textContent='Error: '+e; document.getElementById('disGo').disabled=false; }
     }
+    let disCacheBust=0;
     async function disPoll(id){
       const r=await fetch('/api/status/'+id); const j=await r.json();
       document.getElementById('disBar').style.width=(j.progress||0)+'%';
@@ -794,25 +799,44 @@
       if(j.status==='running'){ setTimeout(()=>disPoll(id),1600); return; }
       document.getElementById('disGo').disabled=false;
       if(j.status==='error'){ document.getElementById('disMsg').innerHTML='<span style="color:var(--warn)">'+(j.message||'Error')+'</span>'; return; }
+      window._disJob=id;
       disRender(j.result);
     }
     function disRender(res){
       if(!res||!res.variantes){ return; }
       const box=document.getElementById('disResult');
-      let h=`<div class="pmsg" style="margin-top:14px">✅ ${res.n_ok}/${res.n_total} imágenes disruptivas listas — descarga las que más te gusten</div><div class="disGrid">`;
+      const bust = disCacheBust ? '&_='+disCacheBust : '';
+      let h=`<div class="pmsg" style="margin-top:14px">✅ ${res.n_ok}/${res.n_total} imágenes listas — 🔄 regenera la que no te guste, ⬇️ descarga las buenas</div><div class="disGrid">`;
       res.variantes.forEach((v,i)=>{
         const head=`<div class="disAng">${i+1}. ${v.angulo||''}</div><div class="disTit">"${v.titular||''}"</div>`;
         if(v.imagen){
           const u='/api/file?path='+enc(v.imagen);
-          h+=`<div class="disCard"><img src="${u}" loading="lazy">
+          h+=`<div class="disCard"><img src="${u}${bust}" loading="lazy">
                <div class="body">${head}<div class="disWhy">${v.concepto||''}</div></div>
-               <a class="disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a></div>`;
+               <div class="disActions">
+                 <button class="disAct disRegen" onclick="disRegen(${i},this)">🔄 Regenerar</button>
+                 <a class="disAct disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a>
+               </div></div>`;
         } else {
-          h+=`<div class="disCard"><div class="body">${head}</div><div class="disFail">✗ No se pudo generar la imagen</div></div>`;
+          h+=`<div class="disCard"><div class="body">${head}<div class="disWhy" style="color:var(--warn)">✗ No se generó la imagen</div></div>
+               <div class="disActions"><button class="disAct disRegen" style="grid-column:1/-1" onclick="disRegen(${i},this)">🔄 Generar imagen</button></div></div>`;
         }
       });
       h+='</div>';
       box.innerHTML=h;
+    }
+    async function disRegen(i, btn){
+      if(!window._disJob) return;
+      const t=btn.innerHTML; btn.innerHTML='⏳ Generando…'; btn.disabled=true;
+      try{
+        const fd=new FormData(); fd.append('job_id',window._disJob); fd.append('index',i);
+        const r=await fetch('/api/regenerate-image',{method:'POST',body:fd}); const j=await r.json();
+        if(j.imagen){
+          disCacheBust=Date.now();   // fuerza recargar la imagen nueva (misma ruta)
+          const s=await (await fetch('/api/status/'+window._disJob)).json();
+          disRender(s.result);
+        } else { btn.innerHTML='✗ reintenta'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }
+      }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }
     }
   </script>
   </div><!-- /p-disruptivo -->

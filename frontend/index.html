@@ -147,7 +147,8 @@
     <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-buscar">🔎 Buscar TikTok</button>
     <button data-p="p-auto">✨ Crear creativo</button>
-    <button data-p="p-swap">🔄 Clonar ganador</button>
+    <button data-p="p-clone">🎯 Clon con mi producto</button>
+    <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
@@ -351,10 +352,7 @@
     </script>
   </div><!-- /p-buscar -->
 
-  <div class="panel" id="p-config" style="display:none">
-  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
-  <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
-
+  <div class="panel" id="p-clone" style="display:none">
   <!-- 🎯 CLON GANADOR CON MI PRODUCTO (sección nueva, autocontenida, reusa clases auto*) -->
   <div class="autoHero" style="margin-top:0">
     <h2>🎯 <span>Clon Ganador</span> con mi Producto</h2>
@@ -454,6 +452,12 @@
       box.innerHTML=h;
     }
   </script>
+  </div><!-- /p-clone -->
+
+  <div class="panel" id="p-config" style="display:none">
+  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
+  <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
+
 
   <!-- Gemini key -->
   <div class="card" id="keyCard">

@@ -1348,3 +1348,14 @@ bloques, de ABAJO hacia arriba (para no mover líneas), verificando el import DE
 Resultado: 889 → 413 líneas (~475 muertas fuera). VERIFICADO: import OK tras cada bloque + test funcional
 (generar_conceptos devuelve 10). Lo VIVO intacto: generar_conceptos, generar_ad(s)_fullprompt, generar_imagen,
 _verificar_ortografia, _norm_words, _integrar_producto_ia, _recortar_producto, _error_amigable, _SISTEMA/_TOOL/_CIERRE.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🎯 Ads imagen: 2 plantillas GANADORAS fijas de primeras
+Jack pasó 4 ads de referencia y pidió quedarnos con los 2 mejores como los primeros que se generan.
+Elegí (mejores para dropshipping COD, sin precio, replicables): (1) CONTRARIAN "NO COMPRES ESTO" estilo
+Rheal, (2) PRUEBA SOCIAL con capturas de comentarios estilo OLIVEA. Descarté HOOP GANG (mostraba precio,
+look catálogo) y COLOSTRUM (redundante con el contrarian + top-funnel).
+- AVISO Juan: edité el prompt del sistema de tu skill (disruptive_images `_SISTEMA`): agregué las 2
+  plantillas FIJAS (variantes 1 y 2, limpias/creíbles, reservan zona del producto, sin precio) y la
+  instrucción final (1-2 fijas, 3-10 surreales). No toqué la lógica.
+- Verificado con Claude real: #1 sale contrarian ("NO LA USES."), #2 prueba social, #3+ surreales.
+  (Nota menor: Claude devolvió 11 en la prueba; el front igual las lista.)

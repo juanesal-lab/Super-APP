@@ -50,6 +50,28 @@ LOS 6 MOTORES para inventar (usa uno DISTINTO por concepto, sin repetir):
 personificación del dolor · metáfora literal extrema · consecuencia absurda · escena social vergonzosa · \
 objeto/reflejo surreal · reacción facial extrema o antes/después imposible.
 
+🔒 LAS 2 PRIMERAS VARIANTES SON FIJAS — plantillas PROBADAS (ganadoras reales). NO son surreales: son \
+LIMPIAS, creíbles y giran en torno al PRODUCTO y su dolor. Genera SIEMPRE estas 2 de PRIMERO, adaptadas \
+al producto (español colombiano), y de la 3 a la 10 sí van surreales con los 6 motores:
+
+  VARIANTE 1 · "no_compres" (CONTRARIAN / psicología inversa):
+  Titular GIGANTE a la izquierda, tipografía enorme y seria, tipo "NO COMPRES ESTO." (o "NO LO USES.").
+  Debajo, en fuente más chica, el remate con el DOLOR: "Si te gusta [seguir con el problema]"
+  (ej: "Si te gusta vivir hinchada", "Si disfrutas el dolor de espalda"). A la DERECHA, una zona LIMPIA
+  y VACÍA reservada para el producto (se pega después — NO dibujes producto ahí). Abajo, barra de
+  CREDIBILIDAD: 3 viñetas con ✓ (beneficios/ingredientes clave) y "★★★★★ 4.7 · +50.000 clientes felices".
+  Fondo sobrio (crema/claro), look de post editorial PREMIUM, no de anuncio chillón. SIN precio.
+
+  VARIANTE 2 · "capturas" (PRUEBA SOCIAL):
+  Arriba, un titular corto tipo "TU DOSIS DIARIA DE [beneficio]" + una zona LIMPIA reservada para el
+  producto (se pega después). Debajo/al lado, una PILA de 3-4 CAPTURAS de comentarios reales estilo
+  Facebook/Instagram: foto de perfil difuminada, comentario en español colombiano elogiando el producto,
+  "Me gusta · Responder", antigüedad ("3 sem"), y 1-2 con reacciones ("❤️ 2"). Se ven ORGÁNICOS y
+  creíbles (no perfectos). Abajo un logo/CTA sencillo tipo "PRUEBA [marca]". SIN precio.
+
+  (Estas 2 ROMPEN a propósito la regla surreal: son limpias y viven de la CREDIBILIDAD. Pero igual:
+   deja la zona del producto VACÍA para pegarlo después, y JAMÁS pongas precio.)
+
 REGLA MADRE: el creativo NO debe PARECER un anuncio. Debe parecer CONTENIDO ORGÁNICO (un video o post que
 alguien grabó) que por lo surreal frena el scroll. NADA de "banda de color de anuncio arriba con el titular".
 
@@ -87,7 +109,14 @@ Cada 'prompt' que entregues:
   exactly as written, looks like an authentic organic social media video screenshot NOT a polished ad. Avoid:
   extra fingers, deformed hands, garbled or misspelled text, random logos, watermarks, nudity, low-res artifacts.
 
-Devuelve EXACTAMENTE 10 variantes, 10 mecanismos/escenas MUY distintos, todas al nivel de los 5 ejemplos."""
+Devuelve EXACTAMENTE 10 variantes: la 1 = plantilla "no_compres" (contrarian) y la 2 = plantilla \
+"capturas" (prueba social), adaptadas al producto; de la 3 a la 10, surreales con los 6 motores \
+(mecanismos MUY distintos). Todas al nivel de los ejemplos. NOTA: para las variantes 1 y 2 el 'prompt' \
+NO describe un screenshot de video con chrome, sino un POST/imagen editorial LIMPIO (fondo sobrio, \
+tipografía gruesa; contrarian = titular gigante + zona de producto vacía + barra de credibilidad; \
+capturas = zona de producto + pila de comentarios tipo captura de Facebook). Igual: texto en español \
+entre comillas, sin precio, y termina con: thick sans-serif, render all embedded text spelled exactly, \
+looks authentic not a polished ad, avoid deformed hands/garbled text/watermarks."""
 
 _TOOL = {
     "name": "entregar_creativos",

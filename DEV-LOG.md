@@ -1286,3 +1286,14 @@ vende, el producto cierra"). Cambios:
 - phase_effects: cada fase ahora usa un SFX distinto y con sentido: HOOK→riser, SOLUCIÓN→boom,
   PRUEBA→ding, DESEO→sparkle, CTA→swoosh (DOLOR sin golpe). Cortar clips (orchestrator) rota entre los 12
   en las transiciones -> más variedad automática. Verificado.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 📦🎵 "Mi producto": música automática por género + bajar volumen
+Jack: Mi producto solo cortaba clips (sin música/voz/subs, volumen alto). Empecé el build:
+- **música AUTO por género:** la IA (Gemini) elige 1 de 4 géneros según el producto (energico/alegre/
+  emotivo/elegante) → genera la pista con ElevenLabs → la mezcla en cada versión BAJANDO el volumen de
+  los clips + loudnorm (-16 LUFS, audible y parejo). En producto_clips.py (`_elegir_genero`,
+  `_musica_y_volumen`). Toggles en la UI: "🎵 Música automática", "🔉 Bajar volumen de los clips".
+- Verificado end-to-end: género elegido "energico", música generada + mezclada, nivel -20 dB (audible).
+  AVISO Juan: toqué producto_clips.py + /api/producto-clips + la sección Mi producto (2 toggles).
+- PENDIENTE (siguiente increment): voz en off opcional + subtítulos opcionales en Mi producto (necesitan
+  guion/transcripción por versión — build aparte).

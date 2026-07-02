@@ -16,10 +16,89 @@ import os
 from typing import Callable
 
 from .downloader import download_urls
+from .ffmpeg_utils import run, probe
 from .hook_gen import fetch_page_text
 from .orchestrator import process_job
+from . import voiceover
 
 _MODEL = "gemini-2.5-flash"
+
+# 4 géneros de música; la IA elige el que mejor pega con el producto
+_GENEROS = {
+    "energico": "música urbana/trap energética con beat marcado, moderna y viral para TikTok, instrumental",
+    "alegre": "música pop alegre, animada y pegajosa, positiva, instrumental",
+    "emotivo": "música cinematográfica emotiva y cálida, inspiradora, con piano y cuerdas, instrumental",
+    "elegante": "música elegante y premium, deep house/lo-fi suave y sofisticada, instrumental",
+}
+
+
+def _elegir_genero(desc: str, gemini_key: str | None) -> str:
+    """La IA elige 1 de 4 géneros según el producto. Fallback: energico."""
+    if not (gemini_key and (desc or "").strip()):
+        return "energico"
+    try:
+        from google import genai
+        client = genai.Client(api_key=gemini_key)
+        r = client.models.generate_content(
+            model=_MODEL,
+            contents=[f"Producto: {desc}. Para un anuncio de TikTok, ¿qué música pega MEJOR? "
+                      "Responde SOLO una palabra: energico, alegre, emotivo o elegante."])
+        g = (r.text or "").strip().lower()
+        for k in _GENEROS:
+            if k in g:
+                return k
+    except Exception:  # noqa: BLE001
+        pass
+    return "energico"
+
+
+def _tiene_audio(path: str) -> bool:
+    try:
+        return any(getattr(s, "codec_type", "") == "audio" for s in (probe(path).streams or []))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _musica_y_volumen(versions: list[dict], work_dir: str, *, eleven_key: str | None,
+                      desc: str, genero: str, bajar_volumen: bool,
+                      report) -> None:
+    """Genera 1 pista de música del género elegido y la mezcla en cada versión (bajando el volumen
+    de los clips). Modifica versions[i]['path'] en el sitio. Si falla la música, deja las versiones igual."""
+    if not eleven_key or not versions:
+        return
+    music_path = os.path.join(work_dir, "musica.mp3")
+    try:
+        report(f"Poniendo música ({genero})...", 90)
+        voiceover.music(eleven_key, _GENEROS.get(genero, _GENEROS["energico"]), music_path,
+                        length_ms=30000)
+    except Exception:  # noqa: BLE001
+        return
+    if not os.path.exists(music_path):
+        return
+    clip_vol = "0.12" if bajar_volumen else "0.55"
+    for v in versions:
+        p = v.get("path")
+        if not p or not os.path.exists(p):
+            continue
+        try:
+            vdur = probe(p).duration
+        except Exception:  # noqa: BLE001
+            continue
+        out = p[:-4] + "_mus.mp4" if p.endswith(".mp4") else p + "_mus.mp4"
+        if _tiene_audio(p):
+            fc = (f"[0:a]volume={clip_vol}[c];[1:a]volume=0.8[m];"
+                  "[c][m]amix=inputs=2:duration=first:normalize=0[mix];"
+                  "[mix]loudnorm=I=-16:TP=-1.5:LRA=11[a]")
+        else:
+            fc = "[1:a]volume=0.8,loudnorm=I=-16:TP=-1.5:LRA=11[a]"
+        try:
+            run(["ffmpeg", "-y", "-i", p, "-stream_loop", "-1", "-i", music_path,
+                 "-filter_complex", fc, "-map", "0:v:0", "-map", "[a]",
+                 "-t", f"{vdur:.2f}", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                 "-movflags", "+faststart", out])
+            v["path"] = out
+        except Exception:  # noqa: BLE001
+            continue
 
 
 def describir_producto(product_url: str, image_path: str | None, gemini_key: str | None,
@@ -78,7 +157,7 @@ def describir_producto(product_url: str, image_path: str | None, gemini_key: str
 def producto_a_clips(winner_urls: list[str], work_dir: str, *,
                      product_url: str = "", image_path: str | None = None,
                      product_desc: str = "", settings: dict | None = None,
-                     gemini_key: str | None = None,
+                     gemini_key: str | None = None, eleven_key: str | None = None,
                      progress: Callable[[str, int], None] | None = None) -> dict:
     """Descarga los ganadores → entiende el producto → crea los clips. Nunca lanza."""
     settings = settings or {}
@@ -122,6 +201,15 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         gemini_key=gemini_key,
         progress=lambda m, p: report(m, 32 + p * 0.66),
     )
+
+    # 4 · Música automática (la IA elige el género por el producto) + bajar volumen de los clips
+    if isinstance(result, dict) and result.get("ok") and result.get("versions") \
+            and settings.get("musica", True):
+        genero = _elegir_genero(desc, gemini_key)
+        _musica_y_volumen(result["versions"], os.path.join(work_dir, "out"),
+                          eleven_key=eleven_key, desc=desc, genero=genero,
+                          bajar_volumen=bool(settings.get("bajar_volumen", True)), report=report)
+        result["genero_musica"] = genero
 
     if isinstance(result, dict):
         result["producto_desc"] = desc

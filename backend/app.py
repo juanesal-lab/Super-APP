@@ -970,7 +970,7 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
             winner_urls, os.path.join(WORK_DIR, job_id),
             product_url=product_url, image_path=image_path,
             product_desc=product_desc, settings=settings,
-            gemini_key=_load_env_key(), progress=progress,
+            gemini_key=_load_env_key(), eleven_key=_load_eleven_key(), progress=progress,
         )
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -992,6 +992,8 @@ async def producto_clips(
     max_clip: float = Form(3.0),
     blur_captions: bool = Form(True),
     text_mode: str = Form("tapar"),
+    musica: bool = Form(True),
+    bajar_volumen: bool = Form(True),
 ):
     """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
     links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
@@ -1014,6 +1016,8 @@ async def producto_clips(
         "blur_captions": bool(blur_captions),
         "text_mode": text_mode,
         "use_gemini": True,
+        "musica": bool(musica),
+        "bajar_volumen": bool(bajar_volumen),
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}

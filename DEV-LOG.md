@@ -1041,3 +1041,16 @@ Jack: al pegar links, cortaba de inmediato sin dejar configurar los ajustes. Aho
 - Frontend: `linkVids[]` + render en la lista + buildForm manda `link_paths` + botón Generar se habilita
   con archivos O links. AVISO Juan: toqué tu sección Cortar clips (addFiles/renderFiles/buildForm/#go) y
   /api/process + /api/scripts (aditivo). Verificado UI + backend end-to-end.
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🖤✨ REDISEÑO: tema premium negro + dorado + crema + animaciones
+Jack pidió look profesional tipo constructor de páginas, con dorado/crema/negro y animado.
+- **AVISO GRANDE Juan:** cambié TODO el tema visual del frontend (el bloque <style> principal + estilos
+  de autoHero + un par de badges del Editor). NO toqué estructura/lógica/IDs — solo colores y animaciones.
+  Si tienes cambios visuales en curso, coordinemos para no chocar.
+- Paleta nueva en `:root` (variables, así cascada a todo): --bg negro, --txt crema, --accent dorado
+  (#d4af37), --accent2 dorado claro, --ink negro para texto sobre dorado. Fondo con glows dorados sutiles.
+- Animaciones: fade-up de entrada (cards/tabs), hover-lift en cards/botones/vcards, brillo que barre en
+  botones, shimmer dorado en el logo, glow dorado en foco de inputs, scrollbar dorado.
+- Arreglé choques del tema anterior (autoHero tenía fondo blanco/lavanda y botón morado; badges con
+  texto blanco sobre dorado → ahora texto negro).
+- Verificado con capturas: Cortar clips, Ajustes, Crear creativo — todo cohesivo y legible.

@@ -307,12 +307,11 @@ def build_variations(selected: list[Segment], work_dir: str,
 
 
 def add_voiceover(video_path: str, vo_path: str, out_path: str) -> str:
-    """Pone la voz en off como audio (reemplaza el original). La duracion final
-    = la de la voz; si el video es mas corto, congela el ultimo frame para cubrirla."""
+    """Pone la voz en off como audio (reemplaza el original). La duracion final = la de la voz;
+    si el video es mas corto, el video hace LOOP (sigue moviendose) en vez de congelarse."""
     run([
-        "ffmpeg", "-y", "-i", video_path, "-i", vo_path,
-        "-filter_complex", "[0:v]tpad=stop_mode=clone:stop_duration=30[v]",
-        "-map", "[v]", "-map", "1:a:0", "-shortest",
+        "ffmpeg", "-y", "-stream_loop", "-1", "-i", video_path, "-i", vo_path,
+        "-map", "0:v:0", "-map", "1:a:0", "-shortest",
         "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "192k",
@@ -418,8 +417,8 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
     if not has_sfx and not has_music:
         return add_voiceover(video_path, vo_path, out_path)
 
-    inputs = ["-i", video_path, "-i", vo_path]
-    fc = ["[0:v]tpad=stop_mode=clone:stop_duration=30[v]", "[1:a]volume=1.0[vo]"]
+    inputs = ["-stream_loop", "-1", "-i", video_path, "-i", vo_path]  # video en LOOP (no se congela)
+    fc = ["[1:a]volume=1.0[vo]"]
     mix_labels = ["[vo]"]
     idx = 2
 
@@ -453,7 +452,7 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
     run([
         "ffmpeg", "-y", *inputs,
         "-filter_complex", ";".join(fc),
-        "-map", "[v]", "-map", "[a]", "-shortest",
+        "-map", "0:v:0", "-map", "[a]", "-shortest",
         "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "192k",

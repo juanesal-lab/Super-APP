@@ -1062,3 +1062,11 @@ Jack pidió look profesional tipo constructor de páginas, con dorado/crema/negr
   evitar el merge lento). Misma firma y retorno, solo más rápido.
 - Medido: 4 videos en 4.4s (antes ~15-18s) = ~4x. Beneficia fetch-links, process-links y Descargar.
   AVISO Juan: optimicé tu downloader.py (interno, no cambié la interfaz).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 🎞️ Fix: video se congelaba al final de la voz en off
+- Jack: en Cortar clips (voz en off), al final el video se quedaba QUIETO mientras la voz seguía.
+- Causa: `add_voiceover` y `add_voiceover_and_sfx` usaban `tpad=stop_mode=clone` = congelaban el último
+  frame para cubrir la voz (más larga que el video).
+- Fix: ahora el video hace LOOP (`-stream_loop -1` + `-shortest`) → sigue MOVIÉNDOSE (repite) hasta que
+  termina la voz. Verificado: salida dura lo de la voz y el frame tardío = frame temprano (loopeó, no congeló).
+- AVISO Juan: toqué tu assemble.py (add_voiceover / add_voiceover_and_sfx), interno.

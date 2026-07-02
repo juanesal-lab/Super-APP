@@ -267,8 +267,20 @@ async def fetch_links(links: str = Form("")):
     return {"videos": vids}
 
 
+def _gc_jobs(keep: int = 80):
+    """Evita que JOBS crezca sin límite (fuga de RAM en sesiones largas): si hay muchos, borra los MÁS
+    VIEJOS que YA terminaron (nunca toca los que están 'running')."""
+    if len(JOBS) <= keep:
+        return
+    terminados = sorted((kv for kv in list(JOBS.items()) if kv[1].get("status") != "running"),
+                        key=lambda kv: kv[1].get("created", 0))
+    for jid, _ in terminados[:len(JOBS) - keep]:
+        JOBS.pop(jid, None)
+
+
 @app.get("/api/status/{job_id}")
 def status(job_id: str):
+    _gc_jobs()   # limpieza oportunista de trabajos viejos ya terminados
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(404, "Trabajo no encontrado")

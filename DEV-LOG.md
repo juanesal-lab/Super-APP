@@ -1348,3 +1348,16 @@ bloques, de ABAJO hacia arriba (para no mover líneas), verificando el import DE
 Resultado: 889 → 413 líneas (~475 muertas fuera). VERIFICADO: import OK tras cada bloque + test funcional
 (generar_conceptos devuelve 10). Lo VIVO intacto: generar_conceptos, generar_ad(s)_fullprompt, generar_imagen,
 _verificar_ortografia, _norm_words, _integrar_producto_ia, _recortar_producto, _error_amigable, _SISTEMA/_TOOL/_CIERRE.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🧭 Pendientes de la revisión: Clon a su pestaña + Guía + GC de JOBS
+Seguí con los pendientes que había dejado anotados de la revisión:
+- **Clon Ganador desenterrado**: `/api/clone` ("Clon con mi producto") estaba dentro del panel de Claves
+  SIN botón de nav → nadie lo veía. Lo moví a su propia pestaña `p-clone` con botón. Aclaré nombres: el
+  nav "Clonar ganador" (que en realidad era `/api/swap`) ahora dice "Reemplazar producto" (= su panel).
+  Verificado en navegador: las 2 pestañas funcionan y Claves quedó limpio.
+- **Guía actualizada**: la lista "Qué hace cada pestaña" ahora incluye TODAS (Ads imagen, Editor, Foreplay,
+  Buscar TikTok, Clon con mi producto) con nombres correctos; "Crear creativo" ya no dice "UN creativo";
+  Claves menciona Foreplay.
+- **Fuga de RAM de JOBS**: nuevo `_gc_jobs(keep=80)` — en `status()` (oportunista) borra los trabajos MÁS
+  VIEJOS ya terminados si hay >80; NUNCA toca los 'running'. Conservador para no romper flujos en curso.
+Todo verificado (import OK + navegador). Sin tocar lógica que funciona.

@@ -1116,6 +1116,20 @@ falso-interactivos que define la skill `ads-disruptivos-imagen` (estilo-juan-apr
 - ⚠️ Falta (opcional, si Juan lo pide): formatos "cursor en botón", "post IG", "toca-para-revelar", y
   sellos aprobado/garantía. Generación real necesita créditos Google OK.
 
+### 2026-07-02 · Claude (jackingshop1-cell) · 💲 Ads imagen: precio OPCIONAL (2x1 sin precio)
+- Jack: en Ads imagen, que decir el precio sea OPCIONAL (que pueda salir la oferta 2x1 pero sin el precio).
+- Frontend (p-disruptivo, de Juan): toggle "💲 Mostrar el precio en el ad" (default on). Si se apaga, se
+  manda precio="" → no se dibuja el precio; las ofertas (2x1, etc.) siguen saliendo. Atenúa el campo.
+- `_run_disruptive_v2_job` (app.py): si no hay precio, el CTA que diga "VER PRECIO" pasa a "PEDIR AHORA".
+- AVISO Juan: toqué tu sección Ads imagen (toggle) y el job v2 (CTA). Verificado con captura.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · ✍️ Ads imagen: corrector de ORTOGRAFÍA antes de componer
+- Jack: los ads salían con errores ("despideron", "almhadilla", "VER PREICO", "cámbilas").
+- Nuevo `_corregir_ortografia_ads` (app.py): antes de componer, Gemini corrige SOLO ortografía/tildes
+  del titular/sub/cta/quiz de cada concepto (sin cambiar sentido ni estilo). 1 llamada por lote.
+- Probado con los typos reales de las imágenes de Jack → todos corregidos (despidieron, almohadilla,
+  precio, cámbialas). Solo mi endpoint (no toqué disruptive_images.py de Juan).
+
 ### 2026-07-02 · Claude (juanesal-lab) · 🔍 Búsqueda TikTok: priorizar clips SIN texto sobrepuesto
 Juan: en la búsqueda de TikTok, preferir videos sin subtítulos/captions SOBREPUESTOS (o muy pequeños),
 distinguiéndolos del texto propio del producto (etiqueta/empaque). Cambié `tiktok_search.py`:

@@ -1278,3 +1278,11 @@ vende, el producto cierra"). Cambios:
 - NUEVO endpoint `/api/disruptive-add-product` (job_id, index) + botón **"➕ Poner mi producto"** por imagen
   en el frontend → Juan lo agrega SOLO donde se vea bien (su criterio). `disAddProd` recarga con cache-bust.
 - Así nunca queda mal puesto y el lote sale limpio/rápido.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔊 Librería de SFX ampliada + dinámica
+- Jack: más efectos y más dinámicos (riser, pop, whoosh, boom, ding...) tipo CapCut.
+- Generé 12 SFX royalty-free con ffmpeg (sin copyright, sin API): riser, riser_fast, whoosh, whoosh_fast,
+  swoosh, pop, click, boom, bass_drop, ding, sparkle, impact. En assets/sfx/.
+- phase_effects: cada fase ahora usa un SFX distinto y con sentido: HOOK→riser, SOLUCIÓN→boom,
+  PRUEBA→ding, DESEO→sparkle, CTA→swoosh (DOLOR sin golpe). Cortar clips (orchestrator) rota entre los 12
+  en las transiciones -> más variedad automática. Verificado.

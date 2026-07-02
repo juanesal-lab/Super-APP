@@ -105,6 +105,7 @@
   <nav class="tabs" id="tabs">
     <button data-p="p-crear" class="active">✂️ Cortar clips</button>
     <button data-p="p-producto">📦 Mi producto</button>
+    <button data-p="p-editor">🎬 Editor</button>
     <button data-p="p-descargar">📥 Descargar</button>
     <button data-p="p-buscar">🔎 Buscar TikTok</button>
     <button data-p="p-auto">✨ Crear creativo</button>
@@ -690,6 +691,120 @@
     }
   </script>
   </div><!-- /p-producto -->
+
+  <div class="panel" id="p-editor" style="display:none">
+  <div class="card">
+    <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🎬 Editor de línea de tiempo</h2>
+    <p class="sub" style="margin-bottom:14px">La IA arma los clips; tú los <b>reordenas, borras y exportas</b> — un mini CapCut. Primero crea clips en <b>✂️ Cortar clips</b> o <b>📦 Mi producto</b>, luego cárgalos aquí.</p>
+
+    <button class="btn" id="edLoadBtn" onclick="edLoadLast()">📂 Cargar mi último video</button>
+    <span id="edStatus" style="margin-left:10px;color:var(--muted);font-size:13px"></span>
+
+    <div id="edStage" style="display:none;margin-top:16px">
+      <div class="edPreviewWrap"><video id="edVideo" playsinline></video></div>
+      <div class="edBar">
+        <button class="btn" id="edPlay" onclick="edPlayAll()">▶️ Reproducir todo</button>
+        <button class="btn" onclick="edExport()" style="background:var(--accent2)">💾 Exportar video</button>
+        <span id="edInfo" style="color:var(--muted);font-size:13px;margin-left:auto"></span>
+      </div>
+      <div class="edHint">👇 Arrastra los clips para reordenar · clic para ver uno · ✕ para borrar</div>
+      <div class="edTl" id="edTl"></div>
+      <div id="edResult"></div>
+    </div>
+  </div>
+
+  <style>
+    .edPreviewWrap{background:#000;border-radius:12px;overflow:hidden;display:flex;justify-content:center;align-items:center;max-height:50vh}
+    .edPreviewWrap video{max-height:50vh;max-width:100%;display:block}
+    .edBar{display:flex;align-items:center;gap:10px;margin:12px 0 6px}
+    .edHint{font-size:12px;color:var(--muted);margin:4px 0}
+    .edTl{display:flex;gap:8px;overflow-x:auto;padding:12px;background:var(--card2);border:1px solid var(--line);border-radius:12px;min-height:120px}
+    .edClip{position:relative;flex:0 0 auto;width:92px;border-radius:8px;overflow:hidden;cursor:grab;border:2px solid transparent;background:#000}
+    .edClip.sel{border-color:var(--accent)}
+    .edClip.drag{opacity:.35}
+    .edClip img{width:92px;height:112px;object-fit:cover;display:block}
+    .edNum{position:absolute;top:3px;left:3px;background:var(--accent);color:#fff;font-size:10px;padding:1px 5px;border-radius:5px;font-weight:800}
+    .edDur{position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;padding:1px 5px;border-radius:5px}
+    .edDel{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.72);color:#fff;border:0;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;padding:0}
+    .edDel:hover{background:var(--warn)}
+  </style>
+
+  <script>
+    let edClips=[], edCur=0, edPlaying=false, edDragI=null;
+    async function edLoadLast(){
+      const st=document.getElementById('edStatus'); st.textContent='Buscando tu último video...';
+      try{
+        const r=await fetch('/api/last-project'); const j=await r.json();
+        if(!j.job_id){ st.textContent=j.detail||'No hay clips aún'; return; }
+        await edLoadProject(j.job_id); st.textContent='';
+      }catch(e){ st.innerHTML='<span style="color:var(--warn)">Aún no hay clips. Crea uno en «Cortar clips» o «Mi producto» primero.</span>'; }
+    }
+    async function edLoadProject(jobId){
+      const r=await fetch('/api/editor-project?job_id='+encodeURIComponent(jobId));
+      const j=await r.json(); edClips=j.clips||[];
+      document.getElementById('edStage').style.display=edClips.length?'block':'none';
+      document.getElementById('edResult').innerHTML='';
+      edRenderTl(); if(edClips.length) edSelect(0);
+    }
+    function edTotal(){ return edClips.reduce((s,c)=>s+(c.duration||0),0); }
+    function edRenderTl(){
+      const tl=document.getElementById('edTl');
+      tl.innerHTML=edClips.map((c,i)=>`
+        <div class="edClip" draggable="true" data-i="${i}" onclick="edSelect(${i})">
+          <span class="edNum">${i+1}</span>
+          <img src="/api/file?path=${enc(c.thumb||c.path)}" onerror="this.style.opacity=.15">
+          <span class="edDur">${(c.duration||0).toFixed(1)}s</span>
+          <button class="edDel" onclick="event.stopPropagation();edDelete(${i})">✕</button>
+        </div>`).join('');
+      edWireDrag();
+      document.getElementById('edInfo').textContent=edClips.length+' clips · '+edTotal().toFixed(1)+'s';
+    }
+    function edGoto(i){
+      edCur=i;
+      document.querySelectorAll('#edTl .edClip').forEach((el,k)=>el.classList.toggle('sel',k===i));
+      const v=document.getElementById('edVideo');
+      v.src='/api/file?path='+enc(edClips[i].path); v.currentTime=0; v.play().catch(()=>{});
+    }
+    function edSelect(i){ edPlaying=false; edGoto(i); }
+    function edDelete(i){
+      edClips.splice(i,1);
+      if(!edClips.length){ document.getElementById('edStage').style.display='none'; return; }
+      edRenderTl(); edSelect(Math.min(edCur,edClips.length-1));
+    }
+    function edWireDrag(){
+      document.querySelectorAll('#edTl .edClip').forEach(el=>{
+        el.ondragstart=()=>{ edDragI=+el.dataset.i; el.classList.add('drag'); };
+        el.ondragend=()=>el.classList.remove('drag');
+        el.ondragover=e=>e.preventDefault();
+        el.ondrop=e=>{ e.preventDefault(); const to=+el.dataset.i;
+          if(edDragI===null||edDragI===to) return;
+          const [m]=edClips.splice(edDragI,1); edClips.splice(to,0,m); edDragI=null; edRenderTl(); edSelect(to); };
+      });
+    }
+    function edPlayAll(){
+      if(!edClips.length) return;
+      edPlaying=true;
+      const v=document.getElementById('edVideo');
+      v.onended=()=>{ if(edPlaying && edCur<edClips.length-1) edGoto(edCur+1); else edPlaying=false; };
+      edGoto(0);
+    }
+    async function edExport(){
+      const res=document.getElementById('edResult');
+      if(!edClips.length){ return; }
+      res.innerHTML='<div class="pmsg" style="margin-top:12px">Exportando… uniendo tus '+edClips.length+' clips</div>';
+      try{
+        const fd=new FormData(); fd.append('paths',JSON.stringify(edClips.map(c=>c.path)));
+        const r=await fetch('/api/editor-export',{method:'POST',body:fd}); const j=await r.json();
+        if(j.path){
+          const u='/api/file?path='+enc(j.path), d='/api/download?path='+enc(j.path)+'&name=editado';
+          res.innerHTML=`<div class="card" style="margin-top:14px"><h2>✅ Video exportado</h2>
+            <video src="${u}" controls playsinline style="width:100%;max-height:50vh;border-radius:12px;background:#000"></video>
+            <a class="btn" href="${d}" download style="margin-top:10px;display:inline-block;text-decoration:none;background:var(--accent2)">⬇️ Descargar</a></div>`;
+        } else { res.innerHTML='<div class="pmsg" style="color:var(--warn)">'+(j.detail||'Error al exportar')+'</div>'; }
+      }catch(e){ res.innerHTML='<div class="pmsg" style="color:var(--warn)">Error: '+e+'</div>'; }
+    }
+  </script>
+  </div><!-- /p-editor -->
 
   <div class="panel" id="p-descargar" style="display:none">
   <div class="autoHero">

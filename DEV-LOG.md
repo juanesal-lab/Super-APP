@@ -991,3 +991,22 @@ Jack: los subtítulos salían muy grandes y con mucho espacio entre la línea de
   Demo: ~/Downloads/prueba/SUBS_juntos_chicos.png
 - Nota: el file(3) que mostró Jack es output de una versión ANTERIOR (por eso el subtítulo viejo se
   asomaba). La detección/blur ya se afinó (híbrido Gemini+EAST). Falta que pruebe con un ORIGINAL limpio.
+
+### 2026-07-01 · Claude (juanesal-lab) · 🎬 NUEVO: Editor de línea de tiempo (mini CapCut) — FASE 1 (esqueleto)
+Juan quiere un editor tipo CapCut DENTRO de la app para corregir A MANO lo que la IA hace mal (mover/quitar
+un blur, arreglar una caption) en vez de re-correr todo el pipeline cuando algo sale mal. Pidió empezar por
+el TIMELINE completo. Fase 1 lista y probada en vivo:
+- **app.py (ADITIVO, no toqué endpoints de nadie):** `/api/editor-project?job_id` (arma el proyecto = clips
+  + miniatura + duración de un trabajo ya procesado), `/api/editor-export` (concatena los clips en el ORDEN
+  dado con `assemble.concat_clips`), `/api/last-project` (el último job con clips). `/api/file` ahora infiere
+  el mime (para servir miniaturas jpg, antes todo era video/mp4). Helper `_thumb()` (1 frame por clip).
+- **frontend (ADITIVO):** pestaña nueva `🎬 Editor` + panel `p-editor` AUTOCONTENIDO (mi `<style>`/`<script>`):
+  preview + línea de tiempo con bloques de clip (miniatura, número, duración, ✕), **arrastrar para reordenar**,
+  clic para ver uno, borrar, ▶️ reproducir en secuencia, 💾 exportar.
+- **Probado EN VIVO (navegador, capturas):** cargó 24 clips reales con miniaturas → timeline OK → reordenar/
+  borrar OK → export concatenó → video de 0:41 reproducible ✅.
+- **PRÓXIMAS FASES:** (2) recortar clips (trim) + música; (3) LO CLAVE para Juan: editar las cajas de BLUR y
+  las CAPTIONS (mover/quitar/corregir) — para eso el pipeline debe emitir el "proyecto" con blur+captions como
+  DATOS editables (no quemados) y el export renderizarlos. Edición no-destructiva.
+- **Aviso:** toqué `frontend/index.html` (nav + panel nuevo) y `app.py` (endpoints nuevos + mime de /api/file).
+  Todo aditivo; si chocamos en el nav, mi botón es `data-p="p-editor"`.

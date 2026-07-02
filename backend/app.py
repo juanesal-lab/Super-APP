@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -15,7 +16,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from pipeline.orchestrator import process_job, analyze_select, render_versions
-from pipeline.assemble import export_resolution, list_sfx
+from pipeline.assemble import export_resolution, list_sfx, concat_clips
+from pipeline.ffmpeg_utils import probe as _probe
 from pipeline.scripts import generate_scripts, suggest_sfx, suggest_music
 from pipeline.voiceover import (synthesize, synthesize_with_timestamps, sound_effect,
                                 music as gen_music, VOICES)
@@ -945,6 +947,75 @@ async def producto_clips(
     return {"job_id": job_id}
 
 
+# ─────────────────────────  EDITOR (línea de tiempo tipo CapCut)  ─────────────────────────
+def _thumb(path: str) -> str:
+    """Genera (o reusa) una miniatura jpg del clip para la línea de tiempo."""
+    thumb = path + ".thumb.jpg"
+    if not os.path.exists(thumb):
+        try:
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "0.2", "-i", path,
+                            "-frames:v", "1", "-vf", "scale=160:-1", thumb],
+                           check=True, capture_output=True, timeout=20)
+        except Exception:  # noqa: BLE001
+            return ""
+    return thumb
+
+
+@app.get("/api/editor-project")
+def editor_project(job_id: str):
+    """Arma el 'proyecto' editable (clips + miniatura + duración) de un trabajo ya procesado."""
+    job = JOBS.get(job_id)
+    if not job or not job.get("result"):
+        raise HTTPException(404, "No hay un proyecto para ese trabajo")
+    res = job["result"]
+    clips = []
+    for i, c in enumerate(res.get("clips") or []):
+        p = c.get("path") if isinstance(c, dict) else c
+        if not p or not os.path.exists(p):
+            continue
+        try:
+            dur = _probe(p).duration
+        except Exception:  # noqa: BLE001
+            dur = 2.0
+        seg = c.get("segment", {}) if isinstance(c, dict) else {}
+        clips.append({"id": i, "path": p, "thumb": _thumb(p),
+                      "duration": round(float(dur), 2),
+                      "tag": seg.get("tag", ""), "score": seg.get("score")})
+    return {"clips": clips, "aspect": res.get("aspect", "1:1")}
+
+
+@app.post("/api/editor-export")
+def editor_export(paths: str = Form(...)):
+    """Renderiza la línea de tiempo: concatena los clips en el ORDEN dado. Devuelve la ruta."""
+    import json as _json
+    try:
+        plist = [p for p in _json.loads(paths) if isinstance(p, str) and os.path.exists(p)]
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Orden de clips inválido")
+    if not plist:
+        raise HTTPException(400, "La línea de tiempo está vacía")
+    job_id = uuid.uuid4().hex[:12]
+    wd = os.path.join(WORK_DIR, job_id)
+    os.makedirs(wd, exist_ok=True)
+    out = os.path.join(wd, "editor_export.mp4")
+    concat_clips(plist, out, wd)
+    return {"path": out}
+
+
+@app.get("/api/last-project")
+def last_project():
+    """Devuelve el job MÁS RECIENTE que tenga clips (para abrirlo en el editor)."""
+    best = None
+    for jid, job in JOBS.items():
+        res = job.get("result") or {}
+        if res.get("clips") and (best is None or
+                                 job.get("created", 0) > JOBS[best].get("created", 0)):
+            best = jid
+    if not best:
+        raise HTTPException(404, "Aún no has creado clips — usa 'Cortar clips' o 'Mi producto' primero")
+    return {"job_id": best, "n_clips": len(JOBS[best]["result"]["clips"])}
+
+
 def _safe_path(path: str) -> str:
     """Solo permite servir archivos dentro de WORK_DIR."""
     full = os.path.abspath(path)
@@ -955,11 +1026,16 @@ def _safe_path(path: str) -> str:
     return full
 
 
+_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+         ".webp": "image/webp", ".gif": "image/gif", ".mp3": "audio/mpeg", ".webm": "video/webm"}
+
+
 @app.get("/api/file")
 def serve_file(path: str):
-    """Sirve un clip/version para previsualizar en el navegador."""
+    """Sirve un clip/version/miniatura para previsualizar en el navegador."""
     full = _safe_path(path)
-    return FileResponse(full, media_type="video/mp4")
+    ext = os.path.splitext(full)[1].lower()
+    return FileResponse(full, media_type=_MIME.get(ext, "video/mp4"))
 
 
 @app.get("/api/download")

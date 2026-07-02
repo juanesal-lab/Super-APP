@@ -1335,3 +1335,16 @@ JOBS nunca se limpia (fuga de RAM en uso largo). Todo eso queda para después.
 - Foreplay/Colombia: HONESTO — todavía NO excluye Colombia (Foreplay no expone país; solo idioma español).
   Coordinar contigo, Juan, para el filtro de país. TikTok search sí excluye CO.
 - PENDIENTE: voz en off + subtítulos en "Mi producto" (build pesado, necesita guion/transcripción).
+
+### 2026-07-02 · Claude (juanesal-lab) · 🧹 Limpieza del código muerto en disruptive_images.py (poco a poco)
+Juan pidió limpiar el código muerto de `disruptive_images.py` de a poco sin romper nada. Lo hice en 4
+bloques, de ABAJO hacia arriba (para no mover líneas), verificando el import DESPUÉS de cada uno:
+1. `generar_ads_disruptivos` + `generar_ads_v2` (flujo viejo completo).
+2. `_pegar_producto` (pegado plano, reemplazado por `_integrar_producto_ia`).
+3. Cluster V2: `_SISTEMA_V2`, `_TOOL_V2`, `generar_conceptos_v2`, `generar_ad_compuesto`.
+4. Compositor viejo: `componer_ad` + 14 helpers (`_hex`,`_wrap`,`_fit`,`_star`,`_stars`,`_starburst`,
+   `_play_button`,`_arrow`,`_cursor_hand`,`_play_bar`,`_quiz`,`_quiz_rows`,`_slider`,`_chat_bubbles`).
++ Quité imports que quedaron sin uso: `math`, `ImageDraw`, `ImageFont`, `ImageOps` (de PIL solo queda `Image`).
+Resultado: 889 → 413 líneas (~475 muertas fuera). VERIFICADO: import OK tras cada bloque + test funcional
+(generar_conceptos devuelve 10). Lo VIVO intacto: generar_conceptos, generar_ad(s)_fullprompt, generar_imagen,
+_verificar_ortografia, _norm_words, _integrar_producto_ia, _recortar_producto, _error_amigable, _SISTEMA/_TOOL/_CIERRE.

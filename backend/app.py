@@ -892,17 +892,27 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
 
 
 @app.post("/api/dub")
-async def dub(video: UploadFile = File(...), target_lang: str = Form("en"),
+async def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
               source_lang: str = Form("auto"), oferta_2x1: bool = Form(False),
-              product_desc: str = Form("")):
-    if not video:
-        raise HTTPException(400, "Sube un video")
+              product_desc: str = Form(""), video_url: str = Form("")):
     job_id = uuid.uuid4().hex[:12]
     up = os.path.join(UPLOAD_DIR, job_id)
     os.makedirs(up, exist_ok=True)
-    vpath = os.path.join(up, "dub_" + os.path.basename(video.filename or "video.mp4"))
-    with open(vpath, "wb") as f:
-        shutil.copyfileobj(video.file, f)
+    vpath = os.path.join(up, "dub_video.mp4")
+    if video_url.strip():
+        # Doblar un creativo de Foreplay: bajarlo primero (solo su CDN por seguridad)
+        from urllib.parse import urlparse
+        host = (urlparse(video_url).hostname or "").lower()
+        if not (host == "foreplay.co" or host.endswith(".foreplay.co")):
+            raise HTTPException(400, "URL de video no permitida")
+        if not fp.descargar_video(video_url.strip(), vpath):
+            raise HTTPException(502, "No se pudo bajar el creativo de Foreplay")
+    elif video is not None and video.filename:
+        vpath = os.path.join(up, "dub_" + os.path.basename(video.filename))
+        with open(vpath, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+    else:
+        raise HTTPException(400, "Sube un video o pasa un creativo de Foreplay")
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_dub_job,
@@ -1038,6 +1048,29 @@ def foreplay_thumb(url: str):
         raise
     except Exception:  # noqa: BLE001
         raise HTTPException(502, "Error cargando miniatura")
+
+
+@app.get("/api/foreplay-video")
+def foreplay_video(url: str, dl: int = 0):
+    """Proxy del MP4 de Foreplay (para reproducir y descargar sin bloqueo de CORS del CDN)."""
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").lower()
+    if not (host == "foreplay.co" or host.endswith(".foreplay.co")):
+        raise HTTPException(400, "URL no permitida")
+    try:
+        import requests as _rq
+        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=90)
+        if r.status_code != 200:
+            raise HTTPException(502, "No se pudo cargar el video")
+        headers = {"Cache-Control": "public, max-age=3600"}
+        if dl:
+            headers["Content-Disposition"] = 'attachment; filename="creativo.mp4"'
+        return Response(content=r.content, media_type=r.headers.get("Content-Type", "video/mp4"),
+                        headers=headers)
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        raise HTTPException(502, "Error cargando el video")
 
 
 @app.post("/api/foreplay-search")

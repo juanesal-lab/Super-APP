@@ -1246,3 +1246,23 @@ Juan: usar Nano Banana 2 (aunque cueste) + integrar el producto con IA. Cambios 
 - `generar_ad_fullprompt` ahora termina con `_integrar_producto_ia` (2 llamadas Pro por imagen).
 - Probado con el Medicube stick: calidad cine + producto integrado y fiel + ortografía perfecta. Enorme salto.
 - ⚠️ AVISO: 10 imágenes = ~20 llamadas Pro → más gasto/tiempo. Ojo con el tope de Google (ai.studio/spend).
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔥 Foreplay: Ver/Descargar/Doblar + excluir Colombia
+Jack: en Foreplay poder reproducir + descargar el video, y un botón "Doblar" que lo lleve a la sección
+Doblar con el creativo ya cargado. Y regla global: SIEMPRE excluir Colombia (español pero sin CO).
+- **AVISO Juan (toqué tu Foreplay):** cada card ahora tiene ▶️ Ver (reproduce inline vía proxy),
+  ⬇️ Descargar, y 🎙️ Doblar. NO cambié tu búsqueda/selección, solo agregué botones al render.
+- **NUEVO `/api/foreplay-video`** (proxy del MP4 del CDN de Foreplay, host-validado, con ?dl=1 para bajar).
+- **`/api/dub`**: ahora acepta `video_url` (baja el creativo de Foreplay con fp.descargar_video y lo dobla).
+  El botón Doblar guarda la URL, salta a la pestaña Doblar y muestra el creativo cargado. Verificado en vivo.
+- **Excluir Colombia** en búsqueda TikTok (tiktok_search): saqué CO de _ES_REGIONS y filtro region=="CO".
+  Nota Juan: en Foreplay ya va language=spanish; si su API tiene filtro de país, excluir CO también allá.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🌐 Clonar ganador: doblaje INTELIGENTE por idioma
+Jack: en Clonar ganador, si el creativo está en OTRO idioma que se doble (traduzca la idea); si ya está
+en español, que NO se re-doble y siga. (Él puso uno y "se mantuvo igual" porque solo doblaba con el flag.)
+- **winner_clone**: nuevo `_es_espanol()` (heurística GRATIS, sin API, sobre el transcript que ya trae
+  la narrativa). Ahora dobla si (no-español O flag forzado) y hay key; si ya es español, conserva la voz.
+- Verificado el detector: 4/4 (español→conserva, inglés→dobla). Solo mi módulo.
+- No pude correr el clon end-to-end (Gemini de Jack en tope 429). PENDIENTE aún: "Mi producto" (música
+  auto + voz + subtítulos + bajar volumen) — es el siguiente build grande.

@@ -169,9 +169,21 @@ def save_key(key: str = Form(...), provider: str = Form("gemini")):
     return {"ok": True}
 
 
+def _safe_link_paths(link_paths: list[str]) -> list[str]:
+    """Solo acepta rutas de videos ya BAJADOS que estén dentro de UPLOAD_DIR y existan (seguridad)."""
+    base = os.path.abspath(UPLOAD_DIR)
+    out = []
+    for p in link_paths or []:
+        ap = os.path.abspath(p)
+        if ap.startswith(base) and os.path.exists(ap):
+            out.append(ap)
+    return out
+
+
 @app.post("/api/process")
 async def process(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(None),
+    link_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
     max_clip: float = Form(2.5),
     use_gemini: bool = Form(True),
@@ -187,19 +199,19 @@ async def process(
     text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
 ):
-    if not files:
-        raise HTTPException(400, "Sube al menos un video")
-
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
     os.makedirs(job_upload, exist_ok=True)
 
     paths = []
-    for f in files:
+    for f in (files or []):
         dest = os.path.join(job_upload, os.path.basename(f.filename or f"v_{len(paths)}.mp4"))
         with open(dest, "wb") as out:
             shutil.copyfileobj(f.file, out)
         paths.append(dest)
+    paths += _safe_link_paths(link_paths)      # videos bajados de TikTok (pegados como links)
+    if not paths:
+        raise HTTPException(400, "Sube al menos un video o baja unos de TikTok")
 
     JOBS[job_id] = {
         "status": "running", "progress": 0,
@@ -290,6 +302,24 @@ def _run_links_job(job_id: str, links_text: str, settings: dict):
         job["message"] = "Listo · videos + guiones" if result.get("scripts") else "Listo"
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/fetch-links")
+async def fetch_links(links: str = Form("")):
+    """Baja videos de TikTok al servidor y devuelve sus rutas (para cortarlos luego con /api/process,
+    después de que el usuario configure los ajustes). NO corta nada aquí."""
+    urls = [u for u in links.split() if u.startswith("http")]
+    if not urls:
+        raise HTTPException(400, "Pega al menos un link de TikTok")
+    job_id = uuid.uuid4().hex[:12]
+    out_dir = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(out_dir, exist_ok=True)
+    dl = download_urls(urls, out_dir)
+    vids = [{"path": d["path"], "name": d.get("filename") or os.path.basename(d["path"])}
+            for d in dl if d.get("ok") and d.get("path")]
+    if not vids:
+        return {"videos": [], "error": "No se pudo bajar ningún video (revisa los links)"}
+    return {"videos": vids}
 
 
 @app.post("/api/process-links")
@@ -572,7 +602,8 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
 
 @app.post("/api/scripts")
 async def scripts(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(None),
+    link_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
     max_clip: float = Form(2.5),
     use_gemini: bool = Form(True),
@@ -591,9 +622,10 @@ async def scripts(
     use_captions: bool = Form(False),
     reference_ad: UploadFile | None = File(None),
 ):
-    if not files:
-        raise HTTPException(400, "Sube al menos un video")
-    job_id, paths = _save_uploads(files)
+    job_id, paths = _save_uploads(files or [])
+    paths += _safe_link_paths(link_paths)      # videos bajados de TikTok
+    if not paths:
+        raise HTTPException(400, "Sube al menos un video o baja unos de TikTok")
     # Anuncio de referencia (opcional) para clonar su estructura narrativa
     ref_path = None
     if reference_ad is not None and reference_ad.filename:

@@ -454,10 +454,10 @@
 
     <!-- O pegar links de TikTok (en vez de subir archivos) -->
     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
-      <label class="lbl">…o pega links de TikTok (uno por línea): la app los baja, los corta en versiones Y te genera los guiones de voz en off — todo de una</label>
+      <label class="lbl">…o pega links de TikTok (uno por línea): la app los BAJA y los agrega arriba. Luego configuras los ajustes de abajo y le das "Generar clips".</label>
       <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
-      <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="cortarDesdeLinks()">📥✂️🎙️ Bajar → cortar + guiones</button>
+      <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
     </div>
   </div>
 
@@ -1098,6 +1098,7 @@ fileInput.onchange = e=>addFiles(e.target.files);
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
 drop.addEventListener("drop",e=>addFiles(e.dataTransfer.files));
 
+let linkVids = [];   // videos BAJADOS de TikTok (rutas en el servidor); se cortan al dar "Generar clips"
 function addFiles(list){
   for(const f of list){ if(f.type.startsWith("video")) files.push(f); }
   renderFiles();
@@ -1107,11 +1108,17 @@ function renderFiles(){
   el.innerHTML = "";
   files.forEach((f,i)=>{
     const d = document.createElement("div"); d.className="file";
-    d.innerHTML = `🎬 <span>${f.name}</span> <span style="color:var(--muted)">${(f.size/1e6).toFixed(1)} MB</span><span class="x" data-i="${i}">×</span>`;
+    d.innerHTML = `🎬 <span>${f.name}</span> <span style="color:var(--muted)">${(f.size/1e6).toFixed(1)} MB</span><span class="x" data-f="${i}">×</span>`;
     el.appendChild(d);
   });
-  el.querySelectorAll(".x").forEach(x=>x.onclick=()=>{files.splice(+x.dataset.i,1);renderFiles();});
-  document.getElementById("go").disabled = files.length===0;
+  linkVids.forEach((v,i)=>{
+    const d = document.createElement("div"); d.className="file";
+    d.innerHTML = `📥 <span>${v.name}</span> <span style="color:var(--muted)">de TikTok</span><span class="x" data-l="${i}">×</span>`;
+    el.appendChild(d);
+  });
+  el.querySelectorAll(".x[data-f]").forEach(x=>x.onclick=()=>{files.splice(+x.dataset.f,1);renderFiles();});
+  el.querySelectorAll(".x[data-l]").forEach(x=>x.onclick=()=>{linkVids.splice(+x.dataset.l,1);renderFiles();});
+  document.getElementById("go").disabled = (files.length===0 && linkVids.length===0);
 }
 
 // --- Settings ---
@@ -1131,6 +1138,7 @@ refInput.onchange = e=>{
 function buildForm(){
   const fd = new FormData();
   files.forEach(f=>fd.append("files", f));
+  linkVids.forEach(v=>fd.append("link_paths", v.path));   // videos ya bajados de TikTok
   if(refFile && useVO.checked) fd.append("reference_ad", refFile);
   fd.append("target_seconds", dur.value);
   fd.append("max_clip", document.getElementById("maxClip").value);
@@ -1151,7 +1159,7 @@ function buildForm(){
 }
 
 document.getElementById("go").onclick = async ()=>{
-  if(!files.length) return;
+  if(!files.length && !linkVids.length) return;
   document.getElementById("go").disabled = true;
   document.getElementById("results").innerHTML = "";
   document.getElementById("scripts").innerHTML = "";
@@ -1162,22 +1170,28 @@ document.getElementById("go").onclick = async ()=>{
   poll(j.job_id);
 };
 
-// Cortar clips DESDE links de TikTok (los baja y los corta, reusando los mismos ajustes)
-async function cortarDesdeLinks(){
+// Solo BAJA los videos de TikTok y los agrega a la lista de arriba (NO los corta).
+// Luego el usuario configura los ajustes y le da "Generar clips" (flujo normal).
+async function bajarLinks(){
   const links = document.getElementById("tkClipLinks").value.trim();
   if(!links){ alert("Pega al menos un link de TikTok"); return; }
-  document.getElementById("goLinks").disabled = true;
-  document.getElementById("results").innerHTML = "";
-  document.getElementById("scripts").innerHTML = "";
-  document.getElementById("progCard").classList.remove("hidden");
-  const fd = buildForm();                 // mismos ajustes; los archivos van vacíos
-  fd.append("links", links);
+  const btn = document.getElementById("goLinks");
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = "📥 Bajando…";
   try{
-    const r = await fetch("/api/process-links",{method:"POST",body:fd});
+    const fd = new FormData(); fd.append("links", links);
+    const r = await fetch("/api/fetch-links",{method:"POST",body:fd});
     const j = await r.json();
-    document.getElementById("goLinks").disabled = false;
-    poll(j.job_id);
-  }catch(e){ document.getElementById("goLinks").disabled = false; alert("Error: "+e); }
+    const vids = j.videos || [];
+    vids.forEach(v=>{ if(v.path) linkVids.push({path:v.path, name:v.name||"video"}); });
+    if(vids.length){
+      document.getElementById("tkClipLinks").value = "";
+      renderFiles();
+      btn.textContent = `✅ ${vids.length} bajado(s) — configura y dale Generar`;
+    } else {
+      btn.textContent = orig; alert(j.error || "No se pudo bajar ningún video (revisa los links)");
+    }
+  }catch(e){ btn.textContent = orig; alert("Error: "+e); }
+  finally{ setTimeout(()=>{ btn.disabled=false; if(btn.textContent.startsWith("✅")) btn.textContent=orig; }, 3000); }
 }
 
 async function poll(id){

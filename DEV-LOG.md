@@ -1029,3 +1029,15 @@ Jack: todos los copies deben cerrar con esta frase EXACTA:
   exacta, + red de seguridad que la añade a la última fase si no aparece en ninguna.
 - Cubre: guiones de voz (Cortar clips, links) + doblaje colombiano (Crear creativo, Clon, Doblaje 2x1).
 - Los hooks (openers cortos) NO la llevan (es un cierre, no un gancho). Probado local (exacto, sin duplicar).
+
+### 2026-07-01 · Claude (jackingshop1-cell) · 📥 Cortar clips: pegar links ahora solo BAJA (no corta de una)
+Jack: al pegar links, cortaba de inmediato sin dejar configurar los ajustes. Ahora:
+- El botón "Bajar de TikTok" (antes "Bajar y cortar") solo DESCARGA los videos y los agrega a la lista
+  "Tus videos" (aparecen como "📥 nombre de TikTok", con × para quitar). Luego el usuario configura los
+  ajustes y le da "Generar clips" (flujo normal).
+- **NUEVO `/api/fetch-links`**: baja server-side y devuelve rutas (NO corta).
+- **`/api/process` y `/api/scripts`**: `files` ahora opcional + aceptan `link_paths` (rutas ya bajadas,
+  validadas dentro de UPLOAD_DIR por seguridad). El job corta archivos subidos + bajados juntos.
+- Frontend: `linkVids[]` + render en la lista + buildForm manda `link_paths` + botón Generar se habilita
+  con archivos O links. AVISO Juan: toqué tu sección Cortar clips (addFiles/renderFiles/buildForm/#go) y
+  /api/process + /api/scripts (aditivo). Verificado UI + backend end-to-end.

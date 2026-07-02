@@ -731,6 +731,11 @@
 
   <script>
     let edClips=[], edCur=0, edPlaying=false, edDragI=null;
+    function edOpen(){   // desde los resultados: salta al tab Editor y carga el último video
+      const b=document.querySelector('#tabs button[data-p="p-editor"]');
+      if(b) b.click();
+      setTimeout(edLoadLast, 250);
+    }
     async function edLoadLast(){
       const st=document.getElementById('edStatus'); st.textContent='Buscando tu último video...';
       try{
@@ -1244,7 +1249,8 @@ function renderResults(res, rootId){
   // Versiones
   const hookLine = res.hook_used ? `<div class="pmsg" style="margin:-6px 0 14px">✨ Gancho: <b style="color:var(--txt)">${res.hook_used}</b></div>` : '';
   const warn = res.music_warning ? `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn);font-size:14px">⚠️ ${res.music_warning}</p></div>` : '';
-  let html = warn + `<div class="card"><h2>Versiones del video ${gem} ${enh}</h2>${hookLine}<div class="vgrid">`;
+  const editBar = `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--card2)"><div><b>🎬 ¿Quieres ajustarlo?</b> <span style="color:var(--muted)">Ábrelo en el editor para reordenar, borrar clips y exportar a tu gusto.</span></div><button class="btn" onclick="edOpen()" style="background:var(--accent2);white-space:nowrap">✏️ Editar en el editor</button></div>`;
+  let html = warn + editBar + `<div class="card"><h2>Versiones del video ${gem} ${enh}</h2>${hookLine}<div class="vgrid">`;
   const names = {A_gancho:"Versión A · Gancho primero", B_narrativa:"Versión B · Narrativa", C_corta:"Versión C · Corta", D_dinamica:"Versión D · Dinámica", E_inversa:"Versión E · Inversa", F_express:"Versión F · Express"};
   res.versions.forEach((v,i)=>{
     const file = "/api/file?path="+enc(v.path);

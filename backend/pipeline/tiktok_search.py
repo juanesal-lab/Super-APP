@@ -2,13 +2,15 @@
 
 Devuelve LINKS REALES de videos de TikTok (vía la API pública de tikwm, sin login), pero con
 VERIFICACIÓN por IA para que sea SÍ O SÍ el MISMO producto que la foto (mismo tipo Y misma forma:
-ej. "veneno de abeja EN CREMA", no en bótox). Prefiere videos en ESPAÑOL y con POCO texto en pantalla.
+ej. "veneno de abeja EN CREMA", no en bótox). Prefiere videos SIN texto SOBREPUESTO (subtítulos/captions
+que pone el creador, no la etiqueta del producto) y en ESPAÑOL.
 
 Flujo:
   1) Gemini mira la foto → descripción precisa (producto + forma/formato) + keywords en español.
   2) tikwm busca hartos candidatos.
-  3) Gemini compara la PORTADA de cada candidato con la foto → ¿mismo producto? ¿español? ¿poco texto?
-     Se queda solo con los que coinciden, ordenados (español + poco texto primero).
+  3) Gemini compara la PORTADA de cada candidato con la foto → ¿mismo producto? ¿español? ¿cuánto texto
+     SOBREPUESTO (nada/poco/mucho, ignorando el texto del producto)?
+     Se queda solo con los que coinciden, ordenados (sin texto sobrepuesto primero, luego español).
 Tarda un poco más, pero acierta. Si no hay foto, busca por el nombre (sin verificación visual).
 """
 from __future__ import annotations
@@ -113,8 +115,11 @@ def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
     return out[:count]
 
 
+_OVERLAY_SCORE = {"nada": 2, "poco": 1, "mucho": 0}
+
+
 def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dict | None:
-    """¿El video es SÍ O SÍ el mismo producto (tipo Y forma)? + muestra el producto + español + poco texto."""
+    """¿El video es SÍ O SÍ el mismo producto (tipo Y forma)? + muestra el producto + español + SIN texto sobrepuesto."""
     cover = cand.get("cover")
     if not cover:
         return None
@@ -131,8 +136,14 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
             "producto Y en la MISMA FORMA/FORMATO que la Foto 1 (ej: si la referencia es CREMA, un "
             "bótox/inyección/pastilla/otra cosa NO cuenta). Si la portada no deja ver claro el producto, "
             "o hay duda, o es otro producto → match=false. "
+            "TEXTO SOBREPUESTO: distingue el texto AÑADIDO DIGITALMENTE encima del video (subtítulos, "
+            "captions, títulos, stickers de texto — lo típico que pone el creador de TikTok) del texto que "
+            "es parte REAL de la escena (la etiqueta o empaque del producto, letreros del lugar). SOLO cuenta "
+            "el texto sobrepuesto digital; ignora por completo el texto del producto. Reporta texto_overlay = "
+            "\"nada\" (sin texto sobrepuesto, o casi imperceptible), \"poco\" (algo de texto pero pequeño/discreto), "
+            "o \"mucho\" (subtítulos/títulos grandes que tapan el video). "
             "Responde SOLO JSON: "
-            '{"match":true/false,"muestra_producto":true/false,"es":true/false,"poco_texto":true/false}')
+            '{"match":true/false,"muestra_producto":true/false,"es":true/false,"texto_overlay":"nada"/"poco"/"mucho"}')
         resp = _client(api_key).models.generate_content(
             model=_MODEL,
             contents=[prompt,
@@ -142,8 +153,9 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         if not m:
             return None
         d = json.loads(m.group(0))
+        ov = str(d.get("texto_overlay", "poco")).strip().lower()
         return {"match": bool(d.get("match")), "muestra": bool(d.get("muestra_producto")),
-                "es": bool(d.get("es")), "poco_texto": bool(d.get("poco_texto"))}
+                "es": bool(d.get("es")), "overlay": _OVERLAY_SCORE.get(ov, 1)}
     except Exception:  # noqa: BLE001
         return None
 
@@ -190,10 +202,11 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 v = fut.result()
                 if v and v.get("match"):
                     c = futs[fut]
-                    c["_rank"] = (v.get("muestra", False), v.get("es", False),
-                                  v.get("poco_texto", False), c.get("plays", 0))
+                    # muestra producto → SIN texto sobrepuesto (2 nada > 1 poco > 0 mucho) → español → más views
+                    c["_rank"] = (v.get("muestra", False), v.get("overlay", 1),
+                                  v.get("es", False), c.get("plays", 0))
                     matches.append(c)
-        # muestra el producto → español → poco texto → más views
+        # muestra el producto → sin texto sobrepuesto → español → más views
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
         links = matches[:count]
         if len(links) < min(3, count):       # si quedaron muy pocos, completa con candidatos

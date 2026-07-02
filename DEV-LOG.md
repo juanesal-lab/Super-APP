@@ -1115,3 +1115,14 @@ falso-interactivos que define la skill `ads-disruptivos-imagen` (estilo-juan-apr
 - Solo toqué `backend/pipeline/disruptive_images.py` y `frontend/index.html` (chip de formato + "Seleccionar todas").
 - ⚠️ Falta (opcional, si Juan lo pide): formatos "cursor en botón", "post IG", "toca-para-revelar", y
   sellos aprobado/garantía. Generación real necesita créditos Google OK.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🔍 Búsqueda TikTok: priorizar clips SIN texto sobrepuesto
+Juan: en la búsqueda de TikTok, preferir videos sin subtítulos/captions SOBREPUESTOS (o muy pequeños),
+distinguiéndolos del texto propio del producto (etiqueta/empaque). Cambié `tiktok_search.py`:
+- `_verificar`: la visión ahora distingue TEXTO SOBREPUESTO digital (subtítulos/captions/stickers del
+  creador) del texto REAL de la escena (etiqueta del producto) e IGNORA el del producto. Devuelve
+  `texto_overlay` = nada/poco/mucho → score 2/1/0 (`_OVERLAY_SCORE`). Reemplaza el viejo `poco_texto`.
+- Ranking nuevo: muestra producto → **SIN texto sobrepuesto** (nada>poco>mucho) → español → más views.
+  Verificado: un clip "nada" gana aunque tenga menos views/no-español.
+- Solo toqué `backend/pipeline/tiktok_search.py` (módulo de Jack). Jack: cambié la firma interna del dict
+  de `_verificar` (`poco_texto`→`overlay` int); si lo usabas en otro lado, ajústalo.

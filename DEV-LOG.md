@@ -1205,3 +1205,13 @@ Juan pidió conectar la API de Foreplay. Verificado que funciona (key válida, 1
   diferentes. Simulado n=10: solape bajó de ~100% a ~70%.
 - PENDIENTE (siguiente, es grande): "Mi producto" con música auto por género + voz en off opcional +
   subtítulos opcionales + bajar volumen de los clips. Y disruptive/búsqueda están en tu refactor, Juan.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🎙️ Doblaje FLUIDO (sin huecos largos entre frases)
+- Jack: el doblaje dejaba silencios largos entre frase y frase. Causa: cada frase se anclaba al tiempo
+  EXACTO de su fase del video (adelay=inicio); si la voz era más corta que la fase, quedaba dead air.
+- Fix (dub_colombia): ahora las frases van SECUENCIALES — cada una arranca donde terminó la anterior +
+  pausa natural corta (0.16s). `_voz` devuelve la duración y tiempos RELATIVOS; se anclan en secuencia.
+  Los word_timings (subtítulos) se recalculan a la nueva posición. Verificado con audio sintético:
+  frases seguidas, silencedetect NO halla silencios largos.
+- No pude probar el dub completo end-to-end: el Gemini de Jack está en el TOPE de gasto (429). Cuando
+  suba el cap, el doblaje ya sale fluido. Afecta Crear creativo, Clon y Doblaje 2x1.

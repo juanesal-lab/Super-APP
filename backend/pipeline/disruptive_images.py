@@ -302,27 +302,42 @@ LOS 6 MOTORES para inventar (usa uno DISTINTO por concepto, sin repetir):
 personificación del dolor · metáfora literal extrema · consecuencia absurda · escena social vergonzosa · \
 objeto/reflejo surreal · reacción facial extrema o antes/después imposible.
 
-FÓRMULA VISUAL (todo en la MISMA imagen, de arriba a abajo):
-1. Banda de color sólido arriba con el TITULAR en MAYÚSCULAS gruesas blancas (pregunta, shock o frase-gancho).
-2. La ESCENA surreal fotorrealista (DSLR o UGC iPhone; nada de render plástico) — el HÉROE de la pieza.
-3. UN elemento falso-interactivo (el sello): botón de play ▶ translúcido + barra de progreso "0:12 / 1:58"; \
-o slider antes/después con manija redonda + flechas ◄►; o cursor-mano blanco tocando algo.
-4. Franja blanca con el SUB en negrita oscura; y tercio inferior: el PRODUCTO pequeño (frasco ámbar), un \
-BOTÓN redondeado (amarillo o rojo) con el CTA + cursor-mano blanco a punto de tocar, y el precio/oferta.
+REGLA MADRE: el creativo NO debe PARECER un anuncio. Debe parecer CONTENIDO ORGÁNICO (un video o post que
+alguien grabó) que por lo surreal frena el scroll. NADA de "banda de color de anuncio arriba con el titular".
 
-CUMPLIMIENTO Meta: nada de curas absolutas ni % médicos ("ayuda a / apoya el bienestar"). El antes/después \
-o la transformación se hace SURREAL/metafórico (globo, hipopótamo), NUNCA un split clínico enfermo→sano de \
-cuerpo/rostro. Sin desnudez ni sexo explícito: el shock es por drama y metáfora, no por piel.
+FÓRMULA VISUAL por formato:
+- FORMATO VIDEO (el más usado): es el SCREENSHOT de un VIDEO REAL (TikTok/Reel/YouTube). La ESCENA surreal
+  LLENA todo el cuadro; encima va el chrome de video NATIVO — botón de play ▶ translúcido al centro, barra de
+  progreso con tiempo ("0:08 / 2:04"), iconitos de volumen/pantalla completa en una esquina. El TITULAR va
+  como CAPTION NATIVO: texto blanco grueso con contorno/sombra ENCIMA del video (estilo subtítulo de TikTok),
+  NO como banner de anuncio. Se ve como un video que estás mirando, no como publicidad.
+- FORMATO SLIDER/QUIZ/CHAT: la escena surreal manda a pantalla completa; el elemento (slider antes/después
+  con manija ◄►, pastillas de quiz con cursor-mano, o burbujas de chat de WhatsApp) va integrado y nativo,
+  sin verse como plantilla de ad.
+- ABAJO (todos): un botón redondeado (amarillo/rojo) con el CTA + cursor-mano a punto de tocar. SIN cifras.
+
+PRODUCTO: NO dibujes NINGÚN frasco/producto en la imagen (el producto REAL del cliente se PEGA aparte
+después). Deja LIMPIO y despejado el tercio inferior IZQUIERDO (sin texto ni objetos ahí).
+
+SÚPER CREATIVO — aun en nichos "bonitos" (skincare, belleza): PROHIBIDO foto de stock con un filtro. Lleva la
+metáfora al EXTREMO surreal: piel = desierto agrietado con grietas reales, cara = estatua de porcelana
+resquebrajándose y cayendo en pedazos, reflejo = versión momia/pasa/anciana, arrugas = mapa de carreteras.
+Que dé impresión, risa o "¿qué diablos?", como el hipopótamo del espejo o el bus.
+
+CUMPLIMIENTO Meta: nada de curas absolutas ni % médicos ("ayuda a / apoya el bienestar"). El antes/después o
+la transformación se hace SURREAL/metafórico (globo, hipopótamo, momia), NUNCA un split clínico enfermo→sano.
+Sin desnudez ni sexo explícito: el shock es por drama y metáfora, no por piel.
 
 Cada 'prompt' que entregues:
-- UN SOLO párrafo en INGLÉS, fotorrealista, empieza con "Bold direct-response Facebook ad, 4:5 vertical, \
-photorealistic." y describe la escena surreal + sujeto + emoción + el elemento falso-interactivo con \
-precisión + el frasco ámbar pequeño abajo.
-- Los TEXTOS incrustados van LITERALES en español (colombiano, tuteo), entre comillas, CORTOS, con su \
-ubicación exacta (banda superior, franja, botón, precio). No inventes texto largo.
-- Termina SIEMPRE con: thick sans-serif fonts, high contrast, saturated colors, professional \
-direct-response ad composition, render all embedded text crisply and spelled exactly as written. Avoid: \
-extra fingers, deformed hands, garbled or misspelled text, random logos, watermarks, nudity, low-res artifacts.
+- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic vertical 4:5
+  screenshot of an authentic organic social video" (o post) — NO "advertisement". Describe la escena surreal
+  a pantalla completa + sujeto + emoción + el chrome nativo (center translucent play button, progress bar
+  "0:08 / 2:04", small volume/fullscreen icons) + el titular como caption blanco sobre el video.
+- Di EXPLÍCITO: "no product or bottle anywhere in the image, keep the lower-left area clean and empty".
+- Los TEXTOS incrustados van LITERALES en español (colombiano, tuteo), entre comillas, CORTOS. SIN precio.
+- Termina SIEMPRE con: thick sans-serif fonts, high contrast, render all embedded text crisply and spelled
+  exactly as written, looks like an authentic organic social media video screenshot NOT a polished ad. Avoid:
+  extra fingers, deformed hands, garbled or misspelled text, random logos, watermarks, nudity, low-res artifacts.
 
 Devuelve EXACTAMENTE 10 variantes, 10 mecanismos/escenas MUY distintos, todas al nivel de los 5 ejemplos."""
 
@@ -569,34 +584,76 @@ def _verificar_ortografia(img_path: str, textos: list[str], gemini_key: str) -> 
         return True, []
 
 
+def _recortar_producto(img: "Image.Image", umbral: int = 244) -> "Image.Image":
+    """Quita el fondo blanco y deja SOLO el objeto más grande (descarta logos/watermarks sueltos)."""
+    import cv2
+    import numpy as np
+    img = img.convert("RGBA")
+    arr = np.array(img)
+    fg = (~np.all(arr[:, :, :3] >= umbral, axis=2)).astype(np.uint8)   # 1 = objeto (no blanco)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(fg, connectivity=8)
+    if n > 1:                                     # 0 = fondo; quédate con el mayor de los demás
+        big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        fg = (labels == big).astype(np.uint8)
+    arr[:, :, 3] = fg * 255
+    out = Image.fromarray(arr, "RGBA")
+    bbox = out.split()[3].getbbox()
+    return out.crop(bbox) if bbox else out
+
+
+def _pegar_producto(out_path: str, product_image_path: str | None) -> str:
+    """Pega el PRODUCTO REAL del cliente (su foto) abajo-izquierda para que sea EXACTO (no lo que invente la IA)."""
+    if not (product_image_path and os.path.exists(product_image_path)):
+        return out_path
+    try:
+        ad = Image.open(out_path).convert("RGBA")
+        W, H = ad.size
+        prod = _recortar_producto(Image.open(product_image_path))
+        tw = int(W * 0.28)
+        th = max(1, int(prod.height * tw / prod.width))
+        prod = prod.resize((tw, th), Image.LANCZOS)
+        # sombra suave para que no se vea plano
+        sombra = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+        sombra.paste((0, 0, 0, 90), (0, 0), prod.split()[3])
+        x, y = int(W * 0.05), H - th - int(H * 0.05)
+        ad.alpha_composite(sombra, (x + 6, y + 8))
+        ad.alpha_composite(prod, (x, y))
+        ad.convert("RGB").save(out_path)
+    except Exception:  # noqa: BLE001
+        pass
+    return out_path
+
+
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                           product_image_path: str | None = None, verify: bool = True,
                           max_regen: int = 2) -> str | None:
-    """Genera el ad COMPLETO desde el prompt rico (Nano Banana dibuja TODO incl. texto). Verifica la
-    ortografía del render y REGENERA si sale mal (hasta max_regen veces). Devuelve la ruta o None."""
+    """Genera el ad (Nano Banana dibuja la escena+texto SIN producto) + verifica ortografía/regenera + PEGA
+    el producto REAL del cliente abajo-izquierda (exacto). Devuelve la ruta o None."""
     prompt = variant.get("prompt", "")
     if not prompt:
         return None
     textos = [variant.get("titular", ""), variant.get("apoyo", ""),
               variant.get("boton_cta", ""), variant.get("precio_cta", "")]
-    last = None
     errs: list = []
+    got = False
     for intento in range(max_regen + 1):
         p = prompt if intento == 0 else (
             prompt + f" IMPORTANT (retry {intento}): make ABSOLUTELY every letter of the Spanish embedded "
             "text correct, complete and legible; do not misspell or repeat letters.")
-        img = generar_imagen(p, gemini_key, out_path, product_image_path, errors=errs)
+        # OJO: NO pasamos el producto como referencia -> el modelo NO lo dibuja; lo pegamos real después.
+        img = generar_imagen(p, gemini_key, out_path, product_image_path=None, errors=errs)
         if not img:
-            if errs:             # deja el motivo (tope de gasto, cuota, key...) para el UI
-                variant["error"] = _error_amigable(errs[0])
-            return last          # error de generación (créditos/bloqueo) -> no insiste
-        last = img
-        if not verify:
-            return img
-        ok, _ = _verificar_ortografia(out_path, textos, gemini_key)
-        if ok:
-            return img
-    return last                  # devuelve el último aunque no sea perfecto (mejor algo que nada)
+            if not got:
+                if errs:         # deja el motivo (tope de gasto, cuota, key...) para el UI
+                    variant["error"] = _error_amigable(errs[0])
+                return None
+            break                # ya hay una imagen previa buena en out_path
+        got = True
+        if not verify or _verificar_ortografia(out_path, textos, gemini_key)[0]:
+            break
+    if not got:
+        return None
+    return _pegar_producto(out_path, product_image_path)   # producto real EXACTO abajo-izquierda
 
 
 def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,

@@ -1205,3 +1205,20 @@ Juan pidió conectar la API de Foreplay. Verificado que funciona (key válida, 1
   diferentes. Simulado n=10: solape bajó de ~100% a ~70%.
 - PENDIENTE (siguiente, es grande): "Mi producto" con música auto por género + voz en off opcional +
   subtítulos opcionales + bajar volumen de los clips. Y disruptive/búsqueda están en tu refactor, Juan.
+
+### 2026-07-02 · Claude (juanesal-lab) · 🎨 Ads imagen: video NATIVO + producto REAL pegado + más salvaje
+Juan: (1) el producto no se parecía (la IA dibujaba un frasco cuando su producto es un stick), (2) poco
+disruptivo, (3) el video falso "parecía publicidad" (banda de anuncio arriba). Eligió "video nativo". Cambios
+en `disruptive_images.py`:
+- `_SISTEMA` reescrito: REGLA MADRE "no debe parecer anuncio". FORMATO VIDEO = screenshot de un video REAL
+  (escena a pantalla completa + chrome nativo: play ▶ + barra "0:08/2:04" + iconos volumen/fullscreen; titular
+  como CAPTION sobre el video, NO banda de color). Empuje surreal aun en skincare (piel=desierto agrietado,
+  cara=porcelana que se cae). Y el prompt ahora dice "NO product in image, leave lower-left clean".
+- NUEVO `_pegar_producto` + `_recortar_producto`: se PEGA la foto REAL del producto abajo-izquierda (exacto),
+  quitando fondo blanco y dejando SOLO el objeto más grande (cv2 connected components → descarta logos/
+  watermarks sueltos, ej. el logo "Full K Bellos" que traía la foto).
+- `generar_ad_fullprompt`: ya NO pasa el producto como referencia a Nano Banana (para que NO lo dibuje) y
+  pega el real al final. Probado con el Medicube stick: video nativo + producto exacto sin logo + conceptos
+  salvajes (rellenar con cemento, cara de pasa, GPS en la cara).
+- ⚠️ Ojo: la ortografía del render aún puede fallar en textos largos (sub). Tip UX: subir foto de producto
+  LIMPIA (sin logos) da mejor recorte.

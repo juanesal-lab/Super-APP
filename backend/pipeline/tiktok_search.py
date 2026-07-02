@@ -78,7 +78,8 @@ def _expandir(kw: str, variants: list[str]) -> list[str]:
 
 
 # Regiones donde el contenido suele estar en español (para priorizar sin gastar visión)
-_ES_REGIONS = {"CO", "MX", "ES", "AR", "PE", "CL", "EC", "VE", "GT", "BO", "DO", "CR",
+# Regiones hispanas preferidas — SIN Colombia (regla del dueño: excluir Colombia siempre)
+_ES_REGIONS = {"MX", "ES", "AR", "PE", "CL", "EC", "VE", "GT", "BO", "DO", "CR",
                "PA", "UY", "PY", "SV", "HN", "NI", "US"}
 
 
@@ -185,9 +186,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         for c in buscar_tiktok(q, count=40, pages=2):
             cands.setdefault(c["url"], c)
     cand_list = list(cands.values())
-    # descarta duraciones raras (fuera de 4-120s) y PRE-ORDENA: región hispana + más views (virales) primero
-    filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120]
-    cand_list = filtered or cand_list
+    # EXCLUIR COLOMBIA (regla del dueño) + descartar duraciones raras (fuera de 4-120s)
+    filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120 and c.get("region") != "CO"]
+    cand_list = filtered or [c for c in cand_list if c.get("region") != "CO"] or cand_list
+    # PRE-ORDENA: región hispana (sin CO) + más views (virales) primero
     cand_list.sort(key=lambda c: (1 if c.get("region") in _ES_REGIONS else 0, c.get("plays", 0)),
                    reverse=True)
 

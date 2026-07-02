@@ -1230,6 +1230,13 @@
     .fpDesc{color:var(--muted);font-size:12px;line-height:1.4;max-height:51px;overflow:hidden;flex:1}
     .fpLink{display:inline-block;margin-top:8px;color:var(--accent2);font-size:11.5px;font-weight:600;text-decoration:none}
     .fpLink:hover{text-decoration:underline}
+    .fpBtns{display:flex;gap:6px;margin-top:9px}
+    .fpBtn{flex:1;text-align:center;background:var(--card);border:1px solid var(--line);color:var(--txt);
+      border-radius:8px;padding:6px 4px;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:none;
+      font-family:inherit;transition:.15s}
+    .fpBtn:hover{border-color:var(--accent);color:var(--accent)}
+    .fpBtn.dob{background:var(--gold);color:var(--ink);border:0}
+    .fpBtn.dob:hover{filter:brightness(1.08);color:var(--ink)}
   </style>
 
   <script>
@@ -1278,6 +1285,11 @@
             ${badge}<span class="fpCheck">✓</span></div>
           <div class="fpBody"><div class="fpName">${fpEsc(a.name)||'—'}</div>
             <div class="fpDesc">${fpEsc((a.description||'').slice(0,120))}</div>
+            <div class="fpBtns" onclick="event.stopPropagation()">
+              <button class="fpBtn" onclick="fpPlay(${i},this)">▶️ Ver</button>
+              <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar">⬇️</a>
+              <button class="fpBtn dob" onclick="fpDoblar(${i})">🎙️ Doblar</button>
+            </div>
             <a class="fpLink" href="${fpEsc(a.foreplay_url)||'#'}" target="_blank" onclick="event.stopPropagation()">ver en Foreplay ↗</a>
           </div></div>`;
       });
@@ -1287,6 +1299,20 @@
       fpActions();
     }
     function fpToggle(i){ _fpSel.has(i)?_fpSel.delete(i):_fpSel.add(i); fpRender(); }
+    function fpPlay(i, btn){   // reproducir el video dentro de la card
+      const v=_fpAds[i].video; if(!v) return;
+      const w=btn.closest('.fpCard').querySelector('.fpThumbWrap');
+      w.innerHTML='<video class="fpThumb" src="/api/foreplay-video?url='+encodeURIComponent(v)+'" controls autoplay playsinline></video>';
+    }
+    function fpDoblar(i){       // llevar este creativo a la sección Doblar, ya cargado
+      const a=_fpAds[i]; if(!a.video){ alert('Este ad no tiene video'); return; }
+      window._dubForeplayUrl=a.video; window._dubForeplayName=a.name||'Creativo de Foreplay';
+      window.dubFile=null;
+      document.querySelector('#tabs button[data-p="p-dub"]').click();
+      const nm=document.getElementById('dubName'); if(nm) nm.textContent='🎬 Foreplay: '+window._dubForeplayName;
+      const go=document.getElementById('dubGo'); if(go) go.disabled=false;
+      window.scrollTo(0,0);
+    }
     function fpActions(){
       document.getElementById('fpActions').classList.toggle('hidden', _fpSel.size===0);
       document.getElementById('fpSelCount').textContent=_fpSel.size?(_fpSel.size+' seleccionados'):'';
@@ -1797,18 +1823,19 @@ async function swapPoll(id){
 let dubFile = null;
 const dropDub = document.getElementById("dropDub"), dubInput = document.getElementById("dubInput");
 dropDub.onclick = ()=>dubInput.click();
-dubInput.onchange = e=>{ dubFile = e.target.files[0]||null; document.getElementById("dubName").textContent = dubFile?("🎬 "+dubFile.name):"Clic para elegir el video a doblar"; document.getElementById("dubGo").disabled = !dubFile; };
+dubInput.onchange = e=>{ dubFile = e.target.files[0]||null; window._dubForeplayUrl=null; document.getElementById("dubName").textContent = dubFile?("🎬 "+dubFile.name):"Clic para elegir el video a doblar"; document.getElementById("dubGo").disabled = !dubFile; };
 ["dragover","dragenter"].forEach(ev=>dropDub.addEventListener(ev,e=>{e.preventDefault();dropDub.classList.add("over")}));
 ["dragleave","drop"].forEach(ev=>dropDub.addEventListener(ev,e=>{e.preventDefault();dropDub.classList.remove("over")}));
 dropDub.addEventListener("drop",e=>{ dubFile=e.dataTransfer.files[0]; dubInput.onchange({target:{files:[dubFile]}}); });
 
 document.getElementById("dubGo").onclick = async ()=>{
-  if(!dubFile) return;
+  if(!dubFile && !window._dubForeplayUrl) return;
   document.getElementById("dubGo").disabled = true;
   document.getElementById("dubResult").innerHTML = "";
   document.getElementById("dubProg").classList.remove("hidden");
   const fd = new FormData();
-  fd.append("video", dubFile);
+  if(window._dubForeplayUrl) fd.append("video_url", window._dubForeplayUrl);   // creativo de Foreplay
+  else fd.append("video", dubFile);
   fd.append("target_lang", document.getElementById("dubTgt").value);
   fd.append("source_lang", document.getElementById("dubSrc").value);
   fd.append("oferta_2x1", document.getElementById("dub2x1").checked);

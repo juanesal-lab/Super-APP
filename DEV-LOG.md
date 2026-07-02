@@ -1232,3 +1232,14 @@ en `disruptive_images.py`:
   frases seguidas, silencedetect NO halla silencios largos.
 - No pude probar el dub completo end-to-end: el Gemini de Jack está en el TOPE de gasto (429). Cuando
   suba el cap, el doblaje ya sale fluido. Afecta Crear creativo, Clon y Doblaje 2x1.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔥 Foreplay: Ver/Descargar/Doblar + excluir Colombia
+Jack: en Foreplay poder reproducir + descargar el video, y un botón "Doblar" que lo lleve a la sección
+Doblar con el creativo ya cargado. Y regla global: SIEMPRE excluir Colombia (español pero sin CO).
+- **AVISO Juan (toqué tu Foreplay):** cada card ahora tiene ▶️ Ver (reproduce inline vía proxy),
+  ⬇️ Descargar, y 🎙️ Doblar. NO cambié tu búsqueda/selección, solo agregué botones al render.
+- **NUEVO `/api/foreplay-video`** (proxy del MP4 del CDN de Foreplay, host-validado, con ?dl=1 para bajar).
+- **`/api/dub`**: ahora acepta `video_url` (baja el creativo de Foreplay con fp.descargar_video y lo dobla).
+  El botón Doblar guarda la URL, salta a la pestaña Doblar y muestra el creativo cargado. Verificado en vivo.
+- **Excluir Colombia** en búsqueda TikTok (tiktok_search): saqué CO de _ES_REGIONS y filtro region=="CO".
+  Nota Juan: en Foreplay ya va language=spanish; si su API tiene filtro de país, excluir CO también allá.

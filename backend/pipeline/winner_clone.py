@@ -237,11 +237,12 @@ def clonar_ganador(
     else:
         paso("Reemplazo", False, "sin momentos aptos (se deja el ganador tal cual)")
 
-    # 6) Traducir texto en pantalla
-    report("🔤 Traduciendo el texto en pantalla...", 78)
+    # 6) Texto en pantalla: traduce lo que está en OTRO idioma y TAPA los subtítulos viejos en
+    #    español (modo "limpiar") — así no quedan captions viejos peleando con los que ponemos.
+    report("🔤 Limpiando/traduciendo el texto en pantalla...", 78)
     try:
         out = os.path.join(work_dir, "traducido.mp4")
-        t = traducir_texto_pantalla(current, api_key=gemini_key, out_path=out)
+        t = traducir_texto_pantalla(current, api_key=gemini_key, out_path=out, modo="limpiar")
         if t.get("ok"):
             current = t["video"]; paso("Traducir texto", True, f"{len(t.get('bloques', []))} bloque(s)")
         else:
@@ -299,6 +300,19 @@ def clonar_ganador(
             current = A._normalize(current, out); paso("Normalizar audio", True)
         except Exception as e:  # noqa: BLE001
             paso("Normalizar audio", False, str(e))
+
+    # 10) PACING punchy: si quedó largo (>~22s), acelera un pelín (video+audio+subs en sync) para
+    #     retener más — los ganadores de TikTok van rápidos, no de 40s.
+    report("⚡ Ajustando el ritmo (pacing)...", 99)
+    try:
+        from .assemble import punch_pace
+        out = os.path.join(work_dir, "pace.mp4")
+        before = A._dur(current)
+        current = punch_pace(current, out)
+        after = A._dur(current)
+        paso("Pacing", True, f"{before:.0f}s → {after:.0f}s" if after < before - 0.5 else "ya era ágil")
+    except Exception as e:  # noqa: BLE001
+        paso("Pacing", False, str(e))
 
     report("✅ Clon terminado", 100)
     ok_n = sum(1 for p in pasos if p["ok"])

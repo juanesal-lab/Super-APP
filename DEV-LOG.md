@@ -1476,3 +1476,69 @@ producto). Cambios SOLO en la sección de clips SUELTOS (las versiones principal
   540x540, calidad nítida. Las fases se diversifican con Gemini activo (sin Gemini todas caen en "problema").
 - AVISO Jack: toqué gif_export.py (+to_webm) y orchestrator.py (selección de loose_set + gif webm). NO toqué
   build_variations ni las versiones — solo los clips sueltos/gifs.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔍 Análisis de 24 creativos reales que NO funcionaron + fix del texto viejo
+Jack pasó 5 carpetas de creativos de prueba (almohadillas, veneno de abeja, plagas). Los analicé (frames
+hook/medio/final). Hallazgos:
+1. **PROBLEMA PRINCIPAL (en TODOS): el subtítulo/texto VIEJO del original NO se tapaba** → quedaban 2
+   textos encima (nuevo + viejo). Se ve como repost robado → mata rendimiento y Meta lo marca.
+   CAUSA RAÍZ: winner_clone (Clonar ganador) llamaba `traducir_texto_pantalla` en modo "traducir", que
+   DEJA el texto que ya está en español (no lo tapa).
+   FIX: nuevo modo `"limpiar"` en text_translate — traduce lo que está en OTRO idioma y TAPA (blur) lo
+   que ya está en español o no tiene traducción. winner_clone ahora usa modo="limpiar". Prompt mejorado:
+   campo `idioma` por bloque + instrucción de reportar la BANDA completa del caption (no palabra suelta).
+   Lógica verificada; el e2e con Gemini tarda por el upload del video (58MB), no lo corrí completo.
+2. **Muchos duran 30-47s** (uno 46.7s) → LARGO para TikTok/Meta. Recomendación pendiente: acortar
+   (winner_clone conserva el largo del ganador). 
+3. auto_studio (Crear creativo) SÍ tapa con banda continua (detect_subtitle_band), pero puede escaparse
+   texto ARRIBA (ej. "Crema para eliminar lunares" en el top del bee venom) — mejora futura: banda top.
+   AVISO Juan: toqué text_translate.py (modo "limpiar" + prompt) y winner_clone.py (usa limpiar).
+
+### 2026-07-02 · Claude (jackingshop1-cell) · ⚡🧽 Mejor resultado: pacing punchy + tapar texto ARRIBA
+Siguiendo el análisis de los 24 creativos que no funcionaron, mejoré para "mejor resultado":
+- **(A) PACING punchy**: nuevo `assemble.punch_pace` — si el creativo dura >~22s, lo acelera un pelín
+  (video+audio EN SYNC, tope 1.35x para que la voz no suene atropellada). Corre AL FINAL (todo quemado)
+  para no desincronizar subtítulos. Cableado en winner_clone (paso 10) y auto_studio (paso 7b).
+  Probado real: almohadillas 38.5s → 28.6s en sync.
+- **(B) Tapar texto ARRIBA**: nuevo `subtitle_band.detect_top_band` (EAST local, sin Gemini) detecta
+  captions/títulos quemados pegados al top (que detect_subtitle_band ignora a propósito), con umbral de
+  persistencia para no tapar texto de una sola toma. auto_studio ahora tapa AMBAS bandas (arriba+abajo).
+  Probado real: bee venom "Crema para eliminar lunares..." (arriba) → tapado; almohadillas (abajo) → sin
+  falso positivo. Verificado con frame: top limpio, producto intacto.
+  AVISO Juan: toqué subtitle_band.py (detect_top_band) + auto_studio.py (2 bandas + pacing) + assemble.py.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔎 Buscar TikTok: llegar a más links (11 → 21) del MISMO producto
+Jack: pedía 30 links y llegaban ~11. Diagnóstico: (1) las búsquedas eran frases LARGAS y específicas →
+tikwm devolvía poquísimos y repetidos (~44 candidatos); (2) solo se verificaban los primeros 28; (3) la
+verificación exigía la MISMA MARCA/frasco (rechazaba el mismo producto de otro vendedor).
+Cambios en tiktok_search.py:
+- analizar_foto: pide 7-9 búsquedas CORTAS y VARIADAS, MEZCLA español + INGLÉS (mucho contenido es en
+  inglés) + términos amplios. _expandir: agrega versiones más cortas/amplias (recorta la frase) + más
+  sufijos de demostración/compra.
+- Gathering en PARALELO (10 términos × 3 páginas) y verifica un pool GRANDE escalado al count (max(60,
+  count*4)) con 10 workers, no 28.
+- _verificar: sigue estricto en CATEGORÍA + PROPÓSITO + forma (crema≠pastilla/bótox; aparato = misma
+  forma física), pero YA NO exige misma marca/etiqueta → otro vendedor del MISMO producto SÍ cuenta.
+- Probado real (foto del frasco bee venom, count=30): 11 → 21 verificados. (El techo real depende de
+  cuántos videos de ese producto exacto existan en TikTok; productos nicho pueden dar ~20-25.)
+  AVISO Juan: toqué tiktok_search.py (analizar_foto, _expandir, buscar, _verificar). No cambié el shape.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔎🎞️ Búsqueda TikTok honesta (✅/⚠️) + gifs por FASE real (Gemini visión)
+Juan: la búsqueda seguía dando productos equivocados y los gifs eran "cortes súper x" sin sentido.
+**Búsqueda TikTok** (`tiktok_search.py` + UI):
+- CAUSA RAÍZ del producto equivocado: cuando quedaban pocos verificados, el código RELLENABA en silencio
+  hasta 20 con candidatos SIN verificar (clínicas etc). Ahora cada link lleva `verificado_producto` y la UI
+  los separa: ✅ confirmados (ambos jueces) primero, luego "⚠️ estos NO se pudieron confirmar, revísalos".
+- Fix del 2º juez (Claude): mandaba la referencia PNG como image/jpeg → 400 en TODAS (por eso no filtraba).
+  Nuevo `_media_type()` por bytes mágicos. Portada cacheada (`_cover_bytes`) para no bajarla 2 veces;
+  Claude juzga top-10 con 5 workers. Validado: 57s (antes 134), confirmado primero, clínicas marcadas ⚠️.
+- Merge con lo de Jack: sus 10 consultas cortas ES+EN × 3 páginas (quedó lo suyo, era superset del mío).
+**Cortar clips — gifs con SENTIDO** (`phase_classify.py` NUEVO + orchestrator):
+- Antes la fase salía de 2 booleans (shows_use/product_visible) → casi todo caía en "problema" = cortes random.
+- Ahora GEMINI VISIÓN clasifica (1 sola llamada, frame medio de c/clip chico) en: problema / solucion /
+  funcionamiento / producto / caracteristicas / resultado. Round-robin cuenta la historia; archivos
+  `clip_XX_<fase>.mp4/.webm`; labels 🔴🟢⚙️📦🔎✨ en la UI. Fallback a la heurística si no hay key (no rompe).
+- VALIDADO E2E con Gemini: grid 2x2 → problema=piso sucio, solución=pistola limpiando, funcionamiento=
+  conectando boquilla, producto=presentándolo a cámara. WebM 1:1 todos ≤500KB.
+- AVISO Jack: toqué tiktok_search (dual juez + etiquetas; tu expansión de consultas quedó intacta),
+  orchestrator (bloque de loose clips) y nuevo phase_classify.py. Las 8 versiones NO se tocaron.

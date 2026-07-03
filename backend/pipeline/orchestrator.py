@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from typing import Callable
 
 from .ffmpeg_utils import probe, run
@@ -210,7 +211,26 @@ def render_versions(
     # textos: el masking procesa SOLO esos (antes tapaba TODO el pool, hasta 60 cortes,
     # con ~1 llamada a Gemini/Claude por corte). Además el plan se calcula con los
     # tiempos ORIGINALES (el masking remapea video/start/end de cada corte en sitio).
-    version_orders = plan_variations(selected, target_seconds=target_seconds)
+    #
+    # El plan cubre la VOZ REAL, no solo el target pedido: el guion puede pasarse de
+    # palabras y ElevenLabs habla más lento que el ritmo teórico → la voz sale más larga
+    # que el target y el montaje quedaba CORTO (el video se repetía con el loop viejo, o
+    # congela el final con el tpad nuevo — queja de Juan). Las voces ya están en disco
+    # en este punto: se mide la más larga y el montaje se planea para alcanzarla.
+    def _audio_dur(p):
+        try:
+            o = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                "-of", "csv=p=0", p], capture_output=True, text=True, timeout=15)
+            return float((o.stdout or "").strip() or 0.0)
+        except Exception:  # noqa: BLE001
+            return 0.0
+
+    vo_paths = [vp for vp, _ in (version_vos or []) if vp]
+    if voiceover_path:
+        vo_paths.append(voiceover_path)
+    vo_max = max((_audio_dur(p) for p in vo_paths if p and os.path.exists(p)), default=0.0)
+    plan_seconds = max(float(target_seconds), vo_max + 0.5) if vo_max else float(target_seconds)
+    version_orders = plan_variations(selected, target_seconds=plan_seconds)
 
     # Clips sueltos: MEZCLA por FASE narrativa (problema / solución / funcionamiento / producto /
     # características / resultado) para que los "gifs" tengan SENTIDO y cuenten la historia.

@@ -1634,3 +1634,27 @@ Juan: "solo 1 de los 30 me lo encuentra bien". Diagnóstico + 3 fixes en `tiktok
 RESULTADO con el láser de Juan: antes 1/30 confirmado → ahora **9/9 confirmados y TODOS el dispositivo real**
 (GoSpring device, fungus remover, naillight...), 92s. AVISO Jack: toqué tu _verificar (línea de USO) y el
 bloque de verificación de buscar(); tu expansión de queries ES+EN quedó intacta (es la que alimenta esto).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔍 Buscar creativos: TikTok + FOREPLAY a la vez (foto + nombre)
+Pedido de Jack: mandar foto + nombre del producto y recibir los creativos de ese producto en AMBAS
+fuentes para armar los clips.
+- NUEVO backend/pipeline/creative_search.py → `buscar_creativos()`: analiza la foto UNA sola vez
+  (tiktok_search.analizar_foto) y con esos términos busca TikTok y Foreplay EN PARALELO.
+  Foreplay: 2-4 términos (español primero, heurística local sin IA), deduplicado entre términos,
+  Colombia excluida adentro de buscar_ads (no toqué foreplay_search de Juan — solo lo consumo);
+  verificación de MISMO producto sobre thumbnails con el MISMO juez de TikTok (_verificar), tope
+  24 thumbnails; lo no juzgable queda honesto con badge "⚠️ sin verificar".
+- backend/app.py: NUEVO POST /api/creative-search (nombre, count, fp_count, foto). Los endpoints
+  /api/tiktok-search y /api/foreplay-search siguen IGUAL (aditivo).
+- tiktok_search.buscar: nuevo param opcional `analisis=` (recibe el dict de analizar_foto ya calculado
+  para no repetir la llamada). Sin él, todo igual que antes.
+- Frontend: pestaña "🔎 Buscar TikTok" → "🔍 Buscar creativos": campo nombre + resultados en 2 grupos
+  (🎵 TikTok con links/badges como antes; 📚 Foreplay con grilla de cards, ▶️ ver, ⬇️ descargar vía
+  /api/foreplay-video, botón copiar links de video para 📥 Descargar / Mi producto). Guía actualizada.
+- VERIFICADO: py_compile ok; firmas cruzadas contra el tiktok_search post-merge de Juan (ok, inspect);
+  JS 9/9 bloques node --check ok; corrida E2E real en modo barato (sin IA): TikTok 8 links + Foreplay
+  8 ads sin señales colombianas, shape correcto; server reiniciado sirviendo /api/creative-search y la
+  pestaña nueva. (La verificación con foto/Gemini usa el mismo _verificar de siempre.)
+- AVISO Juan: cero cambios en foreplay_search.py; en tiktok_search.py solo el param opcional analisis=.
+  Resolvimos también el merge de tus commits de hoy (Cortar clips PRO + verificación profunda)
+  conservando ambos trabajos (velocidad+variedad nuestro y lo tuyo — todo compila y probado).

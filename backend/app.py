@@ -431,6 +431,29 @@ async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
                   anthropic_key=_load_anthropic_key())   # Claude = 2º juez de que sea el mismo producto
 
 
+# ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
+
+@app.post("/api/creative-search")
+async def creative_search(nombre: str = Form(""), count: int = Form(20),
+                          fp_count: int = Form(20), foto: UploadFile = File(None)):
+    """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
+    /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo."""
+    from pipeline.creative_search import buscar_creativos
+    img_path = None
+    if foto is not None and foto.filename:
+        d = os.path.join(UPLOAD_DIR, "tksearch")
+        os.makedirs(d, exist_ok=True)
+        img_path = os.path.join(d, os.path.basename(foto.filename))
+        with open(img_path, "wb") as o:
+            shutil.copyfileobj(foto.file, o)
+    if not (nombre.strip() or img_path):
+        raise HTTPException(400, "Dame el nombre del producto o una foto")
+    return buscar_creativos(image_path=img_path, nombre=nombre.strip(),
+                            gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
+                            anthropic_key=_load_anthropic_key(),
+                            count=int(count), fp_count=int(fp_count))
+
+
 # ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----
 
 def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, settings: dict):

@@ -1691,3 +1691,60 @@ creativos con el mismo ángulo de venta del que gustó.
   (cards y botones en ambos grupos ok).
 - AVISO Juan: cero cambios en foreplay_search.py ni tiktok_search.py; solo creative_search.py (mío),
   el endpoint nuevo en app.py y el script de p-buscar en el front.
+### 2026-07-03 · Claude (juanesal-lab) · 🔎🔥 Búsqueda TikTok ahora TAMBIÉN busca en Foreplay (mismo pool, misma verificación)
+Juan: que la búsqueda de videos use Foreplay además de TikTok. Hecho en `tiktok_search.py`:
+- NUEVO `_foreplay_candidatos(queries, foreplay_key)`: consulta la biblioteca de ads GANADORES de Foreplay
+  con las mismas keywords (3 primeras, ES+EN), normaliza cada ad al formato de candidato (url = mp4 directo
+  descargable, cover = thumbnail, play = mp4 para verificación profunda, plays = días corriendo ×1000 como
+  señal de ganador, source = "foreplay") y lo suma al MISMO pool → pasa por la MISMA verificación
+  (portada Gemini + video por dentro + juez Claude).
+- `buscar(..., foreplay_key=None)`; `/api/tiktok-search` pasa `_load_foreplay_key()`. UI: badge 🔥 en los
+  resultados de Foreplay + URLs largas truncadas.
+- PROBADO con el láser: 8 confirmados = 5 de Foreplay (ads REALES de dropshippers vendiendo el mismo láser:
+  Dolccia, Bio Guate — creativos ya probados) + 3 de TikTok. 132s. Costo: ~3 búsquedas Foreplay (~30 créditos)
+  por búsqueda con foto.
+- AVISO Jack: solo agregué; tu flujo de queries y el pool quedan igual cuando no hay key de Foreplay.
+
+### 2026-07-03 · Claude (juanesal-lab) · ✂️ Clips: pool 60→98 + dedup justo | 🔎 Ficha visual PROFUNDA de la referencia
+Juan: (1) con 30 videos los cortes SEGUÍAN repitiéndose; (2) la búsqueda se acercó pero confirmaba productos
+parecidos-no-iguales → pidió análisis profundo de la imagen de referencia.
+**Clips (orchestrator):** causa = pool capado en 60 con 56 necesarios (8 versiones × 7) + dedup FLOJO que
+botaba tomas válidas (1 frame parecido bastaba; con 30 videos del mismo producto eso mata el pool → reciclaje).
+Fix: pool = min(100, max(NV*cpv+16, fuentes*3+NV)) → 98 con 30 videos; duplicado SOLO si ≥2 de las 3 firmas
+coinciden o 1 frame casi idéntico (<4 bits). E2E ok (8 versiones, 24 clips).
+**Búsqueda (tiktok_search.analizar_foto):** ahora hace ANÁLISIS VISUAL PROFUNDO tipo perito → FICHA:
+categoría | forma+tamaño | colores por parte | MARCA/texto visible (transcrito) | rasgos distintivos
+(bisagra/botón/luz/ranura) | uso | **NO CONFUNDIR CON** (productos parecidos-distintos). Los 3 jueces
+(portada Gemini, video-por-dentro, Claude) comparan contra la ficha y rechazan lo que parezca un
+"no confundir con". Probado con el láser: la ficha transcribió hasta el texto de la caja y listó
+"oxímetro de pulso, lámpara UV, masajeador" como confusables.
+- AVISO Jack: toqué _select_for_target (pool+dedup) y los prompts de analizar_foto/jueces. Nada de tu flujo.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎨 Ads imagen: REGLA DE PROFUNDIDAD DEL ÁNGULO (fin de lo "genérico")
+Juan: la imagen salía genérica — mostraba el producto pero no AHONDABA en el dolor/solución del ángulo.
+Diagnóstico (inspeccionando prompts generados): los conceptos dramatizaban el dolor pero NADA obligaba a que
+la imagen contara el ángulo completo (dolor → giro a la solución) → escenas intercambiables entre productos.
+Fix en `disruptive_images.py` (_SISTEMA + _TOOL):
+- 2 campos NUEVOS OBLIGATORIOS por variante: `dolor_visual` (cómo se VE el dolor específico del ángulo —
+  "persona preocupada" no sirve) y `solucion_visual` (cómo se INSINÚA la transformación en la MISMA imagen:
+  el giro, el alivio, el antes/después o la zona donde entra el producto como héroe).
+- REGLA DE PROFUNDIDAD: "alguien que vea SOLO la imagen debe poder decir QUÉ duele y QUÉ se promete; si la
+  escena sirve para cualquier producto del nicho → es genérica, recházala". El prompt DEBE poner en escena
+  dolor_visual Y solucion_visual.
+- VALIDADO con imagen real (láser hongos): "TIENES UN INQUILINO EN LA UÑA / Y no paga arriendo / SACARLO YA"
+  → monstruito-hongo acampando sobre la uña dañada (dolor) + haz láser rojo entrando a sacarlo (solución).
+  El ángulo se entiende sin leer texto. Solo prompt/schema — el flujo de generación no cambió.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎨 Ads imagen: fix Regenerar (persistencia) + ✏️ "Ajustar con instrucción"
+Juan: el botón Regenerar no funcionaba + quería darle una instrucción a una imagen que le gusta para acomodarla.
+- **CAUSA de Regenerar roto**: los JOBS viven solo en MEMORIA → cada reinicio del server (hoy hubo muchos)
+  dejaba la página del usuario apuntando a un job inexistente → 404 en Regenerar/➕Producto/🎲Otro ángulo.
+  FIX: `_persist_disruptive(job_id)` guarda el job a `work/<id>/job.json` (al crear conceptos, al terminar
+  el lote y tras cada mutación) y `_get_job()` lo recupera de disco si no está en memoria. `status()` y los
+  4 endpoints de mutación usan `_get_job`. Probado: persistir → borrar de memoria → recuperar OK.
+- **NUEVO ✏️ Ajustar con instrucción**: botón por imagen → prompt de texto libre ("pon la luz más roja",
+  "quita el texto de arriba") → `editar_imagen_ia()` (Nano Banana 2 image-edit: cambia SOLO lo pedido,
+  conserva composición/texto/chrome) → endpoint `/api/disruptive-edit-image`. PROBADO con imagen real:
+  "monstruito asustado corriendo con su maleta + láser más grande" → editó exacto eso y conservó el resto.
+- AVISO Jack: nuevos _persist_disruptive/_get_job en app.py (solo Ads imagen); editar_imagen_ia en
+  disruptive_images.py; botón disEdit en el frontend.

@@ -346,65 +346,129 @@
       }
       function tkRender(j){
         const tk=j.tiktok||{}, fp=j.foreplay||{};
-        const nConf=tk.n_confirmados||0, links=(tk.links||[]), ads=(fp.ads||[]);
-        window._tkFpAds=ads;
+        // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
+        window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
+                     desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
+                     tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
+                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[]};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
+        tkPaint();
+      }
+      function tkPaint(){
+        const S=window._tkS; if(!S) return;
+        const links=S.links, ads=S.ads;
         let h='';
         // ── grupo 1: TikTok ──────────────────────────────────────────────
-        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${links.length})${tk.verificado?` — ✅ ${nConf} confirmados con tu producto`:''}</h3>`;
+        const conf=links.filter(l=>l.verificado_producto);
+        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${links.length})${S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:''}</h3>`;
         if(!links.length){
-          h+='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+tkEsc(tk.busqueda||'')+'" target="_blank">'+tkEsc(tk.busqueda||'')+'</a></div>';
+          h+='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+tkEsc(S.busq)+'" target="_blank">'+tkEsc(S.busq)+'</a></div>';
         } else {
-          const conf=links.filter(l=>l.verificado_producto), resto=links.filter(l=>!l.verificado_producto);
           const urls=(conf.length?conf:links).map(l=>l.url).join('\n');
           h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||links.length} links${conf.length?' confirmados':''}</button>`;
-          const fila=(l,i,badge)=>`<div class="autoStep">${badge} <a href="${l.url}" target="_blank" style="color:var(--accent)">${i}. ${l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`;
-          let n=1;
-          conf.forEach(l=>{ h+=fila(l,n++, '<span title="La IA confirmó que es TU producto (misma forma)">✅</span>'); });
-          if(resto.length && tk.verificado){
-            h+=`<div class="pmsg" style="margin:12px 0 6px">⚠️ Estos NO se pudieron confirmar como tu producto (revísalos tú):</div>`;
-          }
-          resto.forEach(l=>{ h+=fila(l,n++, tk.verificado?'<span title="No confirmado — puede ser otro producto">⚠️</span>':''); });
+          h+='<div class="fpGrid">';
+          links.forEach((l,i)=>{ h+=tkTkCard(l,i,S.tkVerif); });
+          h+='</div>';
         }
         // ── grupo 2: Foreplay ────────────────────────────────────────────
         const fpConf=ads.filter(a=>a.verificado_producto);
-        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${ads.length})${fp.verificado?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
-        if(!fp.ok && fp.error){
-          h+='<div class="autoStep bad">'+tkEsc(fp.error)+'</div>';
+        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${ads.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
+        if(!S.fpOk && S.fpErr){
+          h+='<div class="autoStep bad">'+tkEsc(S.fpErr)+'</div>';
         } else if(!ads.length){
           h+='<div class="autoStep">Sin resultados en Foreplay para este producto.</div>';
         } else {
           const dls=(fpConf.length?fpConf:ads).map(a=>a.video).filter(Boolean).join('\n');
           h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${dls.replace(/"/g,'&quot;')}" title="Links directos del video (sirven en 📥 Descargar y Mi producto)">📋 Copiar los ${fpConf.length||ads.length} links de video${fpConf.length?' confirmados':''}</button>`;
           h+='<div class="fpGrid">';
-          ads.forEach((a,i)=>{ h+=tkFpCard(a,i,fp.verificado); });
+          ads.forEach((a,i)=>{ h+=tkFpCard(a,i,S.fpVerif); });
           h+='</div>';
         }
         document.getElementById('tkResult').innerHTML=h;
       }
+      function tkVerBadge(ok,verif){
+        if(!verif) return '';
+        return ok
+          ?'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:var(--accent);color:var(--ink)" title="La IA confirmó que es TU producto (misma forma)">✅ tu producto</span>'
+          :'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px" title="No se pudo confirmar — revísalo tú">⚠️ sin verificar</span>';
+      }
+      function tkTkCard(l,i,verif){
+        const views=l.plays?`<span class="fpBadge">▶ ${l.plays>=1e6?(l.plays/1e6).toFixed(1)+'M':l.plays>=1e3?Math.round(l.plays/1e3)+'K':l.plays} views</span>`:'';
+        return `<div class="fpCard" style="cursor:default">
+          <div class="fpThumbWrap">
+            <img class="fpThumb" src="${tkEsc(l.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
+            ${views}${tkVerBadge(l.verificado_producto,verif)}</div>
+          <div class="fpBody"><div class="fpName">${tkEsc(l.title)||'—'}</div>
+            <div class="fpBtns">
+              <button class="fpBtn" onclick="tkTkPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
+              <button class="fpBtn" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅'" data-u="${tkEsc(l.url)}" title="Copiar el link">📋</button>
+              <button class="fpBtn" onclick="tkMore('tiktok',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
+              <button class="fpBtn" onclick="tkMore('tiktok',${i},this,true)" title="Buscar MÁS creativos con este mismo ángulo de venta">🎯 Más así</button>
+            </div>
+            <a class="fpLink" href="${tkEsc(l.url)}" target="_blank">abrir en TikTok ↗</a>
+          </div></div>`;
+      }
+      function tkTkPlay(i,btn){
+        const l=(window._tkS?window._tkS.links:[])[i]; if(!l) return;
+        if(!l.play){ window.open(l.url,'_blank'); return; }
+        const wrap=btn.closest('.fpCard').querySelector('.fpThumbWrap');
+        wrap.innerHTML='<video class="fpThumb" src="'+tkEsc(l.play)+'" referrerpolicy="no-referrer" controls autoplay playsinline '+
+          'onerror="this.outerHTML=\'<div class=&quot;fpDesc&quot; style=&quot;padding:12px&quot;>No se pudo reproducir aquí — <a href=&quot;'+tkEsc(l.url)+'&quot; target=&quot;_blank&quot;>ábrelo en TikTok ↗</a></div>\'"></video>';
+      }
       function tkFpCard(a,i,verif){
         const badge=a.dias>=1?`<span class="fpBadge win">🔥 ${tkEsc(a.corriendo)}</span>`
                              :(a.corriendo?`<span class="fpBadge">${tkEsc(a.corriendo)}</span>`:'');
-        const ver=!verif?'':(a.verificado_producto
-          ?'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:var(--accent);color:var(--ink)" title="La IA confirmó que es TU producto (misma forma)">✅ tu producto</span>'
-          :'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px" title="No se pudo confirmar con la miniatura — revísalo tú">⚠️ sin verificar</span>');
         return `<div class="fpCard" style="cursor:default">
           <div class="fpThumbWrap">
             <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
-            ${badge}${ver}</div>
+            ${badge}${tkVerBadge(a.verificado_producto,verif)}</div>
           <div class="fpBody"><div class="fpName">${tkEsc(a.name)||'—'}</div>
             <div class="fpDesc">${tkEsc((a.description||'').slice(0,120))}</div>
             <div class="fpBtns">
-              <button class="fpBtn" onclick="tkFpPlay(${i},this)">▶️ Ver</button>
+              <button class="fpBtn" onclick="tkFpPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
               <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar el video">⬇️</a>
+              <button class="fpBtn" onclick="tkMore('foreplay',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
+              <button class="fpBtn" onclick="tkMore('foreplay',${i},this,true)" title="Buscar MÁS creativos con este mismo ángulo de venta">🎯 Más así</button>
             </div>
             <a class="fpLink" href="${tkEsc(a.foreplay_url)||'#'}" target="_blank">ver en Foreplay ↗</a>
           </div></div>`;
       }
       function tkFpPlay(i,btn){
-        const a=(window._tkFpAds||[])[i]; if(!a||!a.video) return;
+        const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video) return;
         btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML=
           '<video class="fpThumb" src="/api/foreplay-video?url='+encodeURIComponent(a.video)+'" controls autoplay playsinline></video>';
+      }
+      // 🔄 cambiar (angulo=false: busca OTRO y lo pone en ese puesto) / 🎯 más así (angulo=true:
+      // agrega hasta 6 creativos MÁS con el mismo ángulo de venta del que te gustó)
+      async function tkMore(fuente,idx,btn,angulo){
+        const S=window._tkS; if(!S) return;
+        const grupo=(fuente==='tiktok')?S.links:S.ads;
+        const item=grupo[idx]; if(!item) return;
+        const idDe=x=>(fuente==='tiktok')?x.url:String(x.id||x.video||x.foreplay_url||'');
+        const excl=grupo.map(idDe).concat(fuente==='tiktok'?S.exTk:S.exFp).filter(Boolean);
+        const fd=new FormData();
+        fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
+        fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
+        fd.append('foto',S.foto); fd.append('n',angulo?'6':'1');
+        if(angulo) fd.append('angulo',(item.title||item.name||item.description||'').slice(0,220));
+        const old=btn.textContent; btn.textContent='⏳'; btn.disabled=true;
+        try{
+          const r=await fetch('/api/creative-more',{method:'POST',body:fd}); const j=await r.json();
+          const items=(j.items||[]);
+          if(!items.length){
+            btn.textContent='😕 no hay más'; btn.disabled=false;
+            setTimeout(()=>{btn.textContent=old;},3000); return;
+          }
+          if(angulo){ grupo.push(...items); }
+          else{
+            (fuente==='tiktok'?S.exTk:S.exFp).push(idDe(item));   // el viejo no vuelve a salir
+            grupo.splice(idx,1,items[0]);                          // el nuevo entra en su puesto
+          }
+          tkPaint();
+        }catch(e){
+          btn.textContent='Error'; btn.disabled=false;
+          setTimeout(()=>{btn.textContent=old;},3000);
+        }
       }
     </script>
   </div><!-- /p-buscar -->

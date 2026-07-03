@@ -1666,3 +1666,28 @@ fuentes para armar los clips.
   búsqueda profunda de Juan ⊕ velocidad+variedad+voz en off nuestro) y Buscar creativos (e044706).
 - AVISO Juan: tus worktrees también quedan ignorados con esto y tu `.env` local se copia igual a tus
   worktrees; el `.env` sigue SIN subirse a git (cada quien el suyo).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔍✨ Buscar creativos: preview ▶️ + 🔄 cambiar + 🎯 "más con este ángulo"
+Pedido de Jack sobre la pestaña nueva: (1) preview para reproducir cada creativo ANTES de descargarlo,
+(2) botón para reemplazar uno que no guste por OTRO en su mismo puesto, (3) botón para buscar MÁS
+creativos con el mismo ángulo de venta del que gustó.
+- Los resultados de TikTok ahora son CARDS (grilla fpGrid) con portada, views, badges ✅/⚠️ y botones:
+  ▶️ Ver (reproduce el mp4 directo de tikwm ahí mismo, con fallback "ábrelo en TikTok" si el CDN
+  falla), 📋 copiar link, 🔄 cambiar, 🎯 Más así. Los cards de Foreplay ganaron 🔄 y 🎯 (ya tenían ▶️/⬇️).
+- NUEVO POST /api/creative-more (fuente tiktok|foreplay, nombre, desc, terminos, angulo, excluir, n,
+  foto=basename guardado por creative-search en uploads/tksearch): creative_search.buscar_mas() busca
+  n creativos NUEVOS excluyendo los ya mostrados. 🔄 = n:1 sin angulo (reusa los términos originales,
+  CERO IA extra); 🎯 = n:6 con angulo (1 llamada Gemini flash saca el ángulo del título → términos
+  nuevos). Con foto: verifica MISMO producto con _verificar (tope chico max(12, n*3)); sin foto: sin IA.
+  Sin Colombia en ambos caminos (region CO fuera + _es_colombiano de Juan en Foreplay).
+- Frontend: estado vivo window._tkS (excluidos por fuente para que lo cambiado no vuelva a salir) +
+  tkPaint() re-pinta desde el estado; el 🔄 hace splice en el mismo slot; el 🎯 agrega al final del grupo.
+- /api/creative-search ahora devuelve foto (basename), desc y variants (los términos) para alimentar
+  los botones. _buscar_foreplay ganó param excluir (default None: idéntico a antes).
+- VERIFICADO: py_compile ok; JS 9/9 node --check; funcional real: 🔄 TikTok devolvió video NUEVO
+  respetando excluidos (con play para el preview), 🔄 Foreplay ok, 🎯 con Gemini sacó el ángulo
+  ("casa llena de cucarachas" → "Pest control secret"/"Adiós plagas secreto") y trajo 4 creativos de
+  ese ángulo; server reiniciado sirviendo /api/creative-more; UI verificada con screenshot en Chrome
+  (cards y botones en ambos grupos ok).
+- AVISO Juan: cero cambios en foreplay_search.py ni tiktok_search.py; solo creative_search.py (mío),
+  el endpoint nuevo en app.py y el script de p-buscar en el front.

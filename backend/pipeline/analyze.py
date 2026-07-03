@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 
 import cv2
@@ -99,6 +100,11 @@ def analyze_video(info: VideoInfo, source_index: int,
     if not cap.isOpened():
         return []
 
+    # Los cortes de escena (ffmpeg, subprocess) corren EN PARALELO con la pasada OpenCV
+    # de este mismo video: son independientes y cada uno decodifica por su lado.
+    scene_ex = ThreadPoolExecutor(max_workers=1)
+    scene_fut = scene_ex.submit(detect_scene_cuts, info.path)
+
     fps = info.fps if info.fps > 0 else 30.0
     step = max(1, int(round(fps / SAMPLES_PER_SEC)))
 
@@ -131,6 +137,7 @@ def analyze_video(info: VideoInfo, source_index: int,
 
     n = len(times)
     if n < 3:
+        scene_ex.shutdown(wait=False)
         return []
 
     sharp_a = np.array(sharp)
@@ -149,7 +156,11 @@ def analyze_video(info: VideoInfo, source_index: int,
     # Cortes de escena: detector PRECISO de FFmpeg (autoritativo) + picos de movimiento
     times_a = np.array(times)
     scene_cuts: set[int] = set()
-    for ct in detect_scene_cuts(info.path):
+    try:
+        cuts = scene_fut.result()
+    finally:
+        scene_ex.shutdown(wait=False)
+    for ct in cuts:
         scene_cuts.add(int(np.argmin(np.abs(times_a - ct))))
     mot_thr = np.percentile(motion_a, 95) * 0.9 + 12.0
     scene_cuts |= set(i for i in range(n) if motion_a[i] > mot_thr)
@@ -217,25 +228,41 @@ def _apply_margins(s: float, e: float, total: float) -> tuple[float, float]:
     return s2, e
 
 
+# Tope de ventanas emitidas por tramo bueno largo (evita explotar el numero de segmentos)
+_MAX_WINDOWS_PER_RUN = 5
+
+
 def _split_and_add(info, source_index, times, score, i, j, start_t, end_t, out,
                    max_clip: float = MAX_CLIP):
-    """Emite un segmento (<= max_clip) con bordes limpios (margenes de seguridad)."""
+    """Emite VARIAS ventanas (<= max_clip c/u) con bordes limpios (margenes de seguridad).
+
+    Antes se emitia SOLO la mejor ventana por tramo largo y el resto del material se botaba;
+    con 2-3 videos el pool quedaba minimo y las 8 versiones repetian los mismos clips.
+    Ahora un tramo largo aporta hasta _MAX_WINDOWS_PER_RUN ventanas NO solapadas (las mejores
+    por score de ventana); los duplicados visuales reales los filtra el dedup por firma."""
     dur = end_t - start_t
     if dur < MIN_CLIP + START_MARGIN:
         return
     if dur <= max_clip:
-        s, e, sc = start_t, min(end_t, info.duration), float(score[i:j + 1].mean())
+        windows = [(start_t, min(end_t, info.duration), float(score[i:j + 1].mean()))]
     else:
-        # Ventana deslizante para el mejor bloque de max_clip dentro del tramo largo
+        # Ventanas consecutivas no solapadas de max_clip dentro del tramo largo
         win = max(1, int(max_clip * SAMPLES_PER_SEC))
-        best_k, best_val = i, -1.0
-        for k in range(i, max(i + 1, j - win + 2)):
-            val = float(score[k:k + win].mean())
-            if val > best_val:
-                best_val, best_k = val, k
-        s, e, sc = float(times[best_k]), min(float(times[best_k]) + max_clip, info.duration), best_val
+        windows = []
+        for k in range(i, j + 1, win):
+            s_t = float(times[k])
+            e_t = min(s_t + max_clip, float(times[min(k + win - 1, j)]) + 1.0 / SAMPLES_PER_SEC,
+                      info.duration)
+            if e_t - s_t < MIN_CLIP + START_MARGIN:
+                continue   # colita demasiado corta
+            windows.append((s_t, e_t, float(score[k:min(k + win, j + 1)].mean())))
+        # Si hay demasiadas, quedarse con las mejores (siguen sin solaparse entre si)
+        if len(windows) > _MAX_WINDOWS_PER_RUN:
+            windows = sorted(windows, key=lambda w: w[2], reverse=True)[:_MAX_WINDOWS_PER_RUN]
+            windows.sort(key=lambda w: w[0])
 
-    s, e = _apply_margins(s, e, info.duration)
-    if e - s < MIN_CLIP:
-        return
-    out.append(Segment(info.path, source_index, round(s, 2), round(e, 2), round(sc, 1)))
+    for s, e, sc in windows:
+        s, e = _apply_margins(s, e, info.duration)
+        if e - s < MIN_CLIP:
+            continue
+        out.append(Segment(info.path, source_index, round(s, 2), round(e, 2), round(sc, 1)))

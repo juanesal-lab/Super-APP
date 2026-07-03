@@ -9,8 +9,8 @@ from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, sig_di
 from .gemini_rank import rank_with_gemini
 from concurrent.futures import ThreadPoolExecutor
 
-from .assemble import (build_variations, render_clip, export_resolution, dims_for,
-                       add_voiceover, add_voiceover_and_sfx, WORKERS)
+from .assemble import (build_variations, plan_variations, render_clip, export_resolution,
+                       dims_for, add_voiceover, add_voiceover_and_sfx, WORKERS)
 from .text_detect import mask_video as mask_video_text, available as east_available
 from .text_translate import traducir_texto_pantalla as translate_screen_text
 from .smart_caption_mask import mask_captions_smart
@@ -101,13 +101,29 @@ def analyze_select(
     all_segments: list[Segment] = []
     infos: dict[int, object] = {}
     skipped: list[str] = []
-    for i, path in enumerate(video_paths):
-        report(f"Analizando video {i + 1}/{len(video_paths)}...", 5 + int(35 * i / max(1, len(video_paths))))
+    # Analisis EN PARALELO por video (OpenCV y ffmpeg sueltan el GIL / son subprocesos).
+    # El orden de all_segments se conserva (se juntan los resultados en orden de entrada).
+    done_ct = [0]
+
+    def _analyze_one(item):
+        i, path = item
         try:
             info = probe(path)
             segs = analyze_video(info, i, max_clip=max_clip_seconds)
+            return i, info, segs, None
         except Exception as e:  # noqa: BLE001
-            skipped.append(f"{os.path.basename(path)} ({e})")
+            return i, None, [], f"{os.path.basename(path)} ({e})"
+        finally:
+            done_ct[0] += 1
+            report(f"Analizando videos ({min(done_ct[0], len(video_paths))}/{len(video_paths)})...",
+                   5 + int(35 * done_ct[0] / max(1, len(video_paths))))
+
+    n_workers = min(4, max(1, len(video_paths)))
+    with ThreadPoolExecutor(max_workers=n_workers) as ex:
+        results = list(ex.map(_analyze_one, list(enumerate(video_paths))))
+    for i, info, segs, err in results:
+        if err:
+            skipped.append(err)
             continue
         infos[i] = info
         all_segments.extend(segs)
@@ -174,6 +190,34 @@ def render_versions(
     os.makedirs(clips_dir, exist_ok=True)
     dims = dims_for(aspect)
 
+    # ── PLAN PRIMERO ──────────────────────────────────────────────────────────────
+    # Decidir QUÉ cortes se usan de verdad (versiones + clips sueltos) ANTES de tapar
+    # textos: el masking procesa SOLO esos (antes tapaba TODO el pool, hasta 60 cortes,
+    # con ~1 llamada a Gemini/Claude por corte). Además el plan se calcula con los
+    # tiempos ORIGINALES (el masking remapea video/start/end de cada corte en sitio).
+    version_orders = plan_variations(selected, target_seconds=target_seconds)
+
+    def _fase(s):
+        if s.shows_use:
+            return "solucion"
+        if s.product_visible:
+            return "producto"
+        return "problema"
+
+    # Clips sueltos: MEZCLA por FASE (problema / solución-uso / producto) para que los
+    # "gifs" tengan SENTIDO y cuenten la historia (round-robin, mejor score primero).
+    _grupos = {"problema": [], "solucion": [], "producto": []}
+    for _i in sorted(range(len(selected)), key=lambda k: selected[k].score, reverse=True):
+        _grupos[_fase(selected[_i])].append(_i)
+    loose_idx, _ptr = [], {k: 0 for k in _grupos}
+    while len(loose_idx) < 24 and any(_ptr[k] < len(_grupos[k]) for k in _grupos):
+        for k in ("problema", "solucion", "producto"):
+            if _ptr[k] < len(_grupos[k]) and len(loose_idx) < 24:
+                loose_idx.append(_grupos[k][_ptr[k]])
+                _ptr[k] += 1
+    used_all = sorted({i for _, order in version_orders for i in order} | set(loose_idx))
+    # ──────────────────────────────────────────────────────────────────────────────
+
     # Tapar textos del proveedor: Gemini DETECTA las cajas y se enmascara la FUENTE
     # (antes de cortar), para que la mascara quede justo donde esta cada caption.
     if blur_captions and gemini_key and text_mode == "traducir":
@@ -181,7 +225,7 @@ def render_versions(
         # FUENTE única UNA vez. (El modo "tapar" YA NO va por aquí: Gemini estimaba cajas mirando el
         # video entero y ponía blur en lugares random -> ahora "tapar" usa EAST por-corte, abajo.)
         report("Traduciendo el texto...", 56)
-        fuentes = list({seg.video for seg in selected})
+        fuentes = list({selected[i].video for i in used_all})   # solo las fuentes que se usan
         remap, done_t = {}, [0]
         pref = "es_" if text_mode == "traducir" else "cov_"
 
@@ -203,18 +247,21 @@ def render_versions(
         for seg in selected:
             seg.video = remap.get(seg.video, seg.video)   # remapea cada corte a su fuente procesada
     elif blur_captions and east_available():
-        # OPTIMIZADO: enmascara SOLO los cortes que se usan (2s c/u), no los videos
-        # completos. Antes con 40 videos tardaba muchísimo; ahora procesa poquísimos
-        # frames y en paralelo.
+        # OPTIMIZADO: enmascara SOLO los cortes que las versiones y los clips sueltos usan
+        # de verdad (used_all), no todo el pool. Antes procesaba hasta 60 cortes (con ~1
+        # llamada a Gemini por corte en el tapado inteligente) aunque solo se usara una parte.
         report("Tapando textos del proveedor (frame por frame)...", 56)
         done = [0]
+        n_mask = len(used_all)
         # El capitán (Claude) es lento: revisa solo una MUESTRA espaciada de los cortes,
         # no todos (si no, con 60 cortes serían 60+ llamadas a Claude y se traba).
         capitan = supervisor.available()
-        cap_cada = max(1, len(selected) // _CAPITAN_MAX_REVISIONES) if capitan else 0
+        cap_cada = max(1, n_mask // _CAPITAN_MAX_REVISIONES) if capitan else 0
 
         def _mask_seg(item):
-            idx, seg = item
+            # pos = posición SECUENCIAL (0..n_mask-1) para el muestreo del capitán;
+            # idx = índice original en `selected` (puede ser salteado).
+            pos, idx, seg = item
             raw = os.path.join(work_dir, f"segraw_{idx:03d}.mp4")
             masked = os.path.join(work_dir, f"segmask_{idx:03d}.mp4")
             d = max(0.1, seg.end - seg.start)
@@ -232,7 +279,7 @@ def render_versions(
 
                 # ── Capitán (Claude): revisa el tapado del path EAST puro y corrige si hace falta ──
                 # (No aplica al tapado inteligente con Gemini, que ya filtra por su cuenta.)
-                revisar = capitan and not gemini_key and (idx % cap_cada == 0)
+                revisar = capitan and not gemini_key and (pos % cap_cada == 0)
                 if revisar and final == masked and os.path.exists(masked):
                     mw = cf = None
                     for _ in range(_MAX_CORRECCIONES):
@@ -255,7 +302,7 @@ def render_versions(
                             break
 
                 done[0] += 1
-                report(f"Tapando textos ({done[0]}/{len(selected)})...", 56)
+                report(f"Tapando textos ({done[0]}/{n_mask})...", 56)
                 if final == masked and os.path.exists(masked):
                     return idx, masked
             except Exception:
@@ -263,7 +310,8 @@ def render_versions(
             return idx, None
 
         with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            for idx, masked in ex.map(_mask_seg, list(enumerate(selected))):
+            for idx, masked in ex.map(_mask_seg,
+                                      [(pos, i, selected[i]) for pos, i in enumerate(used_all)]):
                 if masked:
                     selected[idx].video = masked
                     selected[idx].start = 0.0
@@ -271,23 +319,9 @@ def render_versions(
 
     report("Recortando clips..." + (" (mejorando calidad)" if enhance else ""), 62)
     clip_dims = dims_for("1:1")   # los clips sueltos siempre en 1:1 (cuadrado)
-    # Clips sueltos: en vez de solo los de mayor score, elegimos una MEZCLA por FASE
-    # (problema / solución-uso / producto) para que los "gifs" tengan SENTIDO y cuenten la historia.
-    def _fase(s):
-        if s.shows_use:
-            return "solucion"
-        if s.product_visible:
-            return "producto"
-        return "problema"
-    _grupos = {"problema": [], "solucion": [], "producto": []}
-    for s in sorted(selected, key=lambda s: s.score, reverse=True):
-        _grupos[_fase(s)].append(s)
-    loose_set, _idx = [], {k: 0 for k in _grupos}   # round-robin: intercala fases, mejor score primero
-    while len(loose_set) < 24 and any(_idx[k] < len(_grupos[k]) for k in _grupos):
-        for k in ("problema", "solucion", "producto"):
-            if _idx[k] < len(_grupos[k]) and len(loose_set) < 24:
-                loose_set.append(_grupos[k][_idx[k]])
-                _idx[k] += 1
+    # Clips sueltos: los elegidos por FASE en el PLAN de arriba (ya con el masking aplicado
+    # en sitio a esos mismos cortes).
+    loose_set = [selected[i] for i in loose_idx]
     outs = [os.path.join(clips_dir, f"clip_{idx:02d}_score{int(seg.score)}.mp4")
             for idx, seg in enumerate(loose_set)]
 
@@ -319,7 +353,7 @@ def render_versions(
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,
-                             target_seconds=target_seconds)
+                             target_seconds=target_seconds, version_orders=version_orders)
     versions = built["versions"]
 
     # Gancho: el del usuario o uno generado con IA

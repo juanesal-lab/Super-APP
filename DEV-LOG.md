@@ -1542,3 +1542,42 @@ Cambios en tiktok_search.py:
   (vo_guiones interno permite bajarlo; no expuesto en UI aún).
 - AVISO Juan: NO toqué orchestrator/assemble/caption_styles/voiceover — solo producto_clips.py, el
   endpoint /api/producto-clips y la pestaña Mi producto del front.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · ⚡🎲 Cortar clips MÁS RÁPIDO (76.8s→45.3s en prueba real) + versiones DIFERENTES entre sí
+Quejas de Jack: (A) Cortar clips / Mi producto muy lentos; (B) las 8 versiones repetían los mismos clips.
+VELOCIDAD (misma prueba: 3 videos bee venom, gemini on, sin blur/música/VO — 76.8s → 45.3s):
+- `orchestrator.analyze_select`: los videos se analizan EN PARALELO (antes uno por uno) → 18.5s→9.8s.
+- `analyze.analyze_video`: `detect_scene_cuts` (ffmpeg) corre en paralelo con la pasada OpenCV del mismo video.
+- `gemini_rank`: NUEVO `_call_rest_fast` — la llamada de rank va por REST con thinkingBudget=0 (el SDK
+  google-genai 0.8.0 no expone ese parámetro) → 27s→3-7s LA MISMA respuesta; si falla, cae al SDK como antes.
+- `assemble`: `add_voiceover`, `add_voiceover_and_sfx` y `concat_clips` ahora codifican con `venc()`
+  (GPU videotoolbox) en vez de libx264 → voz en off ~0.7s/versión (probado, h264+aac ok).
+- `orchestrator.render_versions`: PLAN PRIMERO — se calcula qué cortes usan las versiones (nueva
+  `assemble.plan_variations`) y los clips sueltos ANTES de tapar textos → el masking (EAST/Gemini/capitán)
+  procesa SOLO esos cortes; además el plan usa los tiempos ORIGINALES (antes se planeaba después del
+  masking, cuando start ya estaba remapeado a 0 y el orden cronológico se perdía).
+- WORKERS con GPU: probé 3 vs 4 vs 5 encodes paralelos videotoolbox → sin diferencia (el hardware
+  serializa sesiones); se queda en 3.
+VARIEDAD (antes: 2 ganchos distintos en 8 versiones, solape medio 55%, había pares 100% idénticos →
+ahora: 8 ganchos ÚNICOS, solape medio 43%, máx 86%):
+- `analyze._split_and_add`: un tramo bueno largo ahora emite hasta 5 ventanas NO solapadas (antes solo
+  la mejor y el resto se botaba) → más material bruto para el pool.
+- `assemble.plan_variations` (extraída de build_variations, misma lógica en pool grande): en la rama de
+  POCOS clips el gancho ROTA entre los mejores por score (antes siempre el máximo → todas abrían igual)
+  y el resto se elige priorizando los clips MENOS usados por versiones anteriores (mínimo solape de
+  conjuntos). `build_variations` acepta `version_orders=` opcional (retrocompatible).
+VERIFICADO: py_compile ok; corrida E2E real antes/después con frames mirados (nitidez/encuadre ok, webm
+≤500KB ok); corrida con blur_captions=True (EAST, sin capitán) ok=True 8 versiones; add_voiceover(_and_sfx)
+probado con audio sintético. Server reiniciado.
+AVISO Juan: toqué analyze.py (_split_and_add multi-ventana + scene cuts paralelos), orchestrator.py
+(analyze_select paralelo + plan-primero en render_versions), assemble.py (plan_variations nueva,
+build_variations con version_orders opcional, venc() en add_voiceover/add_voiceover_and_sfx/concat_clips)
+y gemini_rank.py (REST rápido con fallback). NO toqué gif_export (tus flags VP9 ya estaban), ni las
+firmas públicas: process_job/analyze_select/render_versions/venc/punch_pace intactas. Shape de manifests
+sin cambios. NO commiteado (lo sube Jack cuando lo pruebe).
+[Revisión (2º agente) de lo de arriba — 2 fixes aplicados]: (1) la key de Gemini en _call_rest_fast iba
+en la URL (?key=) → ahora va por header x-goog-api-key (no queda en logs); (2) el muestreo del capitán en
+render_versions usaba los índices DISPERSOS de used_all (podía revisar 0 cortes o TODOS = llamadas a
+Claude de más) → ahora usa la posición secuencial. Tests: pools sintéticos n=1..40 sin versiones vacías
+ni índices inválidos; fallback REST→SDK probado (timeout/500/JSON malo); corrida real $0 con EAST:
+47.4s, 8 versiones ok, remapeo del plan post-masking verificado frame a frame.

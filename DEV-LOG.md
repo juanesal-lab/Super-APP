@@ -1844,3 +1844,23 @@ Paquete grande de Juan (con mapa previo de un agente para no romper nada). REGLA
 Verificado: imports OK, preview S/M/G escala bien (grid visual), UI sin errores JS, _pick_sfx devuelve
 familia variada. AVISO Jack: toqué caption_styles/orchestrator/auto_studio/producto_clips/winner_clone/
 product_swap/assemble/phase_effects/app.py/index.html — todo con defaults retro-compatibles.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🛍️ NUEVO MÓDULO "Crear Landings" — FASE (a): UI + tipo + credenciales Shopify
+Superprompt de Juan: 3er módulo al nivel de Buscar/Crear — Landing Page y Advertorial desde SUS estructuras
+validadas → copy/imágenes con Gemini → gate de aprobación → Shopify Admin API como PLANTILLA NUEVA (jamás
+tocar lo existente). Decisiones aprobadas: mismo tema publicado (archivos nuevos prefijo cm-), imágenes a
+Shopify FILES, optimización de peso obligatoria. Fase (a) implementada:
+- NUEVO `backend/pipeline/shopify_admin.py`: `validar()` (request de prueba, errores en español),
+  `tema_publicado()` (usa SHOPIFY_THEME_ID o detecta role=main), `nombre_unico()` (cm-<tipo>-<slug>-<fecha>),
+  `crear_asset()` (SE NIEGA a sobreescribir si el key existe — regla de oro), `subir_imagen_files()`
+  (GraphQL staged upload → Files/CDN, reporta peso_kb).
+- Credenciales con el MISMO patrón de keys: SHOPIFY_STORE_DOMAIN / SHOPIFY_ADMIN_API_TOKEN (prefijo shpat_)
+  / SHOPIFY_THEME_ID (opcional) en .env vía 🔑 Claves (tarjeta nueva con 3 campos + pill) + `has_shopify`
+  en /api/config + `/api/shopify-check` (valida + detecta tema).
+- UI: 3ª tarjeta en el HOME premium ("Crear Landings") + pestaña 🛍️ + panel: selector de tipo (2 tarjetas
+  premium), botón "Verificar conexión", formulario de insumos (producto/link/precio EXACTO/oferta/fotos).
+  El botón Generar está DESHABILITADO hasta que Juan pase sus estructuras validadas (regla 9: no inventar).
+- `README-LANDINGS.md`: cómo crear la custom app + scopes mínimos + qué crea/qué JAMÁS toca.
+- Verificado: smoke shopify-check sin creds → error claro en español (no 500); home con 3 módulos; panel OK.
+- PENDIENTE de Juan: las estructuras validadas (landing + advertorial) y las secciones 3-7 del superprompt
+  (se cortaron 85 líneas en el paste). Fases (b)-(g) tras recibirlas.

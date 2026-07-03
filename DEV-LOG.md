@@ -1559,3 +1559,20 @@ captions contrastaran con el color del producto. 3 mejoras (validadas con métri
    1 vez en `render_versions` sobre el primer montaje. Estilos y preview siguen igual si no hay acento.
 - AVISO Jack: toqué `order_version` (tu build_variations — el bucket disjunto tuyo quedó intacto),
   `_select_for_target` (multi-sig) y caption_styles (acento opt-in, default None → tus 5 estilos idénticos).
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔎 Búsqueda TikTok: de 1 a 9 confirmados (verificación PROFUNDA)
+Juan: "solo 1 de los 30 me lo encuentra bien". Diagnóstico + 3 fixes en `tiktok_search.py`:
+1. **Ranking por relevancia de TÍTULO antes de gastar visión**: el pool a verificar se llenaba de virales
+   de salones/clínicas (ordenado por views); los videos del producto (vendedores TikTok Shop) nunca se
+   verificaban. Ahora `_title_score` (términos de queries+desc) ordena el pool primero.
+2. **VERIFICACIÓN PROFUNDA** (`_verificar_video` NUEVO): la portada muchas veces NO muestra el producto
+   (sale el pie/antes-después) → falsos rechazos. Para candidatos con título prometedor no confirmados por
+   portada, se BAJA el video (play url de tikwm, tope 25MB, máx 12) y Gemini juzga 3 frames de ADENTRO.
+   Los confirmados así llevan `_deep` y NO se re-juzgan por portada (Claude los habría rechazado).
+   OJO: la descarga SIGUE redirects (tikwm→CDN siempre redirige; con allow_redirects=False moría todo).
+3. **Jueces conscientes del USO**: lámpara de secar esmalte ≠ láser para hongos (el título desempata), sin
+   exigir marca (otro vendedor del mismo producto cuenta), "estricto pero justo" (UGC en mano/ángulo).
+   Claude ahora juzga top-20 (antes 10). El relleno ⚠️ ahora completa hasta `count` (siempre etiquetado).
+RESULTADO con el láser de Juan: antes 1/30 confirmado → ahora **9/9 confirmados y TODOS el dispositivo real**
+(GoSpring device, fungus remover, naillight...), 92s. AVISO Jack: toqué tu _verificar (línea de USO) y el
+bloque de verificación de buscar(); tu expansión de queries ES+EN quedó intacta (es la que alimenta esto).

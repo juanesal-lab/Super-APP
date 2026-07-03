@@ -443,6 +443,36 @@ def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
     return out_path
 
 
+def punch_pace(video_path: str, out_path: str, target_max: float = 22.0,
+               max_speed: float = 1.35) -> str:
+    """Acelera un pelín (video + audio EN SYNC) si el creativo dura más que target_max, para un
+    pacing 'punchy' tipo TikTok ganador (retiene más). Tope max_speed para que la voz no suene
+    atropellada. Debe correr AL FINAL (con todo ya quemado) para que subtítulos/audio queden en sync.
+    Devuelve out_path o el original si no aplica."""
+    from .ffmpeg_utils import probe
+    try:
+        dur = probe(video_path).duration
+    except Exception:  # noqa: BLE001
+        return video_path
+    if dur <= target_max + 0.5:
+        return video_path
+    speed = min(max_speed, dur / target_max)
+    if speed <= 1.03:
+        return video_path
+    try:
+        if _has_audio_stream(video_path):
+            run(["ffmpeg", "-y", "-i", video_path,
+                 "-filter_complex", f"[0:v]setpts=PTS/{speed:.4f}[v];[0:a]atempo={speed:.4f}[a]",
+                 "-map", "[v]", "-map", "[a]", *venc(), "-c:a", "aac", "-b:a", "192k",
+                 "-movflags", "+faststart", out_path])
+        else:
+            run(["ffmpeg", "-y", "-i", video_path, "-filter:v", f"setpts=PTS/{speed:.4f}",
+                 *venc(), "-movflags", "+faststart", out_path])
+        return out_path
+    except Exception:  # noqa: BLE001
+        return video_path
+
+
 def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
                           sfx_paths: list[str] | None = None,
                           cut_times: list[float] | None = None,

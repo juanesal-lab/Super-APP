@@ -120,7 +120,69 @@ def detect_subtitle_band(video_path: str, api_key: str | None = None,
             "w": round(float(x1 - x0), 4), "h": round(float(y1 - y0), 4)}
 
 
+def detect_top_band(video_path: str, east_frames: int = 24, persist: float = 0.40) -> dict | None:
+    """Banda de texto quemado pegado ARRIBA (títulos/captions en el top), que detect_subtitle_band
+    ignora a propósito. EAST local (sin Gemini, rápido). Solo devuelve banda si el texto está en el
+    top (cy<0.30) y es PERSISTENTE (>=persist de los frames) — así NO tapa texto de escena de una
+    sola toma. Devuelve {x,y,w,h} en fracciones o None."""
+    try:
+        if not text_detect.available():
+            text_detect.ensure_model()
+        net = text_detect._load() if text_detect.available() else None
+    except Exception:  # noqa: BLE001
+        net = None
+    if net is None:
+        return None
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+    H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1920
+    W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1080
+    dur = total / fps if fps else 0
+    if dur <= 0:
+        cap.release()
+        return None
+    top_lo, top_hi = int(0.02 * H), int(0.30 * H)     # solo la franja de arriba
+    rows = np.zeros(H, dtype=float)
+    xs0: list[int] = []
+    xs1: list[int] = []
+    seen = 0
+    for i in range(east_frames):
+        cap.set(cv2.CAP_PROP_POS_MSEC, dur * (i + 0.5) / east_frames * 1000)
+        ok, fr = cap.read()
+        if not ok or fr is None:
+            continue
+        seen += 1
+        for (x, y, w, h) in text_detect._detect(net, fr):
+            cy = y + h / 2
+            if cy < top_lo or cy > top_hi:
+                continue
+            rows[max(0, int(y)):min(H, int(y + h))] += 1
+            xs0.append(max(0, int(x)))
+            xs1.append(min(W, int(x + w)))
+    cap.release()
+    if seen == 0 or not xs0:
+        return None
+    thr = max(2.0, seen * persist)          # persistente = caption quemado, no texto de una toma
+    hot = np.where(rows >= thr)[0]
+    if len(hot) == 0:
+        return None
+    lo, hi = int(hot.min()), int(hot.max())
+    max_h = int(0.22 * H)
+    if (hi - lo) > max_h:
+        hi = lo + max_h
+    y0 = max(0.0, lo / H - 0.012)
+    y1 = min(1.0, hi / H + 0.018)
+    x0 = max(0.0, min(xs0) / W - 0.02)
+    x1 = min(1.0, max(xs1) / W + 0.02)
+    if (y1 - y0) < 0.02 or (x1 - x0) < 0.05:
+        return None
+    return {"x": round(float(x0), 4), "y": round(float(y0), 4),
+            "w": round(float(x1 - x0), 4), "h": round(float(y1 - y0), 4)}
+
+
 if __name__ == "__main__":
     import json
     import sys
-    print(json.dumps(detect_subtitle_band(sys.argv[1]), ensure_ascii=False))
+    print(json.dumps({"bottom": detect_subtitle_band(sys.argv[1]),
+                      "top": detect_top_band(sys.argv[1])}, ensure_ascii=False))

@@ -1493,3 +1493,16 @@ hook/medio/final). Hallazgos:
 3. auto_studio (Crear creativo) SÍ tapa con banda continua (detect_subtitle_band), pero puede escaparse
    texto ARRIBA (ej. "Crema para eliminar lunares" en el top del bee venom) — mejora futura: banda top.
    AVISO Juan: toqué text_translate.py (modo "limpiar" + prompt) y winner_clone.py (usa limpiar).
+
+### 2026-07-02 · Claude (jackingshop1-cell) · ⚡🧽 Mejor resultado: pacing punchy + tapar texto ARRIBA
+Siguiendo el análisis de los 24 creativos que no funcionaron, mejoré para "mejor resultado":
+- **(A) PACING punchy**: nuevo `assemble.punch_pace` — si el creativo dura >~22s, lo acelera un pelín
+  (video+audio EN SYNC, tope 1.35x para que la voz no suene atropellada). Corre AL FINAL (todo quemado)
+  para no desincronizar subtítulos. Cableado en winner_clone (paso 10) y auto_studio (paso 7b).
+  Probado real: almohadillas 38.5s → 28.6s en sync.
+- **(B) Tapar texto ARRIBA**: nuevo `subtitle_band.detect_top_band` (EAST local, sin Gemini) detecta
+  captions/títulos quemados pegados al top (que detect_subtitle_band ignora a propósito), con umbral de
+  persistencia para no tapar texto de una sola toma. auto_studio ahora tapa AMBAS bandas (arriba+abajo).
+  Probado real: bee venom "Crema para eliminar lunares..." (arriba) → tapado; almohadillas (abajo) → sin
+  falso positivo. Verificado con frame: top limpio, producto intacto.
+  AVISO Juan: toqué subtitle_band.py (detect_top_band) + auto_studio.py (2 bandas + pacing) + assemble.py.

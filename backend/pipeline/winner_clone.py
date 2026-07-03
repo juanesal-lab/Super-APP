@@ -301,6 +301,19 @@ def clonar_ganador(
         except Exception as e:  # noqa: BLE001
             paso("Normalizar audio", False, str(e))
 
+    # 10) PACING punchy: si quedó largo (>~22s), acelera un pelín (video+audio+subs en sync) para
+    #     retener más — los ganadores de TikTok van rápidos, no de 40s.
+    report("⚡ Ajustando el ritmo (pacing)...", 99)
+    try:
+        from .assemble import punch_pace
+        out = os.path.join(work_dir, "pace.mp4")
+        before = A._dur(current)
+        current = punch_pace(current, out)
+        after = A._dur(current)
+        paso("Pacing", True, f"{before:.0f}s → {after:.0f}s" if after < before - 0.5 else "ya era ágil")
+    except Exception as e:  # noqa: BLE001
+        paso("Pacing", False, str(e))
+
     report("✅ Clon terminado", 100)
     ok_n = sum(1 for p in pasos if p["ok"])
     return {"ok": True, "video": current, "pasos": pasos, "decisiones": decisiones,

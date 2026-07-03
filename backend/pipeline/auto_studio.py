@@ -307,15 +307,16 @@ def generar_creativo_auto(
     #   NO se traduce ni se agrega ningún otro texto (eso era lo que ensuciaba el creativo).
     report("🧽 Detectando la banda EXACTA de los subtítulos del original...", 40)
     try:
-        from .subtitle_band import detect_subtitle_band
+        from .subtitle_band import detect_subtitle_band, detect_top_band
         from .assemble import blur_boxes
-        # EAST (cajas ajustadas) + presencia consistente -> banda TIGHT solo donde están los subtítulos
-        banda = detect_subtitle_band(current)
-        if banda:
+        # EAST (cajas ajustadas) + presencia consistente -> banda TIGHT donde están los subtítulos
+        # ABAJO + captions/títulos quemados ARRIBA (los dos, para que no se escape ninguno).
+        bandas = [b for b in (detect_subtitle_band(current), detect_top_band(current)) if b]
+        if bandas:
             out = os.path.join(work_dir, "sin_subs.mp4")
-            current = blur_boxes(current, out, [banda])
+            current = blur_boxes(current, out, bandas)
             paso("Tapar subtítulos viejos", True,
-                 f"banda y={banda['y']:.2f}→{banda['y'] + banda['h']:.2f} (alto {banda['h']:.2f})")
+                 f"{len(bandas)} banda(s) tapada(s) (arriba+abajo si hay)")
         else:
             paso("Tapar subtítulos viejos", True, "no detecté subtítulos quemados")
     except Exception as e:  # noqa: BLE001
@@ -379,6 +380,20 @@ def generar_creativo_auto(
             paso("Normalizar audio", True)
         except Exception as e:  # noqa: BLE001
             paso("Normalizar audio", False, str(e))
+
+    # 7b) PACING punchy: si quedó largo (>~22s), acelera un pelín (video+audio+subs en sync) para
+    #     retener más (los ganadores de TikTok van ágiles).
+    report("⚡ Ajustando el ritmo (pacing)...", 96)
+    try:
+        from .assemble import punch_pace
+        from .ffmpeg_utils import probe as _pb
+        out = os.path.join(work_dir, "pace.mp4")
+        antes = _pb(current).duration
+        current = punch_pace(current, out)
+        desp = _pb(current).duration
+        paso("Pacing", True, f"{antes:.0f}s → {desp:.0f}s" if desp < antes - 0.5 else "ya era ágil")
+    except Exception as e:  # noqa: BLE001
+        paso("Pacing", False, str(e))
 
     # 8) SUPERVISOR (opcional) ----------------------------------------------
     try:

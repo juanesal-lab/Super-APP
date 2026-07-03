@@ -98,6 +98,18 @@ CUMPLIMIENTO Meta: nada de curas absolutas ni % médicos ("ayuda a / apoya el bi
 la transformación se hace SURREAL/metafórico (globo, hipopótamo, momia), NUNCA un split clínico enfermo→sano.
 Sin desnudez ni sexo explícito: el shock es por drama y metáfora, no por piel.
 
+🎯 REGLA DE PROFUNDIDAD DEL ÁNGULO (la más importante — sin esto la imagen queda "genérica"):
+La imagen debe CONTAR el ángulo COMPLETO, no ilustrar el producto en general. Para cada variante declara:
+- `dolor_visual`: cómo se VE el dolor ESPECÍFICO de ese ángulo (quién sufre, en qué situación, qué se nota
+  físicamente). "Una persona preocupada" NO sirve; "esconde los pies en la arena mientras todos andan en
+  sandalias" SÍ.
+- `solucion_visual`: cómo se INSINÚA la transformación/promesa en la MISMA imagen — el giro (una mitad ya
+  aliviada, la reacción de alivio, el antes/después, o la zona limpia donde entrará el producto como héroe).
+PRUEBA DEL ÁNGULO: alguien que vea SOLO la imagen (sin leer el titular) debe poder decir QUÉ duele y QUÉ se
+promete. Si la escena podría servir para cualquier otro producto del nicho → es genérica: recházala y hazla
+más específica. El 'prompt' DEBE poner en escena dolor_visual Y solucion_visual, con el dolor como
+protagonista y la solución como giro visible.
+
 Cada 'prompt' que entregues:
 - UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic vertical 4:5
   screenshot of an authentic organic social video" (o post) — NO "advertisement". Describe la escena surreal
@@ -143,13 +155,16 @@ _TOOL = {
                         "mecanismo": {"type": "string", "description": "el motor psicológico: personificación | metáfora | consecuencia absurda | escena social | reflejo surreal | reacción extrema. DISTINTO por concepto."},
                         "concepto": {"type": "string", "description": "la idea loca en 1-2 frases (español)"},
                         "por_que": {"type": "string", "description": "por qué frena el scroll y convierte"},
+                        "dolor_visual": {"type": "string", "description": "cómo se VE el DOLOR ESPECÍFICO de este ángulo en la imagen (quién sufre, dónde, qué se nota). Concreto, no 'persona triste'."},
+                        "solucion_visual": {"type": "string", "description": "cómo se INSINÚA la solución/transformación de este ángulo en la MISMA imagen (el giro, el alivio, el después, o la zona donde entra el producto como héroe). Si el ángulo es 100% dolor, di dónde queda el espacio de la promesa."},
                         "titular": {"type": "string", "description": "titular incrustado (español, corto, MAYÚSCULAS)"},
                         "apoyo": {"type": "string", "description": "sub/apoyo (español, opcional)"},
                         "precio_cta": {"type": "string", "description": "precio+oferta COD (opcional)"},
                         "boton_cta": {"type": "string", "description": "texto del botón/CTA falso"},
-                        "prompt": {"type": "string", "description": "prompt de imagen (ver instrucciones del sistema)"},
+                        "prompt": {"type": "string", "description": "prompt de imagen: DEBE poner en escena dolor_visual Y solucion_visual (ver instrucciones)"},
                     },
-                    "required": ["angulo", "formato", "concepto", "por_que", "titular", "prompt"],
+                    "required": ["angulo", "formato", "concepto", "por_que", "dolor_visual",
+                                 "solucion_visual", "titular", "prompt"],
                 },
             }
         },

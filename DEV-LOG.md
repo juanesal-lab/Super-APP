@@ -1605,3 +1605,18 @@ categoría | forma+tamaño | colores por parte | MARCA/texto visible (transcrito
 "no confundir con". Probado con el láser: la ficha transcribió hasta el texto de la caja y listó
 "oxímetro de pulso, lámpara UV, masajeador" como confusables.
 - AVISO Jack: toqué _select_for_target (pool+dedup) y los prompts de analizar_foto/jueces. Nada de tu flujo.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎨 Ads imagen: REGLA DE PROFUNDIDAD DEL ÁNGULO (fin de lo "genérico")
+Juan: la imagen salía genérica — mostraba el producto pero no AHONDABA en el dolor/solución del ángulo.
+Diagnóstico (inspeccionando prompts generados): los conceptos dramatizaban el dolor pero NADA obligaba a que
+la imagen contara el ángulo completo (dolor → giro a la solución) → escenas intercambiables entre productos.
+Fix en `disruptive_images.py` (_SISTEMA + _TOOL):
+- 2 campos NUEVOS OBLIGATORIOS por variante: `dolor_visual` (cómo se VE el dolor específico del ángulo —
+  "persona preocupada" no sirve) y `solucion_visual` (cómo se INSINÚA la transformación en la MISMA imagen:
+  el giro, el alivio, el antes/después o la zona donde entra el producto como héroe).
+- REGLA DE PROFUNDIDAD: "alguien que vea SOLO la imagen debe poder decir QUÉ duele y QUÉ se promete; si la
+  escena sirve para cualquier producto del nicho → es genérica, recházala". El prompt DEBE poner en escena
+  dolor_visual Y solucion_visual.
+- VALIDADO con imagen real (láser hongos): "TIENES UN INQUILINO EN LA UÑA / Y no paga arriendo / SACARLO YA"
+  → monstruito-hongo acampando sobre la uña dañada (dolor) + haz láser rojo entrando a sacarlo (solución).
+  El ángulo se entiende sin leer texto. Solo prompt/schema — el flujo de generación no cambió.

@@ -1864,3 +1864,24 @@ Shopify FILES, optimización de peso obligatoria. Fase (a) implementada:
 - Verificado: smoke shopify-check sin creds → error claro en español (no 500); home con 3 módulos; panel OK.
 - PENDIENTE de Juan: las estructuras validadas (landing + advertorial) y las secciones 3-7 del superprompt
   (se cortaron 85 líneas en el paste). Fases (b)-(g) tras recibirlas.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🛍️ Landings: PLANTILLAS MAESTRAS destiladas (landing 9 secciones + advertorial)
+Retomada la tarea interrumpida: analizadas las 9 imágenes de la landing validada de Juan (Aceite de
+Ricino, ~/Downloads/landing) + su página viva buenatienda.com.co/products/crema-veneno-de-abeja-2x1.
+HALLAZGO: la página viva es estructura ADVERTORIAL (headline editorial "Por qué dermatólogas...",
+comparativa, "así funciona", dermatóloga, muro 15 reseñas con 2 imperfectas, oferta 2x1) → tenemos
+ejemplo real de AMBOS tipos. Nuevo `assets/landing-templates/`:
+- `README.md`: convención {{variables}} vs estructura fija, reglas duras de generación (producto
+  SIEMPRE con fotos reales — cero etiquetas garbled tipo "Paro la plai", texto CO sin errores,
+  aspect ratios, gate obligatorio), psicología del orden.
+- `landing-page.md`: las 9 secciones con formato/objetivo/layout/fórmulas de copy (hero 2:3 →
+  grid 4 testimonios 16:9 → mecanismo+antes/después 9:16 → comentarios FB 9:16 (con aviso legal
+  FIJO) → caso individual 1:1 → bundles 2:3 (PRECIOS EXACTOS de Juan) → bonos 2:3 → VS 9:16 →
+  cómo usar ILUSTRADO 9:16). Las imágenes NO llevan botón; el theme inserta CTAs entre secciones.
+- `advertorial.md`: arco editorial de 8 bloques con fórmulas literales del original (kicker,
+  headline "X en vez de Y después de los 40", mecanismo honesto, Dra. con credenciales, regla de
+  realismo: 2/15 reseñas de 3-4★). ⚠️ Pendiente que Juan CONFIRME que esa es SU estructura advertorial.
+- `referencia-landing/seccion-01..09.jpg` (~2.5MB): referencias de estilo para Gemini (ya no
+  dependemos de Downloads).
+SIGUE PENDIENTE de Juan: secciones 3-7 de su superprompt (85 líneas cortadas) → luego fases (b)-(g).
+AVISO Jack: solo archivos NUEVOS en assets/landing-templates/; cero código tocado.

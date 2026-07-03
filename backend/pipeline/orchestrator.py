@@ -19,6 +19,7 @@ from .hook_gen import generate_hook, fetch_page_text
 from .captions import add_captions
 from . import supervisor
 from . import gif_export
+from . import phase_classify
 
 
 # Cuántas veces el capitán (Claude) puede mandar a re-tapar un corte hasta aprobarlo
@@ -271,25 +272,37 @@ def render_versions(
 
     report("Recortando clips..." + (" (mejorando calidad)" if enhance else ""), 62)
     clip_dims = dims_for("1:1")   # los clips sueltos siempre en 1:1 (cuadrado)
-    # Clips sueltos: en vez de solo los de mayor score, elegimos una MEZCLA por FASE
-    # (problema / solución-uso / producto) para que los "gifs" tengan SENTIDO y cuenten la historia.
-    def _fase(s):
+    # Clips sueltos: MEZCLA por FASE narrativa (problema / solución / funcionamiento / producto /
+    # características / resultado) para que los "gifs" tengan SENTIDO y cuenten la historia.
+    # La fase la decide GEMINI mirando un frame de cada clip (1 sola llamada); si no hay key o falla,
+    # cae a la heurística vieja (shows_use/product_visible) sin romper nada.
+    def _fase_heur(s):
         if s.shows_use:
             return "solucion"
         if s.product_visible:
             return "producto"
         return "problema"
-    _grupos = {"problema": [], "solucion": [], "producto": []}
-    for s in sorted(selected, key=lambda s: s.score, reverse=True):
-        _grupos[_fase(s)].append(s)
-    loose_set, _idx = [], {k: 0 for k in _grupos}   # round-robin: intercala fases, mejor score primero
-    while len(loose_set) < 24 and any(_idx[k] < len(_grupos[k]) for k in _grupos):
-        for k in ("problema", "solucion", "producto"):
-            if _idx[k] < len(_grupos[k]) and len(loose_set) < 24:
-                loose_set.append(_grupos[k][_idx[k]])
+    pool = sorted(selected, key=lambda s: s.score, reverse=True)[:30]
+    fases_pool = None
+    if gemini_key:
+        report("Clasificando los clips por fase (problema/solución/producto)...", 66)
+        fases_pool = phase_classify.clasificar(pool, gemini_key, product_desc)
+    if not fases_pool:
+        fases_pool = [_fase_heur(s) for s in pool]
+    _orden_fases = list(phase_classify.FASES)
+    _grupos = {k: [] for k in _orden_fases}
+    for s, f in zip(pool, fases_pool):
+        _grupos.setdefault(f, []).append((s, f))
+    loose_pairs, _idx = [], {k: 0 for k in _grupos}   # round-robin: intercala fases, mejor score primero
+    while len(loose_pairs) < 24 and any(_idx[k] < len(_grupos[k]) for k in _grupos):
+        for k in _orden_fases:
+            if _idx.get(k, 0) < len(_grupos.get(k, [])) and len(loose_pairs) < 24:
+                loose_pairs.append(_grupos[k][_idx[k]])
                 _idx[k] += 1
-    outs = [os.path.join(clips_dir, f"clip_{idx:02d}_score{int(seg.score)}.mp4")
-            for idx, seg in enumerate(loose_set)]
+    loose_set = [s for s, _ in loose_pairs]
+    loose_fases = [f for _, f in loose_pairs]
+    outs = [os.path.join(clips_dir, f"clip_{idx:02d}_{fase}.mp4")
+            for idx, (seg, fase) in enumerate(loose_pairs)]
 
     def _render_one(pair):
         seg, out = pair
@@ -312,10 +325,11 @@ def render_versions(
             for i, g in ex.map(_gif_one, list(enumerate(outs))):
                 gifs[i] = g
 
-    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución / uso", "producto": "📦 Producto"}
+    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución", "funcionamiento": "⚙️ Cómo funciona",
+                 "producto": "📦 Producto", "caracteristicas": "🔎 Características", "resultado": "✨ Resultado"}
     loose_clips = [{"path": o, "gif": g, "segment": s.to_dict(),
-                    "fase": _fase(s), "fase_label": _FASE_LBL.get(_fase(s), "")}
-                   for s, o, g in zip(loose_set, outs, gifs)]
+                    "fase": f, "fase_label": _FASE_LBL.get(f, "")}
+                   for s, f, o, g in zip(loose_set, loose_fases, outs, gifs)]
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,

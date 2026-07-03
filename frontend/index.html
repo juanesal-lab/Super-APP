@@ -341,14 +341,23 @@
         }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
       }
       function tkRender(j){
-        document.getElementById('tkMsg').textContent = j.keywords ? ('🔑 Buscado: '+j.keywords) : '';
+        const nConf = j.n_confirmados||0;
+        document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '')
+          + (j.verificado ? ` — ✅ ${nConf} confirmados con tu producto` : '');
         const links=(j.links||[]); let h='';
         if(!links.length){
           h='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+j.busqueda+'" target="_blank">'+j.busqueda+'</a></div>';
         } else {
-          const urls=links.map(l=>l.url).join('\n');
-          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${links.length} links</button>`;
-          links.forEach((l,i)=>{ h+=`<div class="autoStep"><a href="${l.url}" target="_blank" style="color:var(--accent)">${i+1}. ${l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`; });
+          const conf=links.filter(l=>l.verificado_producto), resto=links.filter(l=>!l.verificado_producto);
+          const urls=(conf.length?conf:links).map(l=>l.url).join('\n');
+          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||links.length} links${conf.length?' confirmados':''}</button>`;
+          const fila=(l,i,badge)=>`<div class="autoStep">${badge} <a href="${l.url}" target="_blank" style="color:var(--accent)">${i}. ${l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`;
+          let n=1;
+          conf.forEach(l=>{ h+=fila(l,n++, '<span title="La IA confirmó que es TU producto (misma forma)">✅</span>'); });
+          if(resto.length && j.verificado){
+            h+=`<div class="pmsg" style="margin:12px 0 6px">⚠️ Estos NO se pudieron confirmar como tu producto (revísalos tú):</div>`;
+          }
+          resto.forEach(l=>{ h+=fila(l,n++, j.verificado?'<span title="No confirmado — puede ser otro producto">⚠️</span>':''); });
         }
         document.getElementById('tkResult').innerHTML=h;
       }

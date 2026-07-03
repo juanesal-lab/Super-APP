@@ -133,6 +133,7 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         cimg = requests.get(cover, headers=_UA, timeout=15).content
         if not cimg:
             return None
+        cand["_cover_bytes"] = cimg   # cache: el 2º juez (Claude) la reusa sin re-descargar
         titulo = (cand.get("title") or "")[:120]
         prompt = (
             f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
@@ -167,9 +168,75 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         return None
 
 
+_CLAUDE = "claude-opus-4-8"
+_CLAUDE_TOOL = {
+    "name": "juzgar",
+    "description": "Dice si la portada del TikTok es el MISMO producto que la foto de referencia.",
+    "input_schema": {
+        "type": "object",
+        "properties": {"match": {"type": "boolean", "description": "true SOLO si es el mismo producto (tipo Y forma física)"}},
+        "required": ["match"],
+    },
+}
+
+
+def _media_type(b: bytes) -> str:
+    """Detecta el tipo real de la imagen por sus bytes mágicos (Claude exige el media_type correcto)."""
+    if b[:8].startswith(b"\x89PNG"):
+        return "image/png"
+    if b[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "image/webp"
+    if b[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "image/jpeg"
+
+
+def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key: str) -> bool | None:
+    """SEGUNDO JUEZ (Claude Opus con visión): ¿la portada es el MISMO producto (tipo + forma física)?
+    True=sí, False=no, None=no pudo opinar (fallo técnico → no se descarta por eso)."""
+    import base64
+    cover = cand.get("cover")
+    if not (cover and anthropic_key and ref_bytes):
+        return None
+    try:
+        cimg = cand.get("_cover_bytes") or requests.get(cover, headers=_UA, timeout=15).content
+        if not cimg:
+            return None
+        titulo = (cand.get("title") or "")[:120]
+        prompt = (
+            f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
+            f"Foto 2 = portada de un video de TikTok (título: \"{titulo}\"). "
+            "Compara FÍSICAMENTE los dos. ¿La Foto 2 muestra CLARAMENTE el MISMO producto que la Foto 1 — "
+            "mismo tipo de objeto y la MISMA forma/formato físico (un aparato cuadrado ≠ rectangular ≠ tipo "
+            "lápiz/pistola; una crema ≠ pastillas ≠ spray)? Si es otro producto, otra forma, no se ve claro "
+            "el producto en la portada, o hay CUALQUIER duda → match=false. Sé ESTRICTO.")
+        from anthropic import Anthropic
+        client = Anthropic(api_key=anthropic_key)
+        resp = client.messages.create(
+            model=_CLAUDE, max_tokens=300,
+            tools=[_CLAUDE_TOOL], tool_choice={"type": "tool", "name": "juzgar"},
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image", "source": {"type": "base64", "media_type": _media_type(ref_bytes),
+                                             "data": base64.b64encode(ref_bytes).decode()}},
+                {"type": "image", "source": {"type": "base64", "media_type": _media_type(cimg),
+                                             "data": base64.b64encode(cimg).decode()}},
+            ]}])
+        for b in resp.content:
+            if getattr(b, "type", None) == "tool_use" and b.name == "juzgar":
+                return bool(b.input.get("match"))
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
-           count: int = 20) -> dict:
-    """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}."""
+           count: int = 20, anthropic_key: str | None = None) -> dict:
+    """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
+
+    Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
@@ -186,11 +253,13 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     queries = [q for q in queries if q][:5] or [(nombre or "").strip()]
     kw = queries[0]
 
-    # AMPLIAR: varias consultas (producto + beneficios) × varias páginas → muchos candidatos únicos
+    # AMPLIAR: varias consultas (producto + beneficios) × varias páginas → muchos candidatos únicos.
+    # En PARALELO (antes iban en serie y la búsqueda tardaba el doble).
     cands: dict[str, dict] = {}
-    for q in queries:
-        for c in buscar_tiktok(q, count=40, pages=2):
-            cands.setdefault(c["url"], c)
+    with ThreadPoolExecutor(max_workers=len(queries) or 1) as ex:
+        for lote in ex.map(lambda q: buscar_tiktok(q, count=40, pages=2), queries):
+            for c in lote:
+                cands.setdefault(c["url"], c)
     cand_list = list(cands.values())
     # EXCLUIR COLOMBIA (regla del dueño) + descartar duraciones raras (fuera de 4-120s)
     filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120 and c.get("region") != "CO"]
@@ -216,16 +285,39 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     matches.append(c)
         # muestra el producto → sin texto sobrepuesto → español → más views
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
+
+        # DOBLE JUEZ: Claude confirma los que Gemini aprobó (solo los mejores, para no gastar de más).
+        # Solo quedan "confirmados" los que AMBOS dan como el mismo producto; si Claude falla
+        # técnicamente (None), el veredicto de Gemini se respeta.
+        if anthropic_key and matches:
+            confirmados, rechazados = [], []
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                cf = {ex.submit(_verificar_claude, c, ref_bytes, ref_desc, anthropic_key): c
+                      for c in matches[:10]}
+                for fut in as_completed(cf):
+                    r, c = fut.result(), cf[fut]
+                    (rechazados if r is False else confirmados).append(c)
+            confirmados.sort(key=lambda c: c.get("_rank", ()), reverse=True)
+            matches = confirmados + matches[10:]   # los no juzgados por Claude van después
+
+        for c in matches:
+            c["verificado_producto"] = True       # pasó la verificación visual (uno o ambos jueces)
         links = matches[:count]
-        if len(links) < min(3, count):       # si quedaron muy pocos, completa con candidatos
-            extra = [c for c in cand_list if c["url"] not in {l["url"] for l in links}]
+        # Si quedaron pocos, completa con candidatos NO verificados pero SIEMPRE marcados como tales
+        # (nunca más mezclar en silencio: fue la causa de que salieran clínicas/productos equivocados).
+        if len(links) < min(6, count):
+            vistos = {l["url"] for l in links}
+            extra = [dict(c, verificado_producto=False) for c in cand_list if c["url"] not in vistos]
             links = (links + extra)[:count]
     else:
         links = cand_list[:count]
 
+    n_conf = sum(1 for c in links if c.get("verificado_producto"))
     for c in links:
         c.pop("_rank", None)
+        c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
+            "n_confirmados": n_conf,
             "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}"}
 
 

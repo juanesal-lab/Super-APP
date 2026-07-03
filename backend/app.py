@@ -427,7 +427,8 @@ async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto o una foto")
     return buscar(image_path=img_path, nombre=nombre.strip(),
-                  api_key=_load_env_key(), count=int(count))
+                  api_key=_load_env_key(), count=int(count),
+                  anthropic_key=_load_anthropic_key())   # Claude = 2º juez de que sea el mismo producto
 
 
 # ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----

@@ -1983,3 +1983,24 @@ Chocamos de frente con tu c5a9184; hice la fusión que propusiste ("comparamos y
 - AVISO: tu entrada de arriba lo dice y lo confirmo — nada de Landings ni de tus fixes del día se
   tocó. Mi E2E real de anoche queda como evidencia de que el flujo con toma nueva funciona (por si
   lo retomamos): work/e3ec35398393/ tiene los 4 videos de muestra.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🖼️ Ads imagen: el PRODUCTO REAL ahora entra AUTOMÁTICO e integrado al diseño
+Pedido de Juan: que el producto se vea en las imágenes (la gente debe saber que ÉL es la solución),
+sin cambiar el estilo que ya le gusta. Cambio mínimo, cero cambios al prompt creativo de Claude:
+- `_integrar_producto_ia`: prompt ADAPTATIVO — analiza el layout: si hay zona limpia RESERVADA
+  (plantillas no_compres/capturas) pone el producto AHÍ como héroe (hasta ~30% ancho); si no, chico
+  (~20%) sobre superficie real del tercio inferior. Siempre luz/perspectiva/sombra de contacto reales,
+  jamás sobre caras/texto/chrome. NUEVO: si el producto YA está en la escena lo REUBICA (exactamente
+  1 instancia) → el botón manual ahora sirve para reubicar sin duplicar.
+- `generar_ad_fullprompt`: con `integrar_producto` marca `variant["producto_integrado"]` True/False
+  (si falla la 2ª pasada el ad queda limpio, no se pierde). `generar_ads_fullprompt` (batch),
+  /api/regenerate-image y /api/disruptive-swap-concept ahora integran AUTO cuando hay foto de producto.
+  /api/disruptive-add-product marca el flag.
+- UI: mensaje de resultado actualizado; botón según estado: "🔁 Reubicar mi producto" (integrado) /
+  "⚠️ El producto no entró — reintentar" (falló) / "➕ Poner mi producto" (jobs viejos sin flag).
+- Probado REAL con job e8216f0e4350 (aceite de ricino, sobre COPIAS en scratchpad): plantilla
+  contrarian → producto grande en la zona reservada derecha, label legible; surreal slider → producto
+  con sombra al lado del "después", sin tapar CTA ni manija. py_compile OK.
+- AVISO Jack: toqué disruptive_images.py (_integrar_producto_ia, generar_ad_fullprompt,
+  generar_ads_fullprompt), app.py (3 endpoints) y el disRender del index. Retro-compatible con jobs
+  viejos (flag ausente = botón de siempre). Reiniciar server para probar.

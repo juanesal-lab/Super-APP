@@ -314,15 +314,21 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
         with open(buf, "rb") as f:
             prod_b = f.read()
         prompt = (
-            "Edit the FIRST image (a vertical social-media video). Take the EXACT product from the SECOND image "
-            "and place it SMALL (about 20% of the width) resting on a real flat surface in the LOWER part of the "
-            "scene — a table, counter, floor, sink or shelf edge — integrated with matching lighting and a soft "
-            "realistic contact shadow, as if it were really there. STRICT RULES: never place it over a person, "
-            "face, hands, or over any text, caption, progress bar or button; put it in an empty area of the "
-            "lower third; keep it small and unobtrusive. Keep the product's shape, colors and label IDENTICAL to "
-            "the reference — do NOT redesign it, do NOT add any logo, watermark or extra text on it. Change "
-            "NOTHING else in the image: keep all existing captions, the video player, progress bar and the CTA "
-            "button exactly as they are. Output only the edited first image.")
+            "Edit the FIRST image (a social-media ad / video screenshot). Take the EXACT product from the SECOND "
+            "image and INTEGRATE it into the composition so the viewer instantly understands THIS product is the "
+            "solution being shown. FIRST analyze the layout and choose the most natural spot for THIS design: if "
+            "the layout has an obviously clean/empty reserved zone (an empty side panel, blank corner or cleared "
+            "area), place the product THERE at a size that fills that zone naturally (up to ~30% of the image "
+            "width, clearly visible); otherwise place it smaller (~20% of the width) resting on a real flat "
+            "surface in the LOWER part of the scene — a table, counter, floor, sink or shelf edge. Always "
+            "integrate it with matching lighting, perspective and a soft realistic contact shadow, as if it had "
+            "really been photographed there. If this exact product ALREADY appears in the scene, relocate or "
+            "refine that single instance instead of adding another — the final image must contain the product "
+            "exactly ONCE. STRICT RULES: never place it over a person, face, hands, or over any text, caption, "
+            "progress bar or button. Keep the product's shape, colors and label IDENTICAL to the reference — do "
+            "NOT redesign it, do NOT add any logo, watermark or extra text on it. Change NOTHING else in the "
+            "image: keep all existing captions, the video player, progress bar and the CTA button exactly as "
+            "they are. Output only the edited first image.")
         r = client.models.generate_content(
             model=_IMG_MODEL,
             contents=[prompt,
@@ -404,15 +410,18 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             break
     if not got:
         return None
-    if integrar_producto:            # solo si se pide: 2ª pasada que integra el producto en la escena
-        return _integrar_producto_ia(out_path, product_image_path, gemini_key) or out_path
-    return out_path                  # por defecto: ad LIMPIO sin producto
+    if integrar_producto:            # 2ª pasada que integra el producto real en la escena
+        res = _integrar_producto_ia(out_path, product_image_path, gemini_key)
+        variant["producto_integrado"] = bool(res)   # False → la UI ofrece reintentar
+        return res or out_path                       # si no se pudo, el ad queda limpio (no se pierde)
+    return out_path                  # ad LIMPIO sin producto
 
 
 def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,
                            product_image_path: str | None = None,
                            progress: Callable[[str, int], None] | None = None) -> dict:
-    """Paso 2 (full-prompt): para los conceptos ELEGIDOS genera el ad completo + verifica/regenera. Nunca lanza."""
+    """Paso 2 (full-prompt): para los conceptos ELEGIDOS genera el ad completo + verifica/regenera +
+    integra el PRODUCTO REAL en la escena (si hay foto). Nunca lanza."""
     def rep(m, p):
         if progress:
             progress(m, int(p))
@@ -422,14 +431,15 @@ def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: s
         return {"ok": False, "error": "Falta la API key de Gemini para generar las imágenes."}
     n = len(variants)
     done = [0]
-    rep(f"Generando {n} ads completos con Google AI (revisando ortografía)...", 8)
+    rep(f"Generando {n} ads completos con Google AI (ortografía + tu producto integrado)...", 8)
 
     def _one(item):
         i, v = item
         out = os.path.join(work_dir, f"ad_{i:02d}.png")
         try:
             v["imagen"] = generar_ad_fullprompt(v, out, gemini_key=gemini_key,
-                                                product_image_path=product_image_path)
+                                                product_image_path=product_image_path,
+                                                integrar_producto=bool(product_image_path))
         except Exception as e:  # noqa: BLE001
             v["imagen"] = None
             v["error"] = str(e)[:150]

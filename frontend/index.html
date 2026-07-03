@@ -1555,11 +1555,14 @@ try{
       if(!res||!res.variantes){ return; }
       const box=document.getElementById('disResult');
       const bust = disCacheBust ? '&_='+disCacheBust : '';
-      let h=`<div class="pmsg" style="margin-top:14px">✅ ${res.n_ok}/${res.n_total} imágenes listas — salen LIMPIAS; con <b>➕ Producto</b> lo metes solo donde se vea bien, 🔄 regenera, ⬇️ descarga</div><div class="disGrid">`;
+      let h=`<div class="pmsg" style="margin-top:14px">✅ ${res.n_ok}/${res.n_total} imágenes listas — tu producto va INTEGRADO en la escena; 🔁 lo reubica si no te gusta dónde quedó, 🔄 regenera, ⬇️ descarga</div><div class="disGrid">`;
       res.variantes.forEach((v,i)=>{
         const head=`<div class="disAng">${i+1}. ${v.angulo||''}</div><div class="disTit">"${v.titular||''}"</div>`;
         if(v.imagen){
           const u='/api/file?path='+enc(v.imagen);
+          const prodBtn = v.producto_integrado===false
+            ? '⚠️ El producto no entró — reintentar'
+            : (v.producto_integrado ? '🔁 Reubicar mi producto' : '➕ Poner mi producto');
           h+=`<div class="disCard"><img src="${u}${bust}" loading="lazy">
                <div class="body">${head}<div class="disWhy">${v.concepto||''}</div></div>
                <div class="disActions">
@@ -1567,7 +1570,7 @@ try{
                  <a class="disAct disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a>
                  <button class="disAct disSwap" style="grid-column:1/-1" onclick="disSwapConcept(${i},this)">🎲 Otro ángulo diferente</button>
                  <button class="disAct disEdit" style="grid-column:1/-1" onclick="disEditImg(${i},this)">✏️ Ajustar con instrucción</button>
-                 <button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">➕ Poner mi producto</button>
+                 <button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">${prodBtn}</button>
                </div></div>`;
         } else {
           h+=`<div class="disCard"><div class="body">${head}<div class="disWhy" style="color:var(--warn)">✗ No se generó la imagen</div></div>

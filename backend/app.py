@@ -1452,9 +1452,10 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     v = variantes[index]
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    try:                              # full-prompt: ad completo + verificación de ortografía
+    try:                              # full-prompt: ad completo + ortografía + producto integrado
         img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
-                                    product_image_path=job.get("_image_path"))
+                                    product_image_path=job.get("_image_path"),
+                                    integrar_producto=bool(job.get("_image_path")))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo regenerar: {e}")
     if not img:
@@ -1485,6 +1486,7 @@ def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
         raise HTTPException(500, f"No se pudo poner el producto: {e}")
     if not res:   # bloqueo/cuota/sin imagen → el ad quedó intacto; avisa de verdad
         raise HTTPException(502, "No se pudo integrar el producto (reintenta o revisa el tope de gasto de Google).")
+    v["producto_integrado"] = True
     _persist_disruptive(job_id)
     return {"imagen": v["imagen"]}
 
@@ -1540,7 +1542,8 @@ def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
     os.makedirs(os.path.dirname(out), exist_ok=True)
     try:
         img = generar_ad_fullprompt(nuevo, out, gemini_key=_load_env_key(),
-                                    product_image_path=job.get("_image_path"))
+                                    product_image_path=job.get("_image_path"),
+                                    integrar_producto=bool(job.get("_image_path")))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo generar el nuevo ángulo: {e}")
     if not img:

@@ -1620,3 +1620,17 @@ Fix en `disruptive_images.py` (_SISTEMA + _TOOL):
 - VALIDADO con imagen real (láser hongos): "TIENES UN INQUILINO EN LA UÑA / Y no paga arriendo / SACARLO YA"
   → monstruito-hongo acampando sobre la uña dañada (dolor) + haz láser rojo entrando a sacarlo (solución).
   El ángulo se entiende sin leer texto. Solo prompt/schema — el flujo de generación no cambió.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎨 Ads imagen: fix Regenerar (persistencia) + ✏️ "Ajustar con instrucción"
+Juan: el botón Regenerar no funcionaba + quería darle una instrucción a una imagen que le gusta para acomodarla.
+- **CAUSA de Regenerar roto**: los JOBS viven solo en MEMORIA → cada reinicio del server (hoy hubo muchos)
+  dejaba la página del usuario apuntando a un job inexistente → 404 en Regenerar/➕Producto/🎲Otro ángulo.
+  FIX: `_persist_disruptive(job_id)` guarda el job a `work/<id>/job.json` (al crear conceptos, al terminar
+  el lote y tras cada mutación) y `_get_job()` lo recupera de disco si no está en memoria. `status()` y los
+  4 endpoints de mutación usan `_get_job`. Probado: persistir → borrar de memoria → recuperar OK.
+- **NUEVO ✏️ Ajustar con instrucción**: botón por imagen → prompt de texto libre ("pon la luz más roja",
+  "quita el texto de arriba") → `editar_imagen_ia()` (Nano Banana 2 image-edit: cambia SOLO lo pedido,
+  conserva composición/texto/chrome) → endpoint `/api/disruptive-edit-image`. PROBADO con imagen real:
+  "monstruito asustado corriendo con su maleta + láser más grande" → editó exacto eso y conservó el resto.
+- AVISO Jack: nuevos _persist_disruptive/_get_job en app.py (solo Ads imagen); editar_imagen_ia en
+  disruptive_images.py; botón disEdit en el frontend.

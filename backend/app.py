@@ -29,7 +29,8 @@ from pipeline.narrative import analyze_narrative
 from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
 from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
-                                        generar_ad_fullprompt, _integrar_producto_ia)
+                                        generar_ad_fullprompt, _integrar_producto_ia,
+                                        editar_imagen_ia)
 from pipeline import foreplay_search as fp
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -55,6 +56,42 @@ app = FastAPI(title="CreativeMaxing", lifespan=lifespan)
 
 # Estado de trabajos en memoria
 JOBS: dict[str, dict] = {}
+
+
+def _persist_disruptive(job_id: str):
+    """Guarda el job de Ads imagen a disco (work/<id>/job.json) para que Regenerar / ➕Producto /
+    🎲Otro ángulo / ✏️Ajustar SIGAN funcionando aunque el server se reinicie (antes: 404)."""
+    import json as _json
+    job = JOBS.get(job_id)
+    if not job:
+        return
+    data = {k: job.get(k) for k in ("status", "result", "created", "_image_path", "_precio",
+                                    "_ofertas", "_producto", "_page_text")}
+    try:
+        d = os.path.join(WORK_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "job.json"), "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _get_job(job_id: str) -> dict | None:
+    """JOBS en memoria, o recuperado de disco si el server se reinició."""
+    import json as _json
+    job = JOBS.get(job_id)
+    if job:
+        return job
+    p = os.path.join(WORK_DIR, job_id, "job.json")
+    if os.path.exists(p):
+        try:
+            with open(p) as f:
+                job = _json.load(f)
+            JOBS[job_id] = job
+            return job
+        except Exception:  # noqa: BLE001
+            return None
+    return None
 
 # Ancho de descarga (la altura se ajusta sola segun el formato 1:1 / 9:16 / 4:5)
 RES_MAP = {"2160": 2160, "1440": 1440, "1080": 1080, "720": 720, "480": 480}
@@ -331,7 +368,7 @@ def _gc_jobs(keep: int = 80):
 @app.get("/api/status/{job_id}")
 def status(job_id: str):
     _gc_jobs()   # limpieza oportunista de trabajos viejos ya terminados
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)   # memoria, o disco si el server se reinició
     if not job:
         raise HTTPException(404, "Trabajo no encontrado")
     return {
@@ -1250,6 +1287,7 @@ async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
     JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
                     "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list,
                     "_producto": producto.strip() or link.strip(), "_page_text": page_text}
+    _persist_disruptive(ctx_id)   # sobrevive reinicios del server
     return {"ctx_id": ctx_id, "conceptos": conceptos}
 
 
@@ -1269,6 +1307,7 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
         job["status"] = "done" if r.get("ok") else "error"
         if not r.get("ok"):
             job["message"] = r.get("error", "Error desconocido")
+        _persist_disruptive(job_id)   # sobrevive reinicios del server
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"
         job["message"] = f"Error: {e}"
@@ -1300,7 +1339,7 @@ async def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
 @app.post("/api/regenerate-image")
 def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     """Regenera UNA sola imagen (escena limpia + texto compuesto). Síncrono."""
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job or not (job.get("result") or {}).get("variantes"):
         raise HTTPException(404, "No hay un proyecto de ads para ese job")
     variantes = job["result"]["variantes"]
@@ -1317,13 +1356,14 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     if not img:
         raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
+    _persist_disruptive(job_id)
     return {"imagen": img}
 
 
 @app.post("/api/disruptive-add-product")
 def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
     """Mete el PRODUCTO real integrado en UNA imagen ya generada (2ª pasada). Síncrono."""
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job or not (job.get("result") or {}).get("variantes"):
         raise HTTPException(404, "No hay un proyecto de ads para ese job")
     variantes = job["result"]["variantes"]
@@ -1341,13 +1381,39 @@ def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
         raise HTTPException(500, f"No se pudo poner el producto: {e}")
     if not res:   # bloqueo/cuota/sin imagen → el ad quedó intacto; avisa de verdad
         raise HTTPException(502, "No se pudo integrar el producto (reintenta o revisa el tope de gasto de Google).")
+    _persist_disruptive(job_id)
+    return {"imagen": v["imagen"]}
+
+
+@app.post("/api/disruptive-edit-image")
+def disruptive_edit_image(job_id: str = Form(...), index: int = Form(...), instruccion: str = Form(...)):
+    """✏️ AJUSTE con instrucción del usuario: 'ponle la luz más roja', 'quita el texto de arriba', etc.
+    Edita la imagen ya generada cambiando SOLO lo pedido. Síncrono."""
+    job = _get_job(job_id)
+    if not job or not (job.get("result") or {}).get("variantes"):
+        raise HTTPException(404, "No hay un proyecto de ads para ese job")
+    variantes = job["result"]["variantes"]
+    if index < 0 or index >= len(variantes):
+        raise HTTPException(400, "Índice fuera de rango")
+    if not instruccion.strip():
+        raise HTTPException(400, "Dime qué quieres ajustar")
+    v = variantes[index]
+    if not v.get("imagen"):
+        raise HTTPException(400, "Esa imagen aún no está generada")
+    try:
+        res = editar_imagen_ia(v["imagen"], instruccion.strip(), _load_env_key())
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo ajustar: {e}")
+    if not res:
+        raise HTTPException(502, "Google no devolvió la imagen ajustada (reintenta o revisa créditos)")
+    _persist_disruptive(job_id)
     return {"imagen": v["imagen"]}
 
 
 @app.post("/api/disruptive-swap-concept")
 def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
     """Cambia UN concepto por otro TOTALMENTE DIFERENTE (evita los ya mostrados) y lo renderiza. Síncrono."""
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job or not (job.get("result") or {}).get("variantes"):
         raise HTTPException(404, "No hay un proyecto de ads para ese job")
     variantes = job["result"]["variantes"]
@@ -1377,6 +1443,7 @@ def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
         raise HTTPException(502, nuevo.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     nuevo["imagen"] = img
     variantes[index] = nuevo   # reemplaza el concepto viejo por el nuevo
+    _persist_disruptive(job_id)
     return {"variante": nuevo}
 
 

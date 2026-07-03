@@ -343,6 +343,37 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
     return None                    # no se pudo integrar → el ad queda intacto (sin producto)
 
 
+def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str) -> str | None:
+    """Edición DIRIGIDA: aplica la instrucción del usuario a la imagen ya generada (Nano Banana 2),
+    cambiando SOLO lo pedido y conservando todo lo demás. Devuelve la ruta o None si no se pudo."""
+    if not (instruccion.strip() and gemini_key and os.path.exists(img_path)):
+        return None
+    try:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=gemini_key)
+        with open(img_path, "rb") as f:
+            ib = f.read()
+        prompt = (
+            "Edit this image following the user's instruction EXACTLY. Change ONLY what the instruction "
+            "asks and keep EVERYTHING else identical: composition, faces, colors, style, the video-player "
+            "chrome, and all existing Spanish text (unless the instruction says to change it). "
+            f"User instruction (Spanish): \"{instruccion.strip()}\". "
+            "If the instruction adds or modifies Spanish text, render it crisply and spelled EXACTLY. "
+            "Output only the edited image.")
+        r = client.models.generate_content(
+            model=_IMG_MODEL,
+            contents=[prompt, types.Part.from_bytes(data=ib, mime_type="image/png")])
+        for p in ((r.candidates or [None])[0].content.parts if (r.candidates or None) else []):
+            if getattr(p, "inline_data", None):
+                with open(img_path, "wb") as f:
+                    f.write(p.inline_data.data)
+                return img_path
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                           product_image_path: str | None = None, verify: bool = True,
                           max_regen: int = 2, integrar_producto: bool = False) -> str | None:

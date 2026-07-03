@@ -1767,3 +1767,21 @@ de los ganadores); salida ahora incluye `fases:{hook,problema,giro,producto,prue
 Iterado 3 veces contra producto delicado (gel reductor): salió fluido, con voz de Juan, específico y
 policy-safe. AVISO Jack: toqué scripts.py (prompt/cap/ritmo) y el framework .md — tu flujo de VO no cambia,
 el campo nuevo `fases` es opcional.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🚨 ENCONTRADO Y MUERTO el bug de los cortes repetidos (era el LOOP de la voz en off)
+Juan (con toda la razón, furioso): "en el MISMO video aparece como 4 veces el mismo corte". EVIDENCIA en su
+file(49).mp4: cada corte se repetía con desfase constante de +10.8s → el MONTAJE ENTERO se reproducía otra
+vez. NO era la selección de clips: era `add_voiceover`/`add_voiceover_and_sfx` con `-stream_loop -1` en el
+video — si la voz duraba más que el montaje, el video ENTERO se repetía 2-4 veces. Y el montaje quedaba corto
+porque se armaba por NÚMERO de clips (cpv), no por duración (9 clips de ~1.2s = 10.8s vs voz de 20s).
+FIX doble en `assemble.py`:
+1. **Loop ELIMINADO**: el video ya NO se repite jamás; si faltara video se sostiene el último frame
+   (tpad stop_mode=clone) + corte EXACTO a la duración real de la voz (`_dur_flag` con ffprobe — probe()
+   fallaba con audio puro y el -shortest con filtro no cortaba fino).
+2. **Versiones por DURACIÓN**: cada versión acumula clips hasta target*1.15+1s (no un número fijo) →
+   el montaje SIEMPRE alcanza la voz. Si el bucket disjunto no da, completa con clips no usados; si el pool
+   se agota, puede reusar de OTRAS versiones pero NUNCA dentro de la misma.
+VERIFICADO: caso reproducido (video 8s + voz 20s) → salida 20.00s exactos, CERO repeticiones de contenido
+(detector perceptual); mock 60 clips cortos → 8 versiones de 24-25s, 0 clips repetidos internos, overlap
+entre versiones mínimo. AVISO Jack: toqué add_voiceover, add_voiceover_and_sfx y plan de versiones
+(duración-based); tu rotación de hooks y usage-based del pool chico siguen ahí.

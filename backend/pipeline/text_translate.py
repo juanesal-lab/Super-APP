@@ -210,7 +210,7 @@ def traducir_texto_pantalla(
     api_key: str | None = None,
     out_path: str | None = None,
     progress: Callable[[str, int], None] | None = None,
-    modo: str = "traducir",   # "traducir" (reescribe en es-CO) | "tapar" (relleno sólido)
+    modo: str = "traducir",   # "traducir" | "tapar" | "limpiar" | "solo_otro" (traduce solo lo extranjero)
 ) -> dict:
     """Lee el texto en pantalla y lo reemplaza sobre el video (traducido o tapado sólido).
 
@@ -274,6 +274,10 @@ def traducir_texto_pantalla(
         idioma = str(b.get("idioma", "")).strip().lower()
         ya_es = idioma.startswith("es")
         if modo == "traducir" and not es:   # en "tapar"/"limpiar" cubrimos aunque no haya traducción
+            continue
+        # "solo_otro": traduce SOLO lo que está en otro idioma y DEJA el texto español tal cual
+        # (para conservar intactos los textos del ganador que ya funcionan).
+        if modo == "solo_otro" and (ya_es or not es):
             continue
         # "limpiar": traduce lo que está en OTRO idioma; TAPA (blur) lo que ya está en español o no
         # tiene traducción — así NO quedan subtítulos viejos peleando con los nuevos que ponemos.

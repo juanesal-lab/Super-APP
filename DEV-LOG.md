@@ -1724,3 +1724,46 @@ fuentes para armar los clips.
   búsqueda profunda de Juan ⊕ velocidad+variedad+voz en off nuestro) y Buscar creativos (e044706).
 - AVISO Juan: tus worktrees también quedan ignorados con esto y tu `.env` local se copia igual a tus
   worktrees; el `.env` sigue SIN subirse a git (cada quien el suyo).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔁 VARIAR EL HOOK del winner — la capa de VIDEO sobre tu creative_variator (¡enchufados, Juan!)
+Pendiente #1 del handoff, hecho con 2 agentes (constructor + revisor). Tu cerebro + nuestro video, como
+lo propusiste ("Enchufémoslos"):
+- NUEVO `backend/pipeline/hook_variator.py` → `variar_hook(winner_path, product_desc=, n=4, voz=,
+  caption_style=, traducir_cuerpo=, evitar=, ...)`: de UN ganador salen 4 videos con el MISMO cuerpo
+  y HOOKS distintos. Por variación: tu `generar_variaciones` (n+2, con_escenas=True) da hook + brief →
+  `buscar_tiktok(brief)` (GRATIS, region != CO, dedup entre variaciones) → mp4 directo de tikwm
+  (fallback yt-dlp) → EAST local ($0) elige la VENTANA SIN TEXTO de la toma (los memes entran/salen;
+  hasta 3 descargas y gana la primera limpia; si ninguna → `tapar` con Gemini sobre el clip cortico) →
+  `synthesize_with_timestamps` narra el hook (la voz MANDA la duración; add_voiceover loopea si falta
+  video) → `burn_word_captions` (5 estilos) → `concat_clips` con el cuerpo + `punch_pace`. 2 en paralelo.
+- PLAN B sin toma: hook ORIGINAL limpio (`tapar`, 1 sola vez compartida) con hook/voz nuevos encima.
+- CUERPO: cortado 1 vez (normalizado) y compartido; texto extranjero → traducido; el ESPAÑOL SE DEJA
+  (modo NUEVO `"solo_otro"` en text_translate.py, aditivo, tus modos intactos). CTA del ganador intacto.
+- REGLAS DE ORO: regex anti-precio v2 (bloquea $/€/precio/“COP 49900”/“cuarenta mil pesos”/“50% off”
+  pero DEJA “2x1”, “envío gratis”, “100% algodón”) — 16/16 casos; Colombia excluida; se piden n+2 hooks
+  para reponer descartes.
+- `backend/app.py`: NUEVO POST `/api/variar-hook` (job en background como los demás, whitelists) +
+  Form `vo_guiones` en /api/producto-clips. Frontend: pestaña NUEVA "🔁 Variar hook" (patrón autoHero,
+  preview de estilos, grid con hook/origen/link de la toma/descargar; poll con reintentos — no se
+  congela si el server está ocupado encodeando; render escapado), selector "Guiones: 8/4/2" en Mi
+  producto (control de costo ElevenLabs, pendiente pequeño del handoff) y Guía actualizada.
+- FIX IMPORTANTE del revisor en `assemble.add_voiceover`: forzar `-ar 48000 -ac 2`. El mp3 de
+  ElevenLabs es 44.1k mono y el demuxer de `concat_clips` RALENTIZABA/desafinaba el audio de lo
+  concatenado después (×48/44.1 ≈ +9%, medido por FFT: cuerpo de 220 Hz sonaba a 202 Hz y el sync se
+  corría ~1s por cada 9s). Con el fix: 220.0 Hz exactos y audio=video ±0.03s. OJO: si concatenas algo
+  DESPUÉS de un add_voiceover viejo en otro flujo, tenías este mismo bug latente.
+- VERIFICADO: py_compile + node --check 10/10; revisor corrió el pipeline REAL de ffmpeg con IA
+  mockeada ($0, videos sintéticos): shapes cruzados con inspect, whitelists, path-traversal contenido,
+  CO filtrado, precio filtrado, lock del plan B (tapar 1 sola vez con 2 threads), fallback completo.
+  E2E REAL (1 corrida, video ganador de toallas de tela 23.5s): 4/4 videos, 3 con toma nueva + 1 plan
+  B, hooks MUY distintos (demo shock / ahorro / testimonio / secreto), frames mirados uno a uno,
+  audio 48k estéreo en sync (22.00s vs 22.00s), pacing 26→22s, texto del cuerpo español intacto
+  (0 bloques tocados). La ventana-sin-texto EAST validada sobre las 3 tomas reales descargadas
+  (limpia en t0=0 para una; 10 y 3 cajas en las otras → tapar). Muestras en work/e3ec35398393/v*/.
+- QUÉ FALTA / IDEAS PARA TI: modo "hook + tomas" (reemplazar la toma de CADA fase con tus briefs — tu
+  motor ya lo entrega, es iterar este mismo flujo); botón "🎲 otro hook" pasándote `evitar` (como tu
+  disruptive-swap-concept); usar `copy_pantalla` como texto estático; persistir el job a disco como tu
+  `_persist_disruptive` (si el server se reinicia a mitad, el poll lo pierde).
+- AVISO: NO toqué creative_variator.py (solo lo consumo) ni tiktok_search/caption_styles/downloader
+  (solo imports). En assemble.py SOLO la línea de add_voiceover explicada arriba; en text_translate.py
+  SOLO el modo "solo_otro" aditivo.

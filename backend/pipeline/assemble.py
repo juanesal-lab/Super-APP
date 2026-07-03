@@ -338,7 +338,9 @@ def add_voiceover(video_path: str, vo_path: str, out_path: str) -> str:
         "-map", "0:v:0", "-map", "1:a:0", "-shortest",
         *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-        "-c:a", "aac", "-b:a", "192k",
+        # 48k estéreo SIEMPRE: el mp3 de ElevenLabs viene a 44.1k mono y si esto luego se
+        # concatena con clips normalizados (48k), el demuxer concat ralentiza/desafina el audio.
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
         out_path,
     ])
     return out_path

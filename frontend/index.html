@@ -148,6 +148,7 @@
     <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
+    <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
     <button data-p="p-config">🔑 Claves</button>
@@ -511,6 +512,126 @@
   </script>
   </div><!-- /p-clone -->
 
+  <div class="panel" id="p-varhook" style="display:none">
+  <!-- 🔁 VARIAR EL HOOK DEL WINNER (sección autocontenida, reusa clases auto*) -->
+  <div class="autoHero" style="margin-top:0">
+    <h2>🔁 <span>Variar el Hook</span> del Winner</h2>
+    <p class="lead">Sube un video que YA te funciona y salen <b>4 videos nuevos</b>: el mismo cuerpo
+      ganador, pero cada uno abre con un <b>HOOK distinto</b> (toma nueva de TikTok + voz colombiana +
+      texto quemado). Mata el ad-fatigue sin dañar lo que ya vende. Si el video trae texto en otro
+      idioma, se traduce; el texto en español se deja igual.</p>
+
+    <input type="file" id="vhWinner" accept="video/*" class="hidden">
+    <label class="autoDrop" for="vhWinner"><b id="vhWinnerName">🏆 Elige tu video GANADOR</b>
+      <div class="s">el creativo validado al que quieres cambiarle solo el gancho</div></label>
+
+    <div class="autoOpts">
+      <input type="text" id="vhDesc" class="full" placeholder="¿Qué producto es? (ej. almohadilla para dolor de espalda)">
+      <select id="vhN">
+        <option value="4">Videos: 4 hooks distintos</option>
+        <option value="3">Videos: 3</option>
+        <option value="2">Videos: 2</option>
+      </select>
+      <select id="vhVoz">
+        <option value="juan_carlos">Voz del hook: Juan Carlos</option>
+        <option value="kate">Voz del hook: Kate</option>
+      </select>
+      <select id="vhCapStyle" class="full" onchange="document.getElementById('vhCapPrev').src='/api/caption-preview?style='+this.value">
+        <option value="hormozi">Texto del hook: Hormozi (palabra x palabra, keyword amarilla)</option>
+        <option value="karaoke">Texto del hook: Karaoke (resalta la palabra que suena)</option>
+        <option value="highlight_box">Texto del hook: Caja (palabra en caja de color)</option>
+        <option value="bold_outline">Texto del hook: Bold (blanco con borde grueso)</option>
+        <option value="yellow_highlight">Texto del hook: Amarillo (claves resaltadas)</option>
+      </select>
+      <img id="vhCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ve el texto del hook" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
+    </div>
+    <div class="autoChk">
+      <label><input type="checkbox" id="vhTraducir" checked> Traducir el texto en pantalla del cuerpo si está en otro idioma (el español se deja)</label>
+    </div>
+
+    <button class="autoBtn" id="vhGo" disabled onclick="vhRun()">🔁 Variar el hook (4 videos)</button>
+
+    <div class="autoProg hidden" id="vhProg">
+      <div class="autoBarWrap"><div class="autoBar" id="vhBar"></div></div>
+      <div class="autoMsg" id="vhMsg">Iniciando…</div>
+    </div>
+    <div id="vhResult"></div>
+  </div>
+
+  <script>
+    (function(){
+      const el=document.getElementById('vhWinner');
+      el.addEventListener('change',e=>{
+        const fs=e.target.files;
+        window._vhWinner=fs[0];
+        document.getElementById('vhWinnerName').textContent=fs.length?'🏆 '+fs[0].name:'🏆 Elige tu video GANADOR';
+        document.getElementById('vhGo').disabled=!fs.length;
+      });
+      document.getElementById('vhN').addEventListener('change',e=>{
+        document.getElementById('vhGo').textContent=`🔁 Variar el hook (${e.target.value} videos)`;
+      });
+    })();
+    async function vhRun(){
+      const w=window._vhWinner; if(!w) return;
+      const fd=new FormData();
+      fd.append('winner',w);
+      fd.append('product_desc',document.getElementById('vhDesc').value);
+      fd.append('n',document.getElementById('vhN').value);
+      fd.append('voz',document.getElementById('vhVoz').value);
+      fd.append('caption_style',document.getElementById('vhCapStyle').value);
+      fd.append('traducir_cuerpo',document.getElementById('vhTraducir').checked);
+      document.getElementById('vhGo').disabled=true;
+      document.getElementById('vhResult').innerHTML='';
+      document.getElementById('vhProg').classList.remove('hidden');
+      document.getElementById('vhBar').style.width='0%';
+      try{ const r=await fetch('/api/variar-hook',{method:'POST',body:fd}); const j=await r.json();
+        if(!r.ok) throw (j.detail||'Error'); vhPoll(j.job_id); }
+      catch(e){ document.getElementById('vhMsg').textContent='Error: '+e; document.getElementById('vhGo').disabled=false; }
+    }
+    let vhFallos=0;
+    async function vhPoll(id){
+      let j;
+      try{
+        const r=await fetch('/api/status/'+id); if(!r.ok) throw new Error('status '+r.status);
+        j=await r.json(); vhFallos=0;
+      }catch(e){
+        // El server puede tardar en responder mientras encodea (ffmpeg) — reintentar, no congelarse.
+        vhFallos++;
+        if(vhFallos<=40){ document.getElementById('vhMsg').textContent='⏳ El server está ocupado armando los videos… sigo pendiente'; setTimeout(()=>vhPoll(id),3000); return; }
+        document.getElementById('vhMsg').innerHTML='<span style="color:var(--warn)">Perdí la conexión con el trabajo (¿se reinició el server?). Recarga la página e intenta de nuevo.</span>';
+        document.getElementById('vhGo').disabled=false; return;
+      }
+      document.getElementById('vhBar').style.width=(j.progress||0)+'%';
+      document.getElementById('vhMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>vhPoll(id),1300); return; }
+      document.getElementById('vhGo').disabled=false;
+      if(j.status==='error'){ document.getElementById('vhMsg').innerHTML='<span style="color:var(--warn)">'+vhEsc(j.message||'Error')+'</span>'; return; }
+      vhRender(j.result);
+    }
+    function vhEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function vhRender(res){
+      if(!res) return; const box=document.getElementById('vhResult'); let h='';
+      if(res.resumen) document.getElementById('vhMsg').textContent='✅ '+res.resumen;
+      (res.pasos||[]).forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${vhEsc(p.paso)}${p.detalle?` <span>· ${vhEsc(p.detalle)}</span>`:''}</div>`; });
+      if(res.videos && res.videos.length){
+        h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px">';
+        res.videos.forEach((v,i)=>{
+          const u='/api/file?path='+encodeURIComponent(v.path), dl='/api/download?path='+encodeURIComponent(v.path)+'&name=hook_'+(i+1);
+          h+=`<div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px">
+            <video src="${u}" controls playsinline style="width:100%;border-radius:10px"></video>
+            <div style="font-weight:800;font-size:13.5px;margin:10px 0 2px">💬 «${vhEsc(v.hook)}»</div>
+            <div style="color:var(--muted);font-size:12px">${vhEsc(v.angulo||'')}</div>
+            <div style="color:var(--muted);font-size:12px;margin-top:4px">🎬 ${vhEsc(v.origen||'')}${v.fuente_url?` · <a href="${vhEsc(v.fuente_url)}" target="_blank" style="color:var(--accent)">ver toma</a>`:''}</div>
+            <a class="autoBtn" style="margin-top:10px;padding:10px;font-size:13.5px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${dl}" download>⬇️ Descargar</a>
+          </div>`;
+        });
+        h+='</div>';
+      }
+      box.innerHTML=h;
+    }
+  </script>
+  </div><!-- /p-varhook -->
+
   <div class="panel" id="p-config" style="display:none">
   <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
   <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
@@ -727,6 +848,11 @@
         <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
         <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
       </select>
+      <select id="prodVoGuiones" title="Cuántas narraciones distintas genera ElevenLabs (menos = más barato; se reparten cicladas entre los 8 videos)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <option value="8">Guiones: 8 (uno por video)</option>
+        <option value="4">Guiones: 4 (gasta la mitad)</option>
+        <option value="2">Guiones: 2 (el más barato)</option>
+      </select>
       <img id="prodCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven los subtítulos" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
     </div>
 
@@ -818,6 +944,7 @@
         fd.append('voz_en_off',document.getElementById('prodVO').checked);
         fd.append('voz',document.getElementById('prodVoz').value);
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
+        fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
@@ -1587,6 +1714,7 @@
       <div class="tip"><span class="em">🔍</span><span><b>Buscar creativos</b> — sube la foto + nombre de tu producto y encuentra los creativos de ese MISMO producto en TikTok Y Foreplay (verificados por IA) para armar tus clips.</span></div>
       <div class="tip"><span class="em">✨</span><span><b>Crear creativo</b> — subes creativos ganadores (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
       <div class="tip"><span class="em">🎯</span><span><b>Clon con mi producto</b> — sube un ganador + foto/clips de TU producto y la IA lo mete en la escena (reemplaza donde queda limpio, corta a una toma tuya donde hay movimiento) + voz/subtítulos.</span></div>
+      <div class="tip"><span class="em">🔁</span><span><b>Variar hook</b> — sube TU video ganador y salen 4 videos con el mismo cuerpo pero HOOKS distintos (toma nueva de TikTok + voz colombiana + texto quemado). Para escalar sin ad-fatigue.</span></div>
       <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — cambia el producto de un video por el tuyo conservando el audio original.</span></div>
       <div class="tip"><span class="em">🎙️</span><span><b>Doblar</b> — traduce la voz de un video a otro idioma manteniendo el tono (ej. inglés ↔ español).</span></div>
       <div class="tip"><span class="em">🔑</span><span><b>Claves</b> — donde pegas tus API keys (Gemini, ElevenLabs, Claude, Foreplay).</span></div>

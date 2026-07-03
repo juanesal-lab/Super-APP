@@ -562,6 +562,70 @@ async def clone(
     return {"job_id": job_id}
 
 
+# ---- 🔁 VARIAR EL HOOK del winner (cuerpo intacto, 4 hooks nuevos) ----
+
+def _run_variar_hook_job(job_id: str, winner: str, settings: dict):
+    from pipeline.hook_variator import variar_hook
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        result = variar_hook(
+            winner,
+            product_desc=settings.get("product_desc", ""),
+            n=settings.get("n", 4),
+            voz=settings.get("voz", "juan_carlos"),
+            caption_style=settings.get("caption_style", "hormozi"),
+            traducir_cuerpo=settings.get("traducir_cuerpo", True),
+            gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
+            anthropic_key=_load_anthropic_key(),
+            work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
+        )
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "Error")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/variar-hook")
+async def variar_hook_api(
+    winner: UploadFile = File(...),
+    product_desc: str = Form(""),
+    n: int = Form(4),
+    voz: str = Form("juan_carlos"),
+    caption_style: str = Form("hormozi"),
+    traducir_cuerpo: bool = Form(True),
+):
+    if not winner or not winner.filename:
+        raise HTTPException(400, "Sube el video ganador")
+    job_id = uuid.uuid4().hex[:12]
+    up = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(up, exist_ok=True)
+    winner_path = os.path.join(up, "winner_" + os.path.basename(winner.filename))
+    with open(winner_path, "wb") as f:
+        shutil.copyfileobj(winner.file, f)
+
+    settings = {
+        "product_desc": product_desc.strip(),
+        "n": max(1, min(int(n), 6)),
+        "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
+        "caption_style": caption_style if caption_style in (
+            "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
+            else "hormozi",
+        "traducir_cuerpo": bool(traducir_cuerpo),
+    }
+    JOBS[job_id] = {"status": "running", "progress": 0,
+                    "message": "Iniciando...", "result": None, "created": time.time()}
+    threading.Thread(target=_run_variar_hook_job,
+                     args=(job_id, winner_path, settings), daemon=True).start()
+    return {"job_id": job_id}
+
+
 # ---- Proceso por pasos para VOZ EN OFF ----
 
 def _save_uploads(files: list[UploadFile]) -> tuple[str, list[str]]:
@@ -1017,6 +1081,7 @@ async def producto_clips(
     voz: str = Form("juan_carlos"),
     caption_style: str = Form("hormozi"),
     subtitulos: bool = Form(True),
+    vo_guiones: int = Form(0),
 ):
     """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
     links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
@@ -1047,6 +1112,9 @@ async def producto_clips(
             "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
             else "hormozi",
         "subtitulos": bool(subtitulos),
+        # Control de costo de ElevenLabs: cuántas narraciones distintas (0 = una por versión).
+        # El selector manda 8 (una por video) → equivale al comportamiento por defecto.
+        "vo_guiones": vo_guiones if vo_guiones in (2, 4) else 0,
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}

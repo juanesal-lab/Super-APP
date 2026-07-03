@@ -1576,3 +1576,17 @@ Juan: "solo 1 de los 30 me lo encuentra bien". Diagnóstico + 3 fixes en `tiktok
 RESULTADO con el láser de Juan: antes 1/30 confirmado → ahora **9/9 confirmados y TODOS el dispositivo real**
 (GoSpring device, fungus remover, naillight...), 92s. AVISO Jack: toqué tu _verificar (línea de USO) y el
 bloque de verificación de buscar(); tu expansión de queries ES+EN quedó intacta (es la que alimenta esto).
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔎🔥 Búsqueda TikTok ahora TAMBIÉN busca en Foreplay (mismo pool, misma verificación)
+Juan: que la búsqueda de videos use Foreplay además de TikTok. Hecho en `tiktok_search.py`:
+- NUEVO `_foreplay_candidatos(queries, foreplay_key)`: consulta la biblioteca de ads GANADORES de Foreplay
+  con las mismas keywords (3 primeras, ES+EN), normaliza cada ad al formato de candidato (url = mp4 directo
+  descargable, cover = thumbnail, play = mp4 para verificación profunda, plays = días corriendo ×1000 como
+  señal de ganador, source = "foreplay") y lo suma al MISMO pool → pasa por la MISMA verificación
+  (portada Gemini + video por dentro + juez Claude).
+- `buscar(..., foreplay_key=None)`; `/api/tiktok-search` pasa `_load_foreplay_key()`. UI: badge 🔥 en los
+  resultados de Foreplay + URLs largas truncadas.
+- PROBADO con el láser: 8 confirmados = 5 de Foreplay (ads REALES de dropshippers vendiendo el mismo láser:
+  Dolccia, Bio Guate — creativos ya probados) + 3 de TikTok. 132s. Costo: ~3 búsquedas Foreplay (~30 créditos)
+  por búsqueda con foto.
+- AVISO Jack: solo agregué; tu flujo de queries y el pool quedan igual cuando no hay key de Foreplay.

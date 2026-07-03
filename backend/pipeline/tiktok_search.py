@@ -185,6 +185,47 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         return None
 
 
+def _foreplay_candidatos(queries: list[str], foreplay_key: str | None, max_q: int = 3) -> list[dict]:
+    """Candidatos EXTRA desde Foreplay (biblioteca de ads GANADORES con video descargable).
+
+    Se suman al mismo pool y pasan por la MISMA verificación visual (portada + video por dentro).
+    El link que se entrega es el mp4 directo (descargable en 📥 Descargar)."""
+    if not foreplay_key:
+        return []
+    try:
+        from . import foreplay_search as fps
+    except ImportError:
+        return []
+    out, vistos = [], set()
+    for q in queries[:max_q]:
+        try:
+            r = fps.buscar_ads(q, api_key=foreplay_key, video_only=True)
+        except Exception:  # noqa: BLE001
+            continue
+        if not r.get("ok"):
+            continue
+        for a in r.get("ads", []):
+            vid = a.get("video")
+            if not vid or vid in vistos:
+                continue
+            vistos.add(vid)
+            try:
+                dur = int(float(a.get("video_duration") or 30))
+            except (TypeError, ValueError):
+                dur = 30
+            out.append({
+                "url": vid,                                   # mp4 directo (descargable)
+                "title": ((a.get("name") or "") + " · " + (a.get("description") or "")).strip(" ·")[:120],
+                "cover": a.get("thumbnail") or "",
+                "play": vid,                                  # para la verificación profunda
+                "plays": int(a.get("dias") or 0) * 1000,      # días corriendo = señal de GANADOR
+                "likes": 0, "region": "", "dur": min(120, max(5, dur)),
+                "source": "foreplay",
+                "foreplay_url": a.get("foreplay_url") or "",
+            })
+    return out
+
+
 def _verificar_video(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dict | None:
     """VERIFICACIÓN PROFUNDA: baja el video (mp4 de tikwm) y mira 3 frames de ADENTRO.
 
@@ -329,10 +370,12 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
 
 
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
-           count: int = 20, anthropic_key: str | None = None) -> dict:
+           count: int = 20, anthropic_key: str | None = None,
+           foreplay_key: str | None = None) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
-    Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó."""
+    Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
+    Si hay `foreplay_key`, también busca en la biblioteca de ads GANADORES de Foreplay (misma verificación)."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
@@ -356,6 +399,9 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=3), queries):
             for c in res:
                 cands.setdefault(c["url"], c)
+    # + FOREPLAY: ads GANADORES ya probados (video descargable) al MISMO pool y con la MISMA verificación
+    for c in _foreplay_candidatos(queries, foreplay_key):
+        cands.setdefault(c["url"], c)
     cand_list = list(cands.values())
     # EXCLUIR COLOMBIA (regla del dueño) + descartar duraciones raras (fuera de 4-120s)
     filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120 and c.get("region") != "CO"]
@@ -453,6 +499,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     for c in links:
         c.pop("_rank", None)
         c.pop("_deep", None)
+        c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
             "n_confirmados": n_conf,

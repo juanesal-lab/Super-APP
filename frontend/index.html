@@ -351,7 +351,7 @@
           const conf=links.filter(l=>l.verificado_producto), resto=links.filter(l=>!l.verificado_producto);
           const urls=(conf.length?conf:links).map(l=>l.url).join('\n');
           h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||links.length} links${conf.length?' confirmados':''}</button>`;
-          const fila=(l,i,badge)=>`<div class="autoStep">${badge} <a href="${l.url}" target="_blank" style="color:var(--accent)">${i}. ${l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`;
+          const fila=(l,i,badge)=>`<div class="autoStep">${badge}${l.source==='foreplay'?' <span title="Ad GANADOR encontrado en Foreplay (video descargable directo)" style="color:var(--accent)">🔥</span>':''} <a href="${l.url}" target="_blank" style="color:var(--accent)">${i}. ${l.url.length>75?l.url.slice(0,72)+'…':l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`;
           let n=1;
           conf.forEach(l=>{ h+=fila(l,n++, '<span title="La IA confirmó que es TU producto (misma forma)">✅</span>'); });
           if(resto.length && j.verificado){

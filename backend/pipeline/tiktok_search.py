@@ -381,8 +381,7 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
 
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
            count: int = 20, anthropic_key: str | None = None,
-           foreplay_key: str | None = None,
-           analisis: dict | None = None) -> dict:
+           analisis: dict | None = None, foreplay_key: str | None = None) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.

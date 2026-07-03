@@ -66,7 +66,8 @@ def _terminos_foreplay(info: dict, max_terms: int = _FP_TERMS) -> list[str]:
 
 def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | None,
                      gemini_key: str | None, count: int = 20,
-                     verify_max: int = _FP_VERIFY_MAX) -> dict:
+                     verify_max: int = _FP_VERIFY_MAX,
+                     excluir: set[str] | None = None) -> dict:
     """Busca en Foreplay con varios términos (paralelo), deduplica y verifica el MISMO producto.
     Devuelve {ok, ads:[...], n_confirmados, verificado, terminos, error?}."""
     if not foreplay_key:
@@ -89,7 +90,7 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 continue
             for a in r.get("ads") or []:
                 k = str(a.get("id") or a.get("video") or a.get("foreplay_url") or "")
-                if k and k not in ads:
+                if k and k not in ads and k not in (excluir or set()):
                     ads[k] = a
     ad_list = list(ads.values())
     if not ad_list:
@@ -170,4 +171,106 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
 
     return {"ok": bool(tk.get("links") or fpr.get("ads")),
             "keywords": tk.get("keywords") or info.get("keywords") or nombre,
-            "desc": info.get("desc", ""), "tiktok": tk, "foreplay": fpr}
+            "desc": info.get("desc", ""),
+            "variants": [v for v in (info.get("variants") or []) if v][:6],
+            "tiktok": tk, "foreplay": fpr}
+
+
+# ══ "🔄 Cambiar" y "🎯 Más con este ángulo" (botones por creativo en la UI) ═══════════════════════
+
+def _terminos_angulo(angulo: str, nombre: str, gemini_key: str | None, k: int = 3) -> list[str]:
+    """1 llamada a Gemini flash: del título/descr de un creativo ganador saca el ÁNGULO de venta y
+    devuelve k búsquedas cortas para encontrar MÁS creativos con ese mismo ángulo. [] si falla."""
+    if not (gemini_key and (angulo or "").strip()):
+        return []
+    try:
+        from google import genai
+        client = genai.Client(api_key=gemini_key)
+        r = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[(f'Título/descripción de un creativo GANADOR de TikTok: "{angulo.strip()[:220]}". '
+                       f'Producto: "{(nombre or "").strip()[:120]}". Identifica su ÁNGULO de venta '
+                       f"(el dolor/beneficio/gancho que usa) y dame {k} búsquedas CORTAS (2-4 palabras) "
+                       "para TikTok que encuentren MÁS creativos con ese MISMO ángulo (mezcla español e "
+                       "inglés). Devuelve SOLO las búsquedas, una por línea, sin numerar.")])
+        lines = [ln.strip(" -•\"'\t") for ln in (r.text or "").splitlines() if ln.strip()]
+        return [ln for ln in lines if 0 < len(ln.split()) <= 6][:k]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def buscar_mas(fuente: str, nombre: str = "", terminos: list[str] | None = None,
+               angulo: str = "", excluir: list[str] | None = None, n: int = 1,
+               image_path: str | None = None, gemini_key: str | None = None,
+               foreplay_key: str | None = None, desc: str = "") -> dict:
+    """Busca n creativos NUEVOS (que no estén en `excluir`) en UNA fuente ("tiktok"|"foreplay").
+
+    - Con `angulo` (título del creativo que gustó): 1 llamada a Gemini saca términos de ese ángulo.
+    - Sin `angulo` (🔄 cambiar): reutiliza `terminos` (los de la búsqueda original) o expande `nombre`.
+    - Con foto (`image_path`): verifica MISMO producto con el juez de siempre (tope chico de costo);
+      lo confirmado va primero y lo demás queda `verificado_producto=False` (badge). Sin foto, sin IA.
+    Devuelve {ok, items: [...], terminos, error?} — items con el mismo shape del grupo de su fuente."""
+    from .tiktok_search import _ES_REGIONS, buscar_tiktok
+
+    excl = {str(e).strip() for e in (excluir or []) if str(e).strip()}
+    terms = _terminos_angulo(angulo, nombre, gemini_key) if angulo.strip() else []
+    terms = terms or [t for t in (terminos or []) if t.strip()][:4] or _expandir(nombre, [])[:3]
+    terms = [t for t in terms if t.strip()]
+    if not terms:
+        return {"ok": False, "error": "Sin términos de búsqueda", "items": [], "terminos": []}
+    n = max(1, min(int(n), 12))
+
+    ref_bytes = None
+    if image_path and os.path.exists(image_path):
+        try:
+            with open(image_path, "rb") as f:
+                ref_bytes = f.read()
+        except Exception:  # noqa: BLE001
+            ref_bytes = None
+
+    if fuente == "foreplay":
+        info = {"keywords": terms[0], "variants": terms[1:], "desc": desc or nombre or angulo}
+        r = _buscar_foreplay(info, ref_bytes, foreplay_key, gemini_key, count=n,
+                             verify_max=min(_FP_VERIFY_MAX, max(8, n * 3)), excluir=excl)
+        return {"ok": r.get("ok", False), "items": r.get("ads") or [],
+                "terminos": terms, "error": r.get("error", "")}
+
+    # ── TikTok ─────────────────────────────────────────────────────────────────────────────────
+    cands: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(terms))) as ex:
+        for res in ex.map(lambda q: buscar_tiktok(q, count=40, pages=2), terms):
+            for c in res:
+                if c["url"] not in excl:
+                    cands.setdefault(c["url"], c)
+    lst = [c for c in cands.values() if c.get("region") != "CO"]          # regla: sin Colombia
+    lst = [c for c in lst if 4 <= c.get("dur", 0) <= 120] or lst
+    lst.sort(key=lambda c: (1 if c.get("region") in _ES_REGIONS else 0, c.get("plays", 0)),
+             reverse=True)
+    if not lst:
+        return {"ok": False, "error": "No encontré más creativos con esa búsqueda", "items": [],
+                "terminos": terms}
+
+    if ref_bytes and gemini_key:
+        pool = lst[:max(12, n * 3)]                       # tope chico: costo acotado por clic
+        conf, resto = [], []
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_verificar, c, ref_bytes, desc or nombre or angulo, gemini_key): c
+                    for c in pool}
+            for fut in as_completed(futs):
+                v, c = fut.result(), futs[fut]
+                if v and v.get("match"):
+                    c["verificado_producto"] = True
+                    conf.append(c)
+                else:
+                    c["verificado_producto"] = False
+                    resto.append(c)
+        for c in lst[len(pool):]:
+            c["verificado_producto"] = False
+        items = (conf + resto + lst[len(pool):])[:n]
+    else:
+        for c in lst:
+            c["verificado_producto"] = False
+        items = lst[:n]
+    for c in items:
+        c.pop("_cover_bytes", None)
+    return {"ok": True, "items": items, "terminos": terms}

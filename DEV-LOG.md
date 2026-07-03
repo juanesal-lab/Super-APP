@@ -1635,6 +1635,62 @@ RESULTADO con el láser de Juan: antes 1/30 confirmado → ahora **9/9 confirmad
 (GoSpring device, fungus remover, naillight...), 92s. AVISO Jack: toqué tu _verificar (línea de USO) y el
 bloque de verificación de buscar(); tu expansión de queries ES+EN quedó intacta (es la que alimenta esto).
 
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔍 Buscar creativos: TikTok + FOREPLAY a la vez (foto + nombre)
+Pedido de Jack: mandar foto + nombre del producto y recibir los creativos de ese producto en AMBAS
+fuentes para armar los clips.
+- NUEVO backend/pipeline/creative_search.py → `buscar_creativos()`: analiza la foto UNA sola vez
+  (tiktok_search.analizar_foto) y con esos términos busca TikTok y Foreplay EN PARALELO.
+  Foreplay: 2-4 términos (español primero, heurística local sin IA), deduplicado entre términos,
+  Colombia excluida adentro de buscar_ads (no toqué foreplay_search de Juan — solo lo consumo);
+  verificación de MISMO producto sobre thumbnails con el MISMO juez de TikTok (_verificar), tope
+  24 thumbnails; lo no juzgable queda honesto con badge "⚠️ sin verificar".
+- backend/app.py: NUEVO POST /api/creative-search (nombre, count, fp_count, foto). Los endpoints
+  /api/tiktok-search y /api/foreplay-search siguen IGUAL (aditivo).
+- tiktok_search.buscar: nuevo param opcional `analisis=` (recibe el dict de analizar_foto ya calculado
+  para no repetir la llamada). Sin él, todo igual que antes.
+- Frontend: pestaña "🔎 Buscar TikTok" → "🔍 Buscar creativos": campo nombre + resultados en 2 grupos
+  (🎵 TikTok con links/badges como antes; 📚 Foreplay con grilla de cards, ▶️ ver, ⬇️ descargar vía
+  /api/foreplay-video, botón copiar links de video para 📥 Descargar / Mi producto). Guía actualizada.
+- VERIFICADO: py_compile ok; firmas cruzadas contra el tiktok_search post-merge de Juan (ok, inspect);
+  JS 9/9 bloques node --check ok; corrida E2E real en modo barato (sin IA): TikTok 8 links + Foreplay
+  8 ads sin señales colombianas, shape correcto; server reiniciado sirviendo /api/creative-search y la
+  pestaña nueva. (La verificación con foto/Gemini usa el mismo _verificar de siempre.)
+- AVISO Juan: cero cambios en foreplay_search.py; en tiktok_search.py solo el param opcional analisis=.
+  Resolvimos también el merge de tus commits de hoy (Cortar clips PRO + verificación profunda)
+  conservando ambos trabajos (velocidad+variedad nuestro y lo tuyo — todo compila y probado).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🌳 Config para sesiones paralelas (worktrees) + push de lo acumulado
+- `.gitignore`: + `.claude/worktrees/` (los worktrees de Claude Code no ensucian el `git status`).
+- NUEVO `.worktreeinclude` (.env, .env.local): cada worktree nuevo recibe las API keys automáticamente.
+- Sin tocar código. Se sube también lo que estaba local sin push: el merge 126c938 (Cortar clips PRO +
+  búsqueda profunda de Juan ⊕ velocidad+variedad+voz en off nuestro) y Buscar creativos (e044706).
+- AVISO Juan: tus worktrees también quedan ignorados con esto y tu `.env` local se copia igual a tus
+  worktrees; el `.env` sigue SIN subirse a git (cada quien el suyo).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔍✨ Buscar creativos: preview ▶️ + 🔄 cambiar + 🎯 "más con este ángulo"
+Pedido de Jack sobre la pestaña nueva: (1) preview para reproducir cada creativo ANTES de descargarlo,
+(2) botón para reemplazar uno que no guste por OTRO en su mismo puesto, (3) botón para buscar MÁS
+creativos con el mismo ángulo de venta del que gustó.
+- Los resultados de TikTok ahora son CARDS (grilla fpGrid) con portada, views, badges ✅/⚠️ y botones:
+  ▶️ Ver (reproduce el mp4 directo de tikwm ahí mismo, con fallback "ábrelo en TikTok" si el CDN
+  falla), 📋 copiar link, 🔄 cambiar, 🎯 Más así. Los cards de Foreplay ganaron 🔄 y 🎯 (ya tenían ▶️/⬇️).
+- NUEVO POST /api/creative-more (fuente tiktok|foreplay, nombre, desc, terminos, angulo, excluir, n,
+  foto=basename guardado por creative-search en uploads/tksearch): creative_search.buscar_mas() busca
+  n creativos NUEVOS excluyendo los ya mostrados. 🔄 = n:1 sin angulo (reusa los términos originales,
+  CERO IA extra); 🎯 = n:6 con angulo (1 llamada Gemini flash saca el ángulo del título → términos
+  nuevos). Con foto: verifica MISMO producto con _verificar (tope chico max(12, n*3)); sin foto: sin IA.
+  Sin Colombia en ambos caminos (region CO fuera + _es_colombiano de Juan en Foreplay).
+- Frontend: estado vivo window._tkS (excluidos por fuente para que lo cambiado no vuelva a salir) +
+  tkPaint() re-pinta desde el estado; el 🔄 hace splice en el mismo slot; el 🎯 agrega al final del grupo.
+- /api/creative-search ahora devuelve foto (basename), desc y variants (los términos) para alimentar
+  los botones. _buscar_foreplay ganó param excluir (default None: idéntico a antes).
+- VERIFICADO: py_compile ok; JS 9/9 node --check; funcional real: 🔄 TikTok devolvió video NUEVO
+  respetando excluidos (con play para el preview), 🔄 Foreplay ok, 🎯 con Gemini sacó el ángulo
+  ("casa llena de cucarachas" → "Pest control secret"/"Adiós plagas secreto") y trajo 4 creativos de
+  ese ángulo; server reiniciado sirviendo /api/creative-more; UI verificada con screenshot en Chrome
+  (cards y botones en ambos grupos ok).
+- AVISO Juan: cero cambios en foreplay_search.py ni tiktok_search.py; solo creative_search.py (mío),
+  el endpoint nuevo en app.py y el script de p-buscar en el front.
 ### 2026-07-03 · Claude (juanesal-lab) · 🔎🔥 Búsqueda TikTok ahora TAMBIÉN busca en Foreplay (mismo pool, misma verificación)
 Juan: que la búsqueda de videos use Foreplay además de TikTok. Hecho en `tiktok_search.py`:
 - NUEVO `_foreplay_candidatos(queries, foreplay_key)`: consulta la biblioteca de ads GANADORES de Foreplay
@@ -1693,37 +1749,15 @@ Juan: el botón Regenerar no funcionaba + quería darle una instrucción a una i
 - AVISO Jack: nuevos _persist_disruptive/_get_job en app.py (solo Ads imagen); editar_imagen_ia en
   disruptive_images.py; botón disEdit en el frontend.
 
-### 2026-07-03 · Claude (jackingshop1-cell) · 🔍 Buscar creativos: TikTok + FOREPLAY a la vez (foto + nombre)
-Pedido de Jack: mandar foto + nombre del producto y recibir los creativos de ese producto en AMBAS
-fuentes para armar los clips.
-- NUEVO backend/pipeline/creative_search.py → `buscar_creativos()`: analiza la foto UNA sola vez
-  (tiktok_search.analizar_foto) y con esos términos busca TikTok y Foreplay EN PARALELO.
-  Foreplay: 2-4 términos (español primero, heurística local sin IA), deduplicado entre términos,
-  Colombia excluida adentro de buscar_ads (no toqué foreplay_search de Juan — solo lo consumo);
-  verificación de MISMO producto sobre thumbnails con el MISMO juez de TikTok (_verificar), tope
-  24 thumbnails; lo no juzgable queda honesto con badge "⚠️ sin verificar".
-- backend/app.py: NUEVO POST /api/creative-search (nombre, count, fp_count, foto). Los endpoints
-  /api/tiktok-search y /api/foreplay-search siguen IGUAL (aditivo).
-- tiktok_search.buscar: nuevo param opcional `analisis=` (recibe el dict de analizar_foto ya calculado
-  para no repetir la llamada). Sin él, todo igual que antes.
-- Frontend: pestaña "🔎 Buscar TikTok" → "🔍 Buscar creativos": campo nombre + resultados en 2 grupos
-  (🎵 TikTok con links/badges como antes; 📚 Foreplay con grilla de cards, ▶️ ver, ⬇️ descargar vía
-  /api/foreplay-video, botón copiar links de video para 📥 Descargar / Mi producto). Guía actualizada.
-- VERIFICADO: py_compile ok; firmas cruzadas contra el tiktok_search post-merge de Juan (ok, inspect);
-  JS 9/9 bloques node --check ok; corrida E2E real en modo barato (sin IA): TikTok 8 links + Foreplay
-  8 ads sin señales colombianas, shape correcto; server reiniciado sirviendo /api/creative-search y la
-  pestaña nueva. (La verificación con foto/Gemini usa el mismo _verificar de siempre.)
-- AVISO Juan: cero cambios en foreplay_search.py; en tiktok_search.py solo el param opcional analisis=.
-  Resolvimos también el merge de tus commits de hoy (Cortar clips PRO + verificación profunda)
-  conservando ambos trabajos (velocidad+variedad nuestro y lo tuyo — todo compila y probado).
-
-### 2026-07-03 · Claude (jackingshop1-cell) · 🌳 Config para sesiones paralelas (worktrees) + push de lo acumulado
-- `.gitignore`: + `.claude/worktrees/` (los worktrees de Claude Code no ensucian el `git status`).
-- NUEVO `.worktreeinclude` (.env, .env.local): cada worktree nuevo recibe las API keys automáticamente.
-- Sin tocar código. Se sube también lo que estaba local sin push: el merge 126c938 (Cortar clips PRO +
-  búsqueda profunda de Juan ⊕ velocidad+variedad+voz en off nuestro) y Buscar creativos (e044706).
-- AVISO Juan: tus worktrees también quedan ignorados con esto y tu `.env` local se copia igual a tus
-  worktrees; el `.env` sigue SIN subirse a git (cada quien el suyo).
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔀 Merge #2 del día: tu pool TikTok+Foreplay ⊕ nuestro Buscar creativos
+- `tiktok_search.buscar`: conviven los DOS parámetros nuevos — `analisis=` (nuestro: creative_search no
+  re-analiza la foto) y `foreplay_key=` (tuyo: ads de Foreplay al pool). creative_search NO pasa
+  foreplay_key (su grupo Foreplay va aparte con _buscar_foreplay) → cero duplicados.
+- `index.html` (tkPaint): quedó la UI de 2 grupos con cards de la pestaña Buscar creativos; tu bloque de
+  filas usaba `resto`/`j` que ya no existen en ese scope. Tu pool mixto sigue VIVO en /api/tiktok-search
+  (lo consume el otro flujo del front); si quieres el 🔥 de "viene de Foreplay" en esa vista, es re-agregarlo ahí.
+- Verificado: py_compile 5/5 tocados + node --check 9/9 bloques + cero marcas de conflicto. Nada tuyo de
+  backend se perdió (disruptive_images y app.py auto-merge limpio).
 
 ### 2026-07-03 · Claude (jackingshop1-cell) · 🔁 VARIAR EL HOOK del winner — la capa de VIDEO sobre tu creative_variator (¡enchufados, Juan!)
 Pendiente #1 del handoff, hecho con 2 agentes (constructor + revisor). Tu cerebro + nuestro video, como

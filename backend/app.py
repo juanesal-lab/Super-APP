@@ -486,10 +486,35 @@ async def creative_search(nombre: str = Form(""), count: int = Form(20),
             shutil.copyfileobj(foto.file, o)
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto o una foto")
-    return buscar_creativos(image_path=img_path, nombre=nombre.strip(),
-                            gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
-                            anthropic_key=_load_anthropic_key(),
-                            count=int(count), fp_count=int(fp_count))
+    r = buscar_creativos(image_path=img_path, nombre=nombre.strip(),
+                         gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
+                         anthropic_key=_load_anthropic_key(),
+                         count=int(count), fp_count=int(fp_count))
+    # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
+    r["foto"] = os.path.basename(img_path) if img_path else ""
+    return r
+
+
+@app.post("/api/creative-more")
+async def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
+                        desc: str = Form(""), terminos: str = Form(""), angulo: str = Form(""),
+                        excluir: str = Form(""), n: int = Form(1), foto: str = Form("")):
+    """n creativos NUEVOS para una fuente: 🔄 cambiar (n=1, sin angulo) o 🎯 más con ese ángulo
+    (angulo = título del creativo que gustó). `excluir` = urls/ids ya mostrados (uno por línea)."""
+    from pipeline.creative_search import buscar_mas
+    if fuente not in ("tiktok", "foreplay"):
+        raise HTTPException(400, "fuente debe ser tiktok o foreplay")
+    img_path = None
+    if foto.strip():
+        p = os.path.join(UPLOAD_DIR, "tksearch", os.path.basename(foto.strip()))
+        if os.path.exists(p):
+            img_path = p
+    return buscar_mas(fuente=fuente, nombre=nombre.strip(), desc=desc.strip(),
+                      terminos=[t.strip() for t in terminos.splitlines() if t.strip()],
+                      angulo=angulo.strip(),
+                      excluir=[e.strip() for e in excluir.splitlines() if e.strip()],
+                      n=int(n), image_path=img_path,
+                      gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key())
 
 
 # ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----

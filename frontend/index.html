@@ -418,6 +418,7 @@ try{
     <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
+    <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
     <button data-p="p-config">🔑 Claves</button>
@@ -858,6 +859,121 @@ try{
     }
   </script>
   </div><!-- /p-clone -->
+
+  <div class="panel" id="p-varhook" style="display:none">
+  <!-- 🔁 VARIAR HOOK del winner (creative scaling de video — consume creative_variator) -->
+  <div class="autoHero" style="margin-top:0">
+    <h2>🔁 <span>Variar el Hook</span> del winner</h2>
+    <p class="lead">Sube tu creativo GANADOR (o pega su link de TikTok) y saca variaciones frescas:
+      <b>solo hook</b> (gancho nuevo con voz colombiana + subtítulos palabra x palabra, cuerpo
+      intacto) o <b>hook + tomas</b> (reemplaza la toma de CADA fase — el video queda ~100% nuevo).
+      Mata el ad-fatigue sin perder el arco que ya vende.</p>
+
+    <input type="file" id="vhWinner" accept="video/*" class="hidden">
+    <label class="autoDrop" for="vhWinner"><b id="vhWinnerName">🏆 Tu creativo GANADOR</b>
+      <div class="s">el ad que ya está vendiendo — o pega el link abajo</div></label>
+
+    <div class="autoOpts">
+      <input type="text" id="vhLink" class="full" placeholder="…o pega el link del TikTok ganador">
+      <input type="text" id="vhDesc" class="full" placeholder="Tu producto (ej. láser para hongos de uñas)">
+      <select id="vhModo" title="Qué tanto se renueva el video">
+        <option value="hook" selected>Solo hook (rápido — cuerpo intacto)</option>
+        <option value="tomas">Hook + tomas nuevas (video ~100% nuevo)</option>
+      </select>
+      <select id="vhN"><option value="2">2 variaciones</option><option value="4" selected>4 variaciones</option><option value="6">6 variaciones</option></select>
+      <select id="vhVoz"><option value="juan_carlos">Voz: Juan Carlos</option><option value="kate">Voz: Kate</option></select>
+    </div>
+
+    <button class="autoBtn" id="vhGo" onclick="vhRun()">🔁 Variar el hook</button>
+
+    <div class="autoProg hidden" id="vhProg">
+      <div class="autoBarWrap"><div class="autoBar" id="vhBar"></div></div>
+      <div class="autoMsg" id="vhMsg">Iniciando…</div>
+    </div>
+    <div id="vhResult"></div>
+  </div>
+
+  <script>
+    document.getElementById('vhWinner').addEventListener('change',e=>{
+      const f=e.target.files[0]; window._vhWinner=f||null;
+      document.getElementById('vhWinnerName').textContent=f?('🏆 '+f.name):'🏆 Tu creativo GANADOR';
+    });
+    function vhEsc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+    async function vhRun(){
+      const f=window._vhWinner, link=document.getElementById('vhLink').value.trim();
+      const desc=document.getElementById('vhDesc').value.trim();
+      const msg=document.getElementById('vhMsg');
+      document.getElementById('vhProg').classList.remove('hidden');
+      if(!f && !link){ msg.innerHTML='<span style="color:var(--warn)">Sube el video ganador o pega su link</span>'; return; }
+      if(!desc){ msg.innerHTML='<span style="color:var(--warn)">Describe el producto</span>'; return; }
+      const fd=new FormData();
+      if(f) fd.append('video',f); else fd.append('link',link);
+      fd.append('producto',desc);
+      fd.append('modo',document.getElementById('vhModo').value);
+      fd.append('n',document.getElementById('vhN').value);
+      fd.append('voz',document.getElementById('vhVoz').value);
+      document.getElementById('vhGo').disabled=true;
+      document.getElementById('vhResult').innerHTML='';
+      document.getElementById('vhBar').style.width='0%';
+      try{
+        const r=await fetch('/api/variar-hook',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!r.ok||!j.job_id) throw new Error(j.detail||'No se pudo iniciar');
+        vhPoll(j.job_id);
+      }catch(e){
+        msg.innerHTML='<span style="color:var(--warn)">'+vhEsc(e.message)+'</span>';
+        document.getElementById('vhGo').disabled=false;
+      }
+    }
+    async function vhPoll(id){
+      const r=await fetch('/api/status/'+id); const j=await r.json();
+      document.getElementById('vhBar').style.width=(j.progress||0)+'%';
+      document.getElementById('vhMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>vhPoll(id),1600); return; }
+      document.getElementById('vhGo').disabled=false;
+      if(j.status==='error'){ document.getElementById('vhMsg').innerHTML='<span style="color:var(--warn)">'+vhEsc(j.message||'Error')+'</span>'; return; }
+      window._vhJob=id; vhRender(j.result);
+    }
+    function vhRender(res){
+      if(!res||!res.variaciones) return;
+      const bust=window._vhBust||0;
+      document.getElementById('vhResult').innerHTML=
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px">'+
+        res.variaciones.map((v,i)=>{
+          const src='/api/file?path='+encodeURIComponent(v.video||'')+'&_='+bust;
+          const vid=v.video
+            ?('<video src="'+src+'" controls playsinline preload="metadata" style="width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:10px;background:#000"></video>')
+            :'<div class="s" style="color:var(--warn);padding:20px 6px">⚠️ Esta variación no se pudo armar (mira los pasos)</div>';
+          const pasos=(v.pasos||[]).map(p=>(p.ok?'✅ ':'⚠️ ')+vhEsc(p.paso)+(p.detalle?(' — '+vhEsc(p.detalle)):'')).join('<br>');
+          return '<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px">'+vid+
+            '<div style="margin-top:8px;font-weight:700">'+vhEsc(v.hook)+'</div>'+
+            '<div class="s" style="opacity:.8">'+vhEsc(v.angulo)+'</div>'+
+            '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+
+            (v.video?('<a class="btn" style="text-decoration:none" href="'+src+'" download="variacion_'+(i+1)+'.mp4">⬇️ Descargar</a>'):'')+
+            '<button class="btn" onclick="vhOtro('+i+',this)">🎲 Otro hook</button></div>'+
+            '<details class="s" style="margin-top:8px"><summary>guion + pasos</summary>'+
+            '<div style="margin-top:6px;white-space:pre-wrap">'+vhEsc(v.guion)+'</div>'+
+            '<div style="margin-top:6px">'+pasos+'</div></details></div>';
+        }).join('')+'</div>';
+    }
+    async function vhOtro(i,btn){
+      if(!window._vhJob) return;
+      const old=btn.textContent; btn.disabled=true; btn.textContent='🎲 Armando otro…';
+      try{
+        const fd=new FormData(); fd.append('job_id',window._vhJob); fd.append('index',i);
+        const r=await fetch('/api/variar-hook-otro',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!r.ok||!j.variacion) throw new Error(j.detail||'No se pudo regenerar');
+        window._vhBust=Date.now();
+        const s=await fetch('/api/status/'+window._vhJob); const sj=await s.json();
+        vhRender(sj.result);
+      }catch(e){
+        btn.disabled=false; btn.textContent=old;
+        btn.insertAdjacentHTML('afterend','<div class="s" style="color:var(--warn)">'+vhEsc(e.message)+'</div>');
+      }
+    }
+  </script>
+  </div><!-- /p-varhook -->
 
   <div class="panel" id="p-config" style="display:none">
   <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>

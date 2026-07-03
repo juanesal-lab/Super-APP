@@ -32,6 +32,8 @@ from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullpromp
                                         generar_ad_fullprompt, _integrar_producto_ia,
                                         editar_imagen_ia)
 from pipeline import foreplay_search as fp
+from pipeline.hook_variator import variar_hook
+from pipeline.creative_variator import generar_variaciones
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -1566,6 +1568,112 @@ def download(path: str, res: str = "1080", name: str = "clip"):
         export_resolution(full, out_path, width)
     return FileResponse(out_path, media_type="video/mp4",
                         filename=f"{name}_{width}w.mp4")
+
+
+# ==================== 🔁 VARIAR HOOK (creative scaling de video) ====================
+
+def _persist_varhook(job_id: str):
+    """Persiste el job de Variar hook a work/<id>/job.json — mismo patrón que _persist_disruptive
+    (si el server se reinicia, el poll del front y el 🎲 siguen funcionando)."""
+    import json as _json
+    job = JOBS.get(job_id)
+    if not job:
+        return
+    data = {k: job.get(k) for k in ("status", "result", "created", "_winner", "_producto",
+                                    "_modo", "_voz", "_page_text")}
+    try:
+        d = os.path.join(WORK_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "job.json"), "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _run_varhook_job(job_id: str, winner: str, producto: str, modo: str, n: int, voz: str):
+    job = JOBS[job_id]
+
+    def progress(m, p):
+        job["message"], job["progress"] = m, p
+
+    try:
+        r = variar_hook(winner, producto, n=n, modo=modo, voz=voz,
+                        gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
+                        anthropic_key=_load_anthropic_key(),
+                        work_dir=os.path.join(WORK_DIR, job_id), progress=progress)
+        if r.get("ok"):
+            job["result"], job["status"] = r, "done"
+        else:
+            job["status"] = "error"
+            job["message"] = r.get("error") or "No se pudieron armar las variaciones"
+    except Exception as e:  # noqa: BLE001
+        job["status"], job["message"] = "error", str(e)
+    _persist_varhook(job_id)
+
+
+@app.post("/api/variar-hook")
+def variar_hook_ep(producto: str = Form(""), link: str = Form(""),
+                   modo: str = Form("hook"), n: int = Form(4),
+                   voz: str = Form("juan_carlos"), video: UploadFile = File(None)):
+    """1 creativo GANADOR → N videos: hook nuevo (modo 'hook', default) o hook + tomas nuevas
+    por fase (modo 'tomas'). Retrocompatible: sin `modo`, se comporta como solo-hook."""
+    if not producto.strip():
+        raise HTTPException(400, "Describe el producto (nombre + qué hace)")
+    job_id = uuid.uuid4().hex[:12]
+    src_dir = os.path.join(WORK_DIR, job_id, "src")
+    os.makedirs(src_dir, exist_ok=True)
+    winner = None
+    if video is not None and getattr(video, "filename", ""):
+        winner = os.path.join(src_dir, "winner.mp4")
+        with open(winner, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+    elif link.strip():
+        bajados = download_urls([link.strip()], src_dir)
+        winner = next((b.get("path") for b in bajados if b.get("ok") and b.get("path")), None)
+    if not winner or not os.path.exists(winner):
+        raise HTTPException(400, "Sube el video ganador o pega su link de TikTok")
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time(), "_winner": winner,
+                    "_producto": producto, "_modo": modo, "_voz": voz, "_page_text": ""}
+    threading.Thread(target=_run_varhook_job,
+                     args=(job_id, winner, producto, modo, max(1, min(8, n)), voz),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/variar-hook-otro")
+def variar_hook_otro(job_id: str = Form(...), index: int = Form(...)):
+    """🎲 Otro hook: regenera UNA variación con evitar=[hooks ya mostrados] y re-arma su video.
+    Mismo patrón que /api/disruptive-swap-concept (síncrono, muta el job y persiste)."""
+    job = _get_job(job_id)
+    if not job or not (job.get("result") or {}).get("variaciones"):
+        raise HTTPException(404, "Ese trabajo ya no existe. Genera las variaciones de nuevo.")
+    variaciones = job["result"]["variaciones"]
+    if not (0 <= index < len(variaciones)):
+        raise HTTPException(400, "Índice fuera de rango")
+    winner, producto = job.get("_winner") or "", job.get("_producto") or ""
+    if not (winner and os.path.exists(winner) and producto):
+        raise HTTPException(400, "Proyecto viejo sin contexto — genera las variaciones de nuevo.")
+    modo = job.get("_modo") or job["result"].get("modo") or "hook"
+    evitar = [v.get("hook", "") for v in variaciones if v.get("hook")]
+    arco = job["result"].get("arco") or producto
+    nuevas = generar_variaciones(arco, producto, _load_anthropic_key(),
+                                 page_text=job.get("_page_text") or "", n=1,
+                                 con_escenas=(modo == "tomas"), evitar=evitar)
+    if not nuevas:
+        raise HTTPException(502, "El cerebro no entregó otra variación (revisa la key de Anthropic)")
+    wd = os.path.join(WORK_DIR, job_id, f"otro_{uuid.uuid4().hex[:6]}")
+    r = variar_hook(winner, producto, modo=modo, voz=job.get("_voz") or "juan_carlos",
+                    variaciones=nuevas[:1], hook_fin=job["result"].get("hook_fin"),
+                    gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
+                    anthropic_key=_load_anthropic_key(), work_dir=wd)
+    v = (r.get("variaciones") or [None])[0]
+    if not (v and v.get("video")):
+        raise HTTPException(502, "No se pudo armar el video de la nueva variación")
+    variaciones[index] = v
+    JOBS[job_id] = job         # re-ancla en memoria (por si _gc_jobs lo sacó durante el render largo)
+    _persist_varhook(job_id)
+    return {"variacion": v}
 
 
 if __name__ == "__main__":

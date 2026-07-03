@@ -1844,3 +1844,40 @@ Paquete grande de Juan (con mapa previo de un agente para no romper nada). REGLA
 Verificado: imports OK, preview S/M/G escala bien (grid visual), UI sin errores JS, _pick_sfx devuelve
 familia variada. AVISO Jack: toqué caption_styles/orchestrator/auto_studio/producto_clips/winner_clone/
 product_swap/assemble/phase_effects/app.py/index.html — todo con defaults retro-compatibles.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔁 VARIAR EL HOOK del winner — capa de video COMPLETA (solo hook / hook + tomas)
+Jack se quedó sin tokens antes de pushear su capa de video → la construí completa para no frenar.
+Si tu sesión revive con TU versión de hook_variator: la mía es autocontenida (archivo nuevo + 2
+endpoints aditivos + 1 pestaña), comparamos y fusionamos conservando ambos.
+- NUEVO backend/pipeline/hook_variator.py — `variar_hook(winner, producto, modo="hook"|"tomas", n,
+  voz, evitar=, variaciones=, hook_fin=)`. Cerebro: creative_variator.generar_variaciones (NO lo
+  toqué, solo lo consumo) sobre el arco REAL del winner (analyze_narrative → transcripción etiquetada).
+  · modo "hook" (default): gancho nuevo usando VENTANA LIMPIA del propio winner — nueva
+    `ventana_limpia(video, dur, desde=)`: EAST muestrea 1 frame/0.5s y devuelve el tramo SIN texto
+    quemado ($0). Plan B: hook original con el texto TAPADO (mask_video). Voz CO de ElevenLabs con
+    timestamps + subtítulos palabra x palabra (burn_word_captions) SOLO en el hook; CUERPO INTACTO.
+  · modo "tomas": narra el guion COMPLETO (1 sola llamada TTS) y por cada escena del brief
+    [{fase, buscar}] busca la toma en TikTok ($0 buscar_tiktok sin IA, SIEMPRE region != "CO", sin
+    repetir toma entre variaciones), ventana limpia, normaliza 9:16, concat_clips + add_voiceover +
+    subs + punch_pace. Plan B por fase: metraje del winner con offset DISTINTO por fase; último
+    recurso: texto tapado.
+- backend/app.py (aditivo): POST /api/variar-hook (Form: producto, link O video subido, modo
+  default "hook" = retrocompatible, n, voz) → job en thread + _persist_varhook (work/<id>/job.json,
+  patrón _persist_disruptive → sobrevive reinicios; _get_job lo rehidrata). POST /api/variar-hook-otro
+  (job_id, index) = 🎲 Otro hook con evitar=[hooks ya mostrados], calcado de disruptive-swap-concept;
+  el result guarda `arco` y `hook_fin` para NO repagar narrativa al regenerar.
+- frontend/index.html: pestaña 🔁 Variar hook (upload/link + producto + selector "solo hook /
+  hook + tomas" + 2/4/6 variaciones + voz) → poll → grid 9:16 con ⬇️ descargar, 🎲 Otro hook y
+  detalle guion + pasos.
+- PROBADO barato: py_compile ok; JS 11/11 node --check; E2E offline con IAs MOCKEADAS (TTS silencio
+  + timings sintéticos, narrativa fake, buscar_tiktok=[]) sobre winner sintético con texto quemado
+  en 0-3s y 6-12s → modo hook 12.5s (hook nuevo SIN el texto viejo, karaoke visible, cuerpo intacto
+  — verificado FRAME A FRAME con capturas); modo tomas 8.0s exactos (= duración de la voz, 3 fases
+  con metraje distinto). Ruta de red real $0 ok (buscar + bajar toma de TikTok: 82s). Server smoke
+  en :8422 (pestaña servida, 400/404 correctos).
+- HONESTIDAD: en el último plan B (cero ventanas limpias) el blur de mask_video deja texto GIGANTE
+  aún medio legible (con texto de tamaño normal se ve bien — es el mask estándar de la app; no lo
+  toqué por no afectar blur_captions global).
+- AVISO Jack/Landings: NO toqué assemble.py (el fix del stream_loop quedó intacto), ni
+  creative_variator, ni tiktok_search, ni nada del módulo Landings nuevo (shopify_admin.py). Mi
+  merge conserva su fase (a) completa.

@@ -123,6 +123,12 @@ def _load_foreplay_key() -> str | None:
     return _load_key("FOREPLAY_API_KEY")
 
 
+def _load_shopify() -> tuple[str | None, str | None, str | None]:
+    """(dominio, admin_token, theme_id opcional) para el módulo Crear Landings."""
+    return (_load_key("SHOPIFY_STORE_DOMAIN"), _load_key("SHOPIFY_ADMIN_API_TOKEN"),
+            _load_key("SHOPIFY_THEME_ID"))
+
+
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
     """Cortar clips: música de fondo (baja) + SFX variados en los cortes, conservando el audio del clip."""
     from pipeline.assemble import add_music_sfx
@@ -209,6 +215,7 @@ def get_config():
         "has_eleven_key": bool(_load_eleven_key()),
         "has_anthropic_key": bool(_load_anthropic_key()),
         "has_foreplay_key": bool(_load_foreplay_key()),
+        "has_shopify": bool(_load_shopify()[0] and _load_shopify()[1]),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
@@ -236,13 +243,17 @@ def caption_preview(style: str = "hormozi", size: str = "mediano"):
 
 
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY"}
+            "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY",
+            "shopify_domain": "SHOPIFY_STORE_DOMAIN", "shopify_token": "SHOPIFY_ADMIN_API_TOKEN",
+            "shopify_theme": "SHOPIFY_THEME_ID"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
 # (fue lo que pasó: un key de Anthropic terminó en GEMINI_API_KEY y rompió todo lo de Gemini).
-_KEY_PREFIX = {"gemini": ("AIza", "AQ."), "eleven": ("sk_",), "anthropic": ("sk-ant-",)}
+_KEY_PREFIX = {"gemini": ("AIza", "AQ."), "eleven": ("sk_",), "anthropic": ("sk-ant-",),
+               "shopify_token": ("shpat_", "shpca_")}
 _KEY_LABEL = {"gemini": "Gemini (empieza con AIza o AQ.)",
               "eleven": "ElevenLabs (empieza con sk_)",
-              "anthropic": "Claude/Anthropic (empieza con sk-ant-)"}
+              "anthropic": "Claude/Anthropic (empieza con sk-ant-)",
+              "shopify_token": "Shopify Admin API (empieza con shpat_)"}
 
 
 @app.post("/api/save-key")
@@ -1102,6 +1113,22 @@ async def producto_clips(
 def foreplay_usage():
     """Créditos disponibles de Foreplay (para mostrar en la pestaña)."""
     return fp.usage(_load_foreplay_key() or "")
+
+
+@app.get("/api/shopify-check")
+def shopify_check():
+    """Valida las credenciales de Shopify (request de prueba) + detecta el tema publicado.
+    Es el 'gate' de arranque del módulo Crear Landings."""
+    from pipeline import shopify_admin as sh
+    dom, tok, theme = _load_shopify()
+    v = sh.validar(dom or "", tok or "")
+    if not v.get("ok"):
+        return v
+    t = sh.tema_publicado(dom, tok, theme)
+    if not t.get("ok"):
+        return {"ok": False, "error": t.get("error", "No pude detectar el tema")}
+    return {"ok": True, "shop": v.get("shop"), "moneda": v.get("moneda"),
+            "tema": {"id": t.get("id"), "nombre": t.get("nombre"), "rol": t.get("rol")}}
 
 
 @app.get("/api/foreplay-thumb")

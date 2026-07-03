@@ -1845,6 +1845,47 @@ Verificado: imports OK, preview S/M/G escala bien (grid visual), UI sin errores 
 familia variada. AVISO Jack: toqué caption_styles/orchestrator/auto_studio/producto_clips/winner_clone/
 product_swap/assemble/phase_effects/app.py/index.html — todo con defaults retro-compatibles.
 
+### 2026-07-03 · Claude (juanesal-lab) · 🛍️ NUEVO MÓDULO "Crear Landings" — FASE (a): UI + tipo + credenciales Shopify
+Superprompt de Juan: 3er módulo al nivel de Buscar/Crear — Landing Page y Advertorial desde SUS estructuras
+validadas → copy/imágenes con Gemini → gate de aprobación → Shopify Admin API como PLANTILLA NUEVA (jamás
+tocar lo existente). Decisiones aprobadas: mismo tema publicado (archivos nuevos prefijo cm-), imágenes a
+Shopify FILES, optimización de peso obligatoria. Fase (a) implementada:
+- NUEVO `backend/pipeline/shopify_admin.py`: `validar()` (request de prueba, errores en español),
+  `tema_publicado()` (usa SHOPIFY_THEME_ID o detecta role=main), `nombre_unico()` (cm-<tipo>-<slug>-<fecha>),
+  `crear_asset()` (SE NIEGA a sobreescribir si el key existe — regla de oro), `subir_imagen_files()`
+  (GraphQL staged upload → Files/CDN, reporta peso_kb).
+- Credenciales con el MISMO patrón de keys: SHOPIFY_STORE_DOMAIN / SHOPIFY_ADMIN_API_TOKEN (prefijo shpat_)
+  / SHOPIFY_THEME_ID (opcional) en .env vía 🔑 Claves (tarjeta nueva con 3 campos + pill) + `has_shopify`
+  en /api/config + `/api/shopify-check` (valida + detecta tema).
+- UI: 3ª tarjeta en el HOME premium ("Crear Landings") + pestaña 🛍️ + panel: selector de tipo (2 tarjetas
+  premium), botón "Verificar conexión", formulario de insumos (producto/link/precio EXACTO/oferta/fotos).
+  El botón Generar está DESHABILITADO hasta que Juan pase sus estructuras validadas (regla 9: no inventar).
+- `README-LANDINGS.md`: cómo crear la custom app + scopes mínimos + qué crea/qué JAMÁS toca.
+- Verificado: smoke shopify-check sin creds → error claro en español (no 500); home con 3 módulos; panel OK.
+- PENDIENTE de Juan: las estructuras validadas (landing + advertorial) y las secciones 3-7 del superprompt
+  (se cortaron 85 líneas en el paste). Fases (b)-(g) tras recibirlas.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🛍️ Landings: PLANTILLAS MAESTRAS destiladas (landing 9 secciones + advertorial)
+Retomada la tarea interrumpida: analizadas las 9 imágenes de la landing validada de Juan (Aceite de
+Ricino, ~/Downloads/landing) + su página viva buenatienda.com.co/products/crema-veneno-de-abeja-2x1.
+HALLAZGO: la página viva es estructura ADVERTORIAL (headline editorial "Por qué dermatólogas...",
+comparativa, "así funciona", dermatóloga, muro 15 reseñas con 2 imperfectas, oferta 2x1) → tenemos
+ejemplo real de AMBOS tipos. Nuevo `assets/landing-templates/`:
+- `README.md`: convención {{variables}} vs estructura fija, reglas duras de generación (producto
+  SIEMPRE con fotos reales — cero etiquetas garbled tipo "Paro la plai", texto CO sin errores,
+  aspect ratios, gate obligatorio), psicología del orden.
+- `landing-page.md`: las 9 secciones con formato/objetivo/layout/fórmulas de copy (hero 2:3 →
+  grid 4 testimonios 16:9 → mecanismo+antes/después 9:16 → comentarios FB 9:16 (con aviso legal
+  FIJO) → caso individual 1:1 → bundles 2:3 (PRECIOS EXACTOS de Juan) → bonos 2:3 → VS 9:16 →
+  cómo usar ILUSTRADO 9:16). Las imágenes NO llevan botón; el theme inserta CTAs entre secciones.
+- `advertorial.md`: arco editorial de 8 bloques con fórmulas literales del original (kicker,
+  headline "X en vez de Y después de los 40", mecanismo honesto, Dra. con credenciales, regla de
+  realismo: 2/15 reseñas de 3-4★). ⚠️ Pendiente que Juan CONFIRME que esa es SU estructura advertorial.
+- `referencia-landing/seccion-01..09.jpg` (~2.5MB): referencias de estilo para Gemini (ya no
+  dependemos de Downloads).
+SIGUE PENDIENTE de Juan: secciones 3-7 de su superprompt (85 líneas cortadas) → luego fases (b)-(g).
+AVISO Jack: solo archivos NUEVOS en assets/landing-templates/; cero código tocado.
+
 ### 2026-07-03 · Claude (juanesal-lab) · 🔁 VARIAR EL HOOK del winner — capa de video COMPLETA (solo hook / hook + tomas)
 Jack se quedó sin tokens antes de pushear su capa de video → la construí completa para no frenar.
 Si tu sesión revive con TU versión de hook_variator: la mía es autocontenida (archivo nuevo + 2

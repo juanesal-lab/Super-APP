@@ -156,7 +156,7 @@
     #hStage canvas:active{cursor:grabbing}
     .hHint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:var(--muted);
       font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;pointer-events:none;opacity:.75}
-    .hCards{display:grid;grid-template-columns:1fr 1fr;gap:26px;width:min(1040px,96vw);margin-top:3vh;
+    .hCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:22px;width:min(1180px,96vw);margin-top:3vh;
       opacity:0;animation:hUp 1s .45s cubic-bezier(.2,.7,.2,1) forwards}
     @media(max-width:760px){.hCards{grid-template-columns:1fr}}
     .hCard{position:relative;border-radius:26px;padding:34px 32px 30px;cursor:pointer;overflow:hidden;
@@ -229,6 +229,17 @@
       <h3>Crear Creativos</h3>
       <p>El sistema completo de creación: clips con IA, ads de imagen, doblaje, guiones ganadores y análisis de campañas con Foreplay — sin salir de aquí.</p>
       <div class="hGo">Crear <span>→</span></div>
+    </div>
+    <div class="hCard" onclick="homeEnter('p-landings')">
+      <div class="sheen"></div>
+      <div class="hIco">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ecca6e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18"/><path d="M7 6h.01"/><path d="m8 14 2.5 2.5L15 12"/>
+        </svg>
+      </div>
+      <h3>Crear Landings</h3>
+      <p>Landing pages y advertoriales con tu estructura validada: copy e imágenes con IA, tu aprobación, y a Shopify como plantilla nueva — sin tocar tu tienda.</p>
+      <div class="hGo">Construir <span>→</span></div>
     </div>
   </div>
 
@@ -417,6 +428,7 @@ try{
     <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
+    <button data-p="p-landings">🛍️ Crear Landings</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
@@ -754,6 +766,69 @@ try{
     </script>
   </div><!-- /p-buscar -->
 
+  <div class="panel" id="p-landings" style="display:none">
+  <div class="autoHero">
+    <h2>🛍️ <span>Crear Landings</span> — de tu estructura validada a Shopify</h2>
+    <p class="lead">Eliges el tipo, das el producto y los precios EXACTOS, la IA adapta <b>tu estructura
+      validada</b> (copy + imágenes optimizadas de peso), me apruebas el resultado, y se sube a tu tienda como
+      <b>plantilla NUEVA</b> — sin tocar absolutamente nada de lo existente.</p>
+
+    <div class="pmsg" id="ldShopStatus" style="margin:4px 0 14px">🛍️ <b>Shopify:</b> <span id="ldShopTxt">sin verificar</span>
+      <button class="btn sec" style="width:auto;padding:6px 12px;font-size:12.5px;margin-left:8px" onclick="ldCheckShopify(this)">Verificar conexión</button></div>
+
+    <div class="hCards" style="margin:6px 0 18px;opacity:1;animation:none;grid-template-columns:1fr 1fr;width:auto">
+      <div class="hCard ldTipo" data-tipo="landing" onclick="ldPickTipo(this)" style="padding:24px">
+        <div class="sheen"></div>
+        <h3 style="font-size:20px">📄 Landing Page</h3>
+        <p style="font-size:13.5px">La página de venta completa del producto, con tu estructura ganadora.</p>
+      </div>
+      <div class="hCard ldTipo" data-tipo="advertorial" onclick="ldPickTipo(this)" style="padding:24px">
+        <div class="sheen"></div>
+        <h3 style="font-size:20px">📰 Advertorial</h3>
+        <p style="font-size:13.5px">El artículo editorial que precalienta y vende (CTA a venta directa por defecto).</p>
+      </div>
+    </div>
+
+    <div id="ldForm" class="hidden">
+      <textarea id="ldProducto" class="full" rows="2" placeholder="¿Qué es tu producto y qué dolor resuelve?"></textarea>
+      <input type="text" id="ldLink" class="full" style="margin-top:10px" placeholder="🔗 Link del producto (Dropi/AliExpress/tu tienda — para sacar info real)">
+      <div class="autoOpts" style="margin:12px 0">
+        <input type="text" id="ldPrecio" placeholder="💲 Precio EXACTO (ej: $79.900) — se usa tal cual">
+        <input type="text" id="ldOferta" placeholder="🎁 Oferta EXACTA (ej: 2x1 + envío gratis) — opcional">
+      </div>
+      <input type="file" id="ldImgs" accept="image/*" multiple class="hidden">
+      <label class="autoDrop" for="ldImgs"><b id="ldImgsName">🖼️ Fotos del producto (las de la landing)</b>
+        <div class="s">Se optimizan de peso automáticamente antes de subir</div></label>
+      <button class="autoBtn" id="ldGo" disabled title="Pendiente: cargar tus estructuras validadas">🚧 Generar (esperando tus estructuras validadas)</button>
+      <p class="pmsg" style="margin-top:10px">⏳ Falta que me pases las <b>estructuras validadas</b> (ejemplos de landing y advertorial). Cuando las cargue como plantillas maestras, este botón se activa.</p>
+    </div>
+  </div>
+
+  <script>
+    function ldPickTipo(el){
+      document.querySelectorAll('.ldTipo').forEach(c=>{c.style.borderColor='';c.style.boxShadow='';});
+      el.style.borderColor='var(--accent)'; el.style.boxShadow='0 0 0 2px var(--accent) inset';
+      window._ldTipo=el.dataset.tipo;
+      document.getElementById('ldForm').classList.remove('hidden');
+    }
+    async function ldCheckShopify(btn){
+      const t=btn.textContent; btn.textContent='⏳ Verificando…'; btn.disabled=true;
+      try{
+        const j=await (await fetch('/api/shopify-check')).json();
+        document.getElementById('ldShopTxt').innerHTML = j.ok
+          ? `✅ <b>${j.shop}</b> (${j.moneda}) · tema: <b>${j.tema.nombre}</b>${j.tema.rol==='main'?' (publicado)':''}`
+          : `<span style="color:var(--warn)">${j.error||'Error'}</span>`;
+      }catch(e){ document.getElementById('ldShopTxt').innerHTML='<span style="color:var(--warn)">Error: '+e+'</span>'; }
+      btn.textContent=t; btn.disabled=false;
+    }
+    document.getElementById('ldImgs').addEventListener('change',e=>{
+      window._ldImgs=Array.from(e.target.files);
+      document.getElementById('ldImgsName').textContent = e.target.files.length
+        ? ('🖼️ '+e.target.files.length+' foto(s) elegidas') : '🖼️ Fotos del producto (las de la landing)';
+    });
+  </script>
+  </div><!-- /p-landings -->
+
   <div class="panel" id="p-clone" style="display:none">
   <!-- 🎯 CLON GANADOR CON MI PRODUCTO (sección nueva, autocontenida, reusa clases auto*) -->
   <div class="autoHero" style="margin-top:0">
@@ -1018,6 +1093,27 @@ try{
       <button class="btn sec" id="foreplaySave" style="width:auto">Guardar</button>
     </div>
     <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, la pestaña <b>🔎 Foreplay</b> busca en su biblioteca de +100M ads ganadores (con video descargable) para cortarlos en clips. La sacas en app.foreplay.co → API. Cada búsqueda gasta créditos de tu plan.</p>
+  </div>
+
+  <!-- Shopify (módulo Crear Landings) -->
+  <div class="card" id="shopifyCard">
+    <h2>🛍️ Shopify · Crear Landings <span id="shopifyPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow" style="margin-bottom:8px">
+      <input type="text" id="shopDomainInput" placeholder="Dominio (mitienda.myshopify.com)">
+      <button class="btn sec" id="shopDomainSave" style="width:auto">Guardar</button>
+    </div>
+    <div class="keyrow" style="margin-bottom:8px">
+      <input type="password" id="shopTokenInput" placeholder="Admin API token (shpat_...)">
+      <button class="btn sec" id="shopTokenSave" style="width:auto">Guardar</button>
+    </div>
+    <div class="keyrow">
+      <input type="text" id="shopThemeInput" placeholder="Theme ID (opcional — se detecta el publicado)">
+      <button class="btn sec" id="shopThemeSave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Para el módulo <b>🛍️ Crear Landings</b>. Crea una custom app en tu tienda
+      (Configuración → Apps → Desarrollar apps) con scopes: <code>read_themes, write_themes, read_products,
+      write_products, read_files, write_files</code>. NUNCA se toca nada existente de tu tienda: solo se crean
+      archivos nuevos, y nada sube sin tu aprobación.</p>
   </div>
 
   </div><!-- /p-config -->
@@ -2096,6 +2192,7 @@ async function refreshConfig(){
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);
+  setPill("shopifyPill", j.has_shopify);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
   if(vs && !vs.dataset.loaded && j.voices){
@@ -2124,6 +2221,9 @@ document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
 document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
 document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
 document.getElementById("foreplaySave").onclick = ()=>saveKey("foreplay","foreplayInput");
+document.getElementById("shopDomainSave").onclick = ()=>saveKey("shopify_domain","shopDomainInput");
+document.getElementById("shopTokenSave").onclick = ()=>saveKey("shopify_token","shopTokenInput");
+document.getElementById("shopThemeSave").onclick = ()=>saveKey("shopify_theme","shopThemeInput");
 refreshConfig();
 
 // --- Textos del proveedor: mostrar selector Tapar/Traducir al activar ---

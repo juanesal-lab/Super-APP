@@ -114,8 +114,8 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     except Exception:
         return []
 
-    # ~2.3 palabras/seg en espanol a ritmo de ad
-    max_words = max(12, int(target_seconds * 2.3))
+    # ~2.6 palabras/seg: ritmo real de los ads GANADORES en español (energético, sin correr)
+    max_words = max(12, int(target_seconds * 2.6))
 
     info = ""
     if product_desc.strip():
@@ -130,17 +130,41 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     prompt = (
         "Eres el copywriter de Juan para ads de dropshipping (Colombia, COD). Escribes guiones "
         "de VOZ EN OFF que NO suenan a anuncio, usando SU voz real y SUS fórmulas ganadoras.\n\n"
-        "=== BANCO REAL DE HOOKS, FÓRMULAS Y VOZ DE JUAN (úsalo, no inventes genérico) ===\n"
-        + framework[:13000] +
+        "=== BANCO REAL DE HOOKS, FÓRMULAS Y VOZ DE JUAN + FRAMEWORK v2 DE ADS GANADORES (úsalo, no inventes genérico) ===\n"
+        + framework[:22000] +
         "\n=== FIN DEL BANCO ===\n"
         + bp +
         "\n"
         f"TAREA: escribe {n} guiones DISTINTOS para la voz en off de un video de TikTok/Reels de "
-        f"~{int(target_seconds)} segundos. " + arco + "Cada uno usando una FÓRMULA o tipo de HOOK "
-        "distinto del banco de arriba. OBLIGATORIO: pasa el test anti-anuncio (la 1ra frase es opinión/mala "
+        f"~{int(target_seconds)} segundos. " + arco + "Cada uno usando uno de LOS 12 HOOKS GANADORES "
+        "del FRAMEWORK v2 (distinto por guion) y siguiendo EL ARCO GANADOR: HOOK → "
+        "PROBLEMA/agitación (detalle cotidiano) → GIRO ('Ahora… ¿qué pasa si…?') → PRODUCTO "
+        "→ FACILIDAD (número concreto) → PRUEBA honesta ('no te voy a mentir…') → CTA. "
+        f"OJO con el tiempo: a ~{int(target_seconds)}s NO recites las fases a la carrera — FUSIONA "
+        "(hook+problema juntos, giro+producto juntos) y desarrolla BIEN 3-4 momentos en vez de 7 "
+        "telegramas. Prioriza: hook potente, dolor con detalle, giro+producto, cierre. "
+        "DINAMISMO CON FLUIDEZ (clave): el guion debe sonar a una persona CONTÁNDOLE algo a un amigo, "
+        "no a titulares sueltos. Alterna frases conversacionales COMPLETAS (como los ganadores: 'No "
+        "hablo de ser el más lindo de la sala, hablo del tipo que entra y sin decir nada ya se nota') "
+        "con golpes cortos SOLO en la ráfaga del problema o del producto ('No aprieta. No mancha. "
+        "Funciona.'). PROHIBIDO el telegrama continuo tipo 'Rollito molesto. Ropa no luce.' — eso está "
+        "MAL. Un PERO/Ahora que gira, números concretos, social proof conversacional. "
+        "ESPECIFICIDAD OBLIGATORIA (lo que separa un ganador de un guion plano): PROHIBIDAS las frases "
+        "de catálogo ('moldea y tonifica', 'sin esfuerzo', 'resultados increíbles', 'pura clase'). Cada "
+        "fase lleva UN detalle CONCRETO y cotidiano — dónde, cuándo, qué se siente: 'ese rollito que se "
+        "asoma cuando te sientas', 'el jean que ya no cierra a las 6pm', 'te lo pones en 20 segundos "
+        "antes de dormir'. El HOOK copia la mecánica exacta del banco (ej. autoridad-revelación lleva su "
+        "giro: '…y no, no es la dieta'). "
+        "OBLIGATORIO: pasa el test anti-anuncio (la 1ra frase es opinión/mala "
         "noticia/pregunta incómoda, NO el producto; el producto aparece DESPUÉS del gancho); usa la "
         "voz colombiana real de Juan (modismos: 'Y señores', 'Oiga', '¡Ojo!', 'Le tengo malas "
         "noticias', 'es físico y ya', 'No te voy a mentir', 'es extrañamente satisfactorio'). "
+        "🛡️ POLÍTICAS Meta/TikTok (OBLIGATORIO): usa el DICCIONARIO ANTI-BANEO del framework — NUNCA "
+        "ataques el atributo personal del que ve ('estás gordo/viejo/enfermo'); di lo MISMO con metáfora "
+        "o situación ('te levantas sintiéndote como un hipopótamo', 'tu amiguito ya no responde como "
+        "antes', 'tu cara dice algo diferente'). Nada de curas absolutas ni % médicos (usa 'ayuda a / "
+        "apoya'), nada de promesas de resultado con plazo garantizado (repórtalo: 'muchos lo notan en "
+        "pocas semanas'), nada de antes/después corporal explícito. "
         "PROHIBIDO mencionar PRECIO, cifras de dinero, pesos, '$', descuentos con número ni "
         "comparaciones de precio. Vende por deseo/dolor, NUNCA por precio. "
         + ("OFERTA 2x1: integra de forma natural que al pedir uno se lleva OTRO GRATIS (2x1), sin decir precio. "
@@ -149,8 +173,11 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
         f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, MÁXIMO {max_words} palabras, sin "
         "emojis, sin overlays ni acotaciones de escena, listo para narrar de corrido.\n"
-        "Devuelve SOLO un JSON válido (array) con esta forma exacta:\n"
-        '[{"angulo":"Fórmula sketch + ASMR","texto":"el voiceover hablado completo"}, ...]' + info
+        "Devuelve SOLO un JSON válido (array) con esta forma exacta (fases = el MISMO texto partido por "
+        "fase del arco, para que el editor sepa qué es cada parte):\n"
+        '[{"angulo":"nombre del hook usado",'
+        '"fases":{"hook":"...","problema":"...","giro":"...","producto":"...","prueba":"...","cta":"..."},'
+        '"texto":"el voiceover hablado completo de corrido"}, ...]' + info
     )
 
     contents = [prompt]
@@ -171,8 +198,12 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     out = []
     for d in data if isinstance(data, list) else []:
         if isinstance(d, dict) and d.get("texto"):
-            out.append({"angulo": str(d.get("angulo", ""))[:40],
-                        "texto": _con_cta(str(d["texto"]).strip()[:600])})  # cierre con CTA EXACTO
+            item = {"angulo": str(d.get("angulo", ""))[:40],
+                    "texto": _con_cta(str(d["texto"]).strip()[:600])}  # cierre con CTA EXACTO
+            f = d.get("fases")
+            if isinstance(f, dict):   # desglose por fase (hook/problema/giro/producto/prueba/cta)
+                item["fases"] = {k: str(v)[:220] for k, v in f.items() if isinstance(v, str) and v.strip()}
+            out.append(item)
     return out[:n]
 
 

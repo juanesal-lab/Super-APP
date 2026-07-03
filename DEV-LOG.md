@@ -1634,3 +1634,22 @@ Juan: el botón Regenerar no funcionaba + quería darle una instrucción a una i
   "monstruito asustado corriendo con su maleta + láser más grande" → editó exacto eso y conservó el resto.
 - AVISO Jack: nuevos _persist_disruptive/_get_job en app.py (solo Ads imagen); editar_imagen_ia en
   disruptive_images.py; botón disEdit en el frontend.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎙️ Guiones v2: investigación de 24 ads GANADORES + arco por fases + anti-baneo
+Juan: guiones mucho más dinámicos, divididos por fases (hook/problema/solución...), validados con creativos
+REALES (métricas) y respetando políticas Meta/TikTok con eufemismos ("gordo"→"como un hipopótamo").
+**INVESTIGACIÓN**: bajé 24 transcripciones de ads en ESPAÑOL de Foreplay con 14-85 DÍAS corriendo (= pagando
+tráfico hoy; beauty/pets/fashion) y destilé los patrones al framework.
+**assets/guion-framework.md** — nueva sección "FRAMEWORK v2": EL ARCO GANADOR (7 fases con timing),
+LOS 12 HOOKS que están ganando (con ejemplo real c/u), REGLAS DE DINAMISMO (staccato en ráfagas + frases
+conversacionales, PERO que gira, números concretos, honestidad calculada, social proof conversacional) y el
+🛡️ DICCIONARIO ANTI-BANEO (mismo golpe con palabras seguras: hipopótamo, "tu amiguito ya no responde",
+"tu cara dice algo diferente"; "ayuda a" en vez de curas; reportes en vez de promesas con plazo).
+**scripts.py (generate_scripts)**: framework cap 13k→22k (¡se estaba cortando!); prompt exige arco + hook del
+banco + especificidad obligatoria (prohibidas frases de catálogo) + FUSIÓN de fases en videos cortos (3-4
+momentos bien desarrollados, no 7 telegramas) + diccionario anti-baneo; ritmo 2.3→2.6 palabras/seg (el real
+de los ganadores); salida ahora incluye `fases:{hook,problema,giro,producto,prueba,cta}` (retro-compatible,
+`texto` sigue igual). Mismas reglas aplicadas a creative_variator (guiones de variaciones).
+Iterado 3 veces contra producto delicado (gel reductor): salió fluido, con voz de Juan, específico y
+policy-safe. AVISO Jack: toqué scripts.py (prompt/cap/ritmo) y el framework .md — tu flujo de VO no cambia,
+el campo nuevo `fases` es opcional.

@@ -42,10 +42,15 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
         with open(image_path, "rb") as f:
             data = f.read()
         prompt = (
-            "Mira la foto de este producto de dropshipping y descríbelo con PRECISIÓN FÍSICA. Identifica: "
+            "Haz un ANÁLISIS VISUAL PROFUNDO de la foto de este producto de dropshipping — como un perito: "
             "(1) qué ES exactamente y su CATEGORÍA (crema, gel, cápsulas, spray, aparato/dispositivo, collar…); "
-            "(2) si es un APARATO/DISPOSITIVO, su FORMA física exacta (cuadrado, rectangular, redondo, tipo "
-            "lápiz/pen, tipo pistola, de mano…), color(es) y algún rasgo distintivo (botón, luz, pantalla, cable). "
+            "(2) FORMA física exacta (cuadrado, rectangular, redondo, tipo pinza/clamshell, lápiz, pistola, de "
+            "mano…) y tamaño aproximado (de bolsillo, de mesa…); (3) COLORES por parte (cuerpo, tapa, botones, "
+            "luz); (4) MARCA o TEXTO visible en el producto/empaque (transcríbelo literal si se lee); "
+            "(5) RASGOS DISTINTIVOS: bisagra, botón, pantalla, luz (color exacto), cable/puerto, ranura, textura; "
+            "(6) CÓMO SE USA (dónde va puesto, qué parte del cuerpo toca); "
+            "(7) NO CONFUNDIR CON: 1-3 productos PARECIDOS pero DISTINTOS con los que un buscador se "
+            "confundiría (ej. lámpara UV de secar esmalte, masajeador, otro aparato similar). "
             f"El usuario lo llama: \"{nombre}\". Devuelve SOLO un JSON:\n"
             '{"keywords":"2-4 palabras CORTAS en español: tipo de producto + para qué sirve (ej. '
             '\'laser hongos uñas\', no solo \'laser\')",'
@@ -55,8 +60,9 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
             'de veneno de abeja: \'veneno de abeja\', \'bee venom cream\', \'crema quita lunares\', '
             '\'mole removal cream\', \'quitar verrugas\', \'wart remover\', \'skin tag remover\'. '
             'NUNCA frases largas (dan poquísimos resultados)."],'
-            '"desc":"1-2 líneas: qué es + su FORMA FÍSICA exacta (ej. \'dispositivo láser CUADRADO de mano, '
-            'azul, con botón y luz\') + para qué sirve"}')
+            '"desc":"FICHA VISUAL compacta (máx 5 líneas) con TODO el análisis: CATEGORÍA | FORMA y tamaño | '
+            'COLORES por parte | MARCA/texto visible | RASGOS distintivos | USO | NO CONFUNDIR CON: ... '
+            '(esta ficha la usan los jueces visuales para confirmar videos, sé preciso)"}')
         resp = _client(api_key).models.generate_content(
             model=_MODEL, contents=[prompt, types.Part.from_bytes(data=data, mime_type="image/jpeg")])
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
@@ -159,7 +165,9 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
             "propósito, u otro tipo de producto. Si es un APARATO/dispositivo, además debe tener la MISMA "
             "FORMA física (cuadrado vs lápiz/pistola = false). OJO con aparatos PARECIDOS pero de OTRO USO: "
             "usa el TÍTULO para desempatar (ej. lámpara de SECAR esmalte/gel ≠ láser para HONGOS; masajeador "
-            "≠ depilador) → si el título indica otro uso, match=false. Si no se ve el producto o hay duda de "
+            "≠ depilador) → si el título indica otro uso, match=false. Si la ficha trae 'NO CONFUNDIR CON' y "
+            "el producto del video parece UNO DE ESOS → match=false. Compara también los rasgos distintivos "
+            "de la ficha (forma, colores, bisagra/botón/luz). Si no se ve el producto o hay duda de "
             "categoría/propósito → match=false. "
             "TEXTO SOBREPUESTO: distingue el texto AÑADIDO DIGITALMENTE encima del video (subtítulos, "
             "captions, títulos, stickers de texto — lo típico que pone el creador de TikTok) del texto que "
@@ -275,9 +283,10 @@ def _verificar_video(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) 
             f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
             f"Las demás fotos son FRAMES DE ADENTRO de un video de TikTok (título: \"{titulo}\"). "
             "match=true si en ALGÚN frame se ve el MISMO producto: misma categoría/formato, mismo propósito "
-            "y (si es aparato) la MISMA FORMA física. No exijas la misma marca. Aparatos parecidos de OTRO "
-            "uso (lámpara de secar esmalte ≠ láser para hongos) → false. Si en ningún frame se ve el "
-            "producto o hay duda → false. "
+            "y (si es aparato) la MISMA FORMA física y los RASGOS de la ficha (colores, bisagra/botón/luz). "
+            "No exijas la misma marca. Aparatos parecidos de OTRO uso (lámpara de secar esmalte ≠ láser "
+            "para hongos) → false. Si la ficha trae 'NO CONFUNDIR CON' y lo del video parece uno de esos → "
+            "false. Si en ningún frame se ve el producto o hay duda → false. "
             'Responde SOLO JSON: {"match":true/false,"muestra_producto":true/false,"es":true/false,'
             '"texto_overlay":"nada"/"poco"/"mucho"}')
         contents = [prompt, types.Part.from_bytes(data=ref_bytes, mime_type="image/jpeg")]
@@ -345,7 +354,8 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
             "mismo tipo de objeto y la MISMA forma/formato físico (un aparato cuadrado ≠ rectangular ≠ tipo "
             "lápiz/pistola; una crema ≠ pastillas ≠ spray)? NO exijas la misma marca/etiqueta: otro vendedor "
             "con el MISMO producto sí cuenta. OJO con aparatos parecidos de OTRO USO: usa el título para "
-            "desempatar (lámpara de SECAR esmalte ≠ láser para HONGOS) → otro uso = match=false. "
+            "desempatar (lámpara de SECAR esmalte ≠ láser para HONGOS) → otro uso = match=false. Si la ficha "
+            "trae 'NO CONFUNDIR CON' y lo del video parece uno de esos → match=false. "
             "Si es otro producto, otra forma, no se ve claro "
             "el producto en la portada, o hay CUALQUIER duda → match=false. Sé ESTRICTO pero justo (es UGC: "
             "puede estar en la mano, en ángulo o con otra luz).")

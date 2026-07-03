@@ -1590,3 +1590,18 @@ Juan: que la búsqueda de videos use Foreplay además de TikTok. Hecho en `tikto
   Dolccia, Bio Guate — creativos ya probados) + 3 de TikTok. 132s. Costo: ~3 búsquedas Foreplay (~30 créditos)
   por búsqueda con foto.
 - AVISO Jack: solo agregué; tu flujo de queries y el pool quedan igual cuando no hay key de Foreplay.
+
+### 2026-07-03 · Claude (juanesal-lab) · ✂️ Clips: pool 60→98 + dedup justo | 🔎 Ficha visual PROFUNDA de la referencia
+Juan: (1) con 30 videos los cortes SEGUÍAN repitiéndose; (2) la búsqueda se acercó pero confirmaba productos
+parecidos-no-iguales → pidió análisis profundo de la imagen de referencia.
+**Clips (orchestrator):** causa = pool capado en 60 con 56 necesarios (8 versiones × 7) + dedup FLOJO que
+botaba tomas válidas (1 frame parecido bastaba; con 30 videos del mismo producto eso mata el pool → reciclaje).
+Fix: pool = min(100, max(NV*cpv+16, fuentes*3+NV)) → 98 con 30 videos; duplicado SOLO si ≥2 de las 3 firmas
+coinciden o 1 frame casi idéntico (<4 bits). E2E ok (8 versiones, 24 clips).
+**Búsqueda (tiktok_search.analizar_foto):** ahora hace ANÁLISIS VISUAL PROFUNDO tipo perito → FICHA:
+categoría | forma+tamaño | colores por parte | MARCA/texto visible (transcrito) | rasgos distintivos
+(bisagra/botón/luz/ranura) | uso | **NO CONFUNDIR CON** (productos parecidos-distintos). Los 3 jueces
+(portada Gemini, video-por-dentro, Claude) comparan contra la ficha y rechazan lo que parezca un
+"no confundir con". Probado con el láser: la ficha transcribió hasta el texto de la caja y listó
+"oxímetro de pulso, lámpara UV, masajeador" como confusables.
+- AVISO Jack: toqué _select_for_target (pool+dedup) y los prompts de analizar_foto/jueces. Nada de tu flujo.

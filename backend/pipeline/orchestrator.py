@@ -42,8 +42,9 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     las 6 versiones puedan usar clips DIFERENTES y no se repitan entre ellas."""
     n_sources = len({s.source_index for s in segments}) or 1
     clips_per_ver = max(4, min(10, round(target_seconds / 2.2)))
-    # pool ideal = suficiente para 6 versiones distintas, escalando con #videos
-    pool_size = min(60, max(_N_VERSIONS * clips_per_ver, n_sources * 2 + _N_VERSIONS))
+    # pool ideal = las N versiones COMPLETAS con clips distintos (NV*cpv) + MARGEN (el dedup visual
+    # descarta varios): antes se capaba en 60 con 56 necesarios → cualquier descarte causaba reciclaje.
+    pool_size = min(100, max(_N_VERSIONS * clips_per_ver + 16, n_sources * 3 + _N_VERSIONS))
     if max_clips:
         pool_size = min(pool_size, max_clips)
     # repartir entre fuentes: con muchos videos, pocos clips por video (más variedad)
@@ -55,10 +56,21 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     per_source: dict[int, int] = {}
 
     def is_duplicate(sigs) -> bool:
-        # duplicado si CUALQUIERA de las firmas del segmento coincide con CUALQUIERA ya elegida
-        # (caza la misma escena aunque esté en otro archivo o en otro segundo del video)
-        return any(sig_distance(a, s) < _DUP_THRESHOLD
-                   for a in sigs for s in chosen_sigs if a is not None and s is not None)
+        # Duplicado REAL solo si: (a) algún frame es casi IDÉNTICO (<4 bits), o (b) COINCIDEN ≥2 de las
+        # 3 firmas (misma escena de verdad). Con 1 sola coincidencia floja NO se descarta: con 30 videos
+        # del mismo producto, tomas VÁLIDAS pero parecidas se estaban botando → pool chico → reciclaje.
+        if not sigs:
+            return False
+        flojas = 0
+        for a in sigs:
+            if a is None:
+                continue
+            dmin = min((sig_distance(a, s) for s in chosen_sigs if s is not None), default=99)
+            if dmin < 4:
+                return True
+            if dmin < _DUP_THRESHOLD:
+                flojas += 1
+        return flojas >= 2
 
     # 1ra pasada: respetando el tope por fuente (asegura variedad de videos)
     # 2da pasada: si falta, relajar el tope por fuente

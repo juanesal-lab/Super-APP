@@ -213,7 +213,7 @@ def get_config():
 
 
 @app.get("/api/caption-preview")
-def caption_preview(style: str = "hormozi"):
+def caption_preview(style: str = "hormozi", size: str = "mediano"):
     """Preview PNG de un estilo de subtítulo (para elegir viendo cómo se ve)."""
     import io
     from PIL import Image
@@ -222,7 +222,7 @@ def caption_preview(style: str = "hormozi"):
     W, H = 640, 260
     grp = [{"word": "MIRA"}, {"word": "ESTO"}, {"word": "GRATIS"}]
     try:
-        cap = _render_wordgroup(grp, 1, W, H, st)
+        cap = _render_wordgroup(grp, 1, W, H, st, size)
     except Exception:  # noqa: BLE001
         raise HTTPException(500, "no se pudo renderizar el preview")
     bg = Image.new("RGB", (W, H), (32, 30, 36))
@@ -401,6 +401,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
                 oferta_2x1=settings.get("oferta_2x1", False),
                 verticalizar=settings.get("verticalizar", True),
                 caption_style=settings.get("caption_style", "bold_outline"),
+                caption_size=settings.get("caption_size", "mediano"),
                 oferta=settings.get("oferta", ""),
                 banner_oferta=settings.get("banner_oferta", False),
                 work_dir=os.path.join(WORK_DIR, job_id, f"c{i}"),
@@ -427,6 +428,7 @@ async def auto(
     oferta_2x1: bool = Form(False),
     verticalizar: bool = Form(True),
     caption_style: str = Form("bold_outline"),
+    caption_size: str = Form("mediano"),
     oferta: str = Form(""),
     banner_oferta: bool = Form(False),
 ):
@@ -441,6 +443,7 @@ async def auto(
         "oferta_2x1": bool(oferta_2x1),
         "verticalizar": bool(verticalizar),
         "caption_style": caption_style,
+        "caption_size": caption_size,
         "oferta": oferta.strip(),
         "banner_oferta": bool(banner_oferta),
     }
@@ -535,6 +538,8 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
             doblar=settings.get("doblar", False),
             voz=settings.get("voz", "juan_carlos"),
             verticalizar=settings.get("verticalizar", True),
+            caption_style=settings.get("caption_style", "karaoke"),
+            caption_size=settings.get("caption_size", "mediano"),
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
             work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
         )
@@ -556,6 +561,8 @@ async def clone(
     doblar: bool = Form(False),
     voz: str = Form("juan_carlos"),
     verticalizar: bool = Form(True),
+    caption_style: str = Form("karaoke"),
+    caption_size: str = Form("mediano"),
 ):
     if not winner:
         raise HTTPException(400, "Sube el creativo ganador")
@@ -580,6 +587,7 @@ async def clone(
         "product_desc": product_desc.strip(), "old_desc": old_desc.strip(),
         "doblar": bool(doblar), "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
         "verticalizar": bool(verticalizar),
+        "caption_style": caption_style, "caption_size": caption_size,
     }
     threading.Thread(target=_run_clone_job,
                      args=(job_id, winner_path, photo_paths, video_paths, settings),
@@ -676,6 +684,8 @@ async def scripts(
     use_music: bool = Form(False),
     use_captions: bool = Form(False),
     oferta_2x1: bool = Form(False),
+    caption_style: str = Form("hormozi"),
+    caption_size: str = Form("mediano"),
     reference_ad: UploadFile | None = File(None),
 ):
     job_id, paths = _save_uploads(files or [])
@@ -704,6 +714,7 @@ async def scripts(
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "use_music": bool(use_music), "captions": bool(use_captions),
         "oferta_2x1": bool(oferta_2x1),
+        "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
     }
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
@@ -764,6 +775,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             blur_captions=s.get("blur_captions", False), text_mode=s.get("text_mode", "tapar"),
             caption_pos=s.get("caption_pos", "abajo"),
             captions=s.get("captions", False), caption_style=s.get("caption_style", "hormozi"),
+            caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
             progress=progress)
@@ -1041,6 +1053,7 @@ async def producto_clips(
     voz_en_off: bool = Form(False),
     voz: str = Form("juan_carlos"),
     caption_style: str = Form("hormozi"),
+    caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
 ):
     """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
@@ -1071,6 +1084,7 @@ async def producto_clips(
         "caption_style": caption_style if caption_style in (
             "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
             else "hormozi",
+        "caption_size": caption_size if caption_size in ("pequeno", "mediano", "grande") else "mediano",
         "subtitulos": bool(subtitulos),
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",

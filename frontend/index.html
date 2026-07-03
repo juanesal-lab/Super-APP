@@ -496,6 +496,7 @@ try{
         <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
         <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
       </select>
+      <select id="autoCapSize" class="full" title="Tamaño de los subtítulos" onchange="document.getElementById('autoCapPrev').src='/api/caption-preview?style='+document.getElementById('autoCapStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
       <img id="autoCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ven los subtítulos" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
     </div>
     <div class="autoChk">
@@ -530,6 +531,7 @@ try{
       fd.append('product_desc',document.getElementById('autoDesc').value);
       fd.append('voz',document.getElementById('autoVoz').value);
       fd.append('caption_style',document.getElementById('autoCapStyle').value);
+      fd.append('caption_size',document.getElementById('autoCapSize').value);
       fd.append('oferta_2x1',document.getElementById('auto2x1').checked);
       fd.append('banner_oferta',document.getElementById('autoBanner').checked);
       fd.append('verticalizar',document.getElementById('autoVert').value);
@@ -776,6 +778,8 @@ try{
       <input type="text" id="clDesc" class="full" placeholder="Tu producto (ej. crema para dolor de espalda)">
       <input type="text" id="clOld" class="full" placeholder="Producto del ganador (ej. cápsulas) — ayuda a detectarlo">
       <select id="clVoz"><option value="juan_carlos">Voz: Juan Carlos</option><option value="kate">Voz: Kate</option></select>
+      <select id="clCapStyle" title="Estilo de subtítulos"><option value="karaoke">Subt: Karaoke</option><option value="hormozi">Subt: Hormozi</option><option value="highlight_box">Subt: Caja</option><option value="bold_outline">Subt: Bold</option><option value="yellow_highlight">Subt: Amarillo</option></select>
+      <select id="clCapSize" title="Tamaño de los subtítulos" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Subt: Pequeño</option><option value="mediano" selected>Subt: Mediano</option><option value="grande">Subt: Grande</option></select>
       <select id="clVert"><option value="true">9:16 vertical (blur)</option><option value="false">Dejar formato</option></select>
     </div>
     <div class="autoChk">
@@ -816,6 +820,8 @@ try{
       fd.append('product_desc',document.getElementById('clDesc').value);
       fd.append('old_desc',document.getElementById('clOld').value);
       fd.append('voz',document.getElementById('clVoz').value);
+      fd.append('caption_style',document.getElementById('clCapStyle').value);
+      fd.append('caption_size',document.getElementById('clCapSize').value);
       fd.append('verticalizar',document.getElementById('clVert').value);
       fd.append('doblar',document.getElementById('clDoblar').checked);
       document.getElementById('clGo').disabled=true;
@@ -1000,6 +1006,7 @@ try{
           <option value="bold_outline">Estilo: Bold (blanco con borde grueso)</option>
           <option value="yellow_highlight">Estilo: Amarillo (claves resaltadas)</option>
         </select>
+        <select id="capSize" title="Tamaño de los subtítulos" onchange="document.getElementById('capPrev').src='/api/caption-preview?style='+document.getElementById('capStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
         <img id="capPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="clip2x1"> 🎁 Oferta 2x1</label>
         <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
@@ -1069,6 +1076,7 @@ try{
         <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
         <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
       </select>
+      <select id="prodCapSize" title="Tamaño de los subtítulos" onchange="document.getElementById('prodCapPrev').src='/api/caption-preview?style='+document.getElementById('prodCapStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
       <img id="prodCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven los subtítulos" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
     </div>
 
@@ -1160,6 +1168,7 @@ try{
         fd.append('voz_en_off',document.getElementById('prodVO').checked);
         fd.append('voz',document.getElementById('prodVoz').value);
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
+        fd.append('caption_size',document.getElementById('prodCapSize').value);
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
@@ -2081,6 +2090,7 @@ function buildForm(){
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);
   fd.append("caption_style", document.getElementById("capStyle").value);
+  fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
   return fd;
 }

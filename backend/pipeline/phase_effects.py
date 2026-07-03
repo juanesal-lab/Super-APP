@@ -129,18 +129,28 @@ def rescale_phases(blueprint: dict, target_seconds: float) -> list[dict]:
     return phases
 
 
-def _pick_sfx(sfx_paths: list[str], prefer: str | None) -> str | None:
-    """Elige el SFX cuyo nombre contenga 'prefer'.
+# Sinónimos por familia: cada preferencia acepta VARIOS SFX equivalentes → variedad entre renders
+_SFX_FAMILIA = {
+    "riser": ("riser", "riser_fast", "whoosh_fast"),
+    "boom": ("boom", "impact", "bass_drop"),
+    "ding": ("ding", "sparkle", "click", "pop"),
+    "sparkle": ("sparkle", "ding", "pop"),
+    "swoosh": ("swoosh", "whoosh", "whoosh_fast"),
+    "whoosh": ("whoosh", "swoosh", "whoosh_fast"),
+}
 
-    Si 'prefer' es None -> la fase NO lleva SFX a propósito (ej. DOLOR, no se celebra).
-    Si se pide un 'prefer' pero no hay match exacto -> cae al primero disponible.
-    """
+
+def _pick_sfx(sfx_paths: list[str], prefer: str | None) -> str | None:
+    """Elige un SFX de la FAMILIA de 'prefer' AL AZAR (variedad entre renders — queja de Juan:
+    siempre sonaba el mismo). Si 'prefer' es None -> la fase NO lleva SFX (ej. DOLOR, no se celebra)."""
     if not sfx_paths or prefer is None:
         return None
-    for p in sfx_paths:
-        if prefer.lower() in os.path.basename(p).lower():
-            return p
-    return sfx_paths[0]
+    import random as _rnd
+    familia = _SFX_FAMILIA.get(prefer.lower(), (prefer.lower(),))
+    matches = [p for p in sfx_paths for pref in familia if pref in os.path.basename(p).lower()]
+    if matches:
+        return _rnd.choice(sorted(set(matches)))
+    return _rnd.choice(sfx_paths)
 
 
 def phase_effect_plan(

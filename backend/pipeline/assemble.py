@@ -579,8 +579,12 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
     idx = 2
 
     if has_sfx:
-        # asignar un efecto a cada transicion (alternando los disponibles)
-        assign = [sfx_paths[i % len(sfx_paths)] for i in range(len(cut_times))]
+        # asignar un efecto a cada transición: BARAJADOS por render (variedad — queja de Juan:
+        # "no siempre el mismo efecto"), y nunca el mismo dos veces seguidas.
+        import random as _rnd
+        seq = sfx_paths[:]
+        _rnd.shuffle(seq)
+        assign = [seq[i % len(seq)] for i in range(len(cut_times))]
         in_index = {}
         for p in assign:
             if p not in in_index:

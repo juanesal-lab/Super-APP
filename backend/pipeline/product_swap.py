@@ -71,9 +71,10 @@ def detect_product_ranges(api_key: str | None, video_path: str, product_desc: st
     dur = probe(video_path).duration
     if dur <= 0:
         return []
-    # muestreo denso (~32 frames) para no dejar escapar momentos cortos del producto
-    step = step or max(0.4, dur / 32.0)
-    times = [round(t, 2) for t in np.arange(step / 2, dur, step)][:32]
+    # muestreo MUY denso (~48 frames) para detectar AL DETALLE cada momento del producto
+    # (pedido de Juan: precisión — que no se escape ni un instante del producto ajeno)
+    step = step or max(0.3, dur / 48.0)
+    times = [round(t, 2) for t in np.arange(step / 2, dur, step)][:48]
     sheet = _contact_sheet(video_path, times)
     if sheet is None:
         return []

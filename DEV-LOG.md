@@ -1820,3 +1820,27 @@ hacer el video más dopamínico. MANUAL por ahora (él elige; si le gusta lo hac
 - AVISO Jack: solo agregué broll al final de buscar() y el grupo 3 en tkPaint; tu refactor creative_search
   intacto. VIENEN EN CAMINO (agente mapeando): tamaño de subtítulos seleccionable, SFX variados en TODAS
   las secciones, clon con detección precisa, y garantía dura de no-repetición.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎛️ MEJORA GENERAL: subtítulos con TAMAÑO en todas las secciones + SFX variados + Clon con cobertura total
+Paquete grande de Juan (con mapa previo de un agente para no romper nada). REGLAS NUEVAS PERMANENTES:
+(1) JAMÁS repetir clips dentro del mismo video; (2) toda mejora se propaga a TODAS las secciones de video.
+**Subtítulos — tamaño elegible (pequeño/mediano/GRANDE→default MEDIANO):**
+- `caption_styles`: `TAMANOS` + `cap_size` en render_caption/_render_wordgroup/burn_word_captions (escala
+  size0 + max_h + min_size juntos — si no, el auto-fit anula el efecto). Default mediano = ya no gigantes.
+- Cableado COMPLETO: orchestrator.render_versions, auto_studio (generar_creativo_auto + _burn_subs),
+  producto_clips, winner_clone, endpoints (/api/auto, /api/scripts, /api/producto-clips, /api/clone,
+  /api/caption-preview?size=) y UI (selector de tamaño junto a CADA selector de estilo + preview en vivo).
+- 🐞 BUG CAZADO por el agente: el selector de ESTILO de Cortar clips se enviaba pero /api/scripts no lo
+  declaraba como Form → SIEMPRE salía "hormozi". Arreglado (caption_style+caption_size en el endpoint).
+**SFX variados (queja: "siempre suena el mismo"):**
+- assemble.add_voiceover_and_sfx: orden fijo alfabético → BARAJADO por render.
+- phase_effects: `_SFX_FAMILIA` — cada fase acepta una FAMILIA de SFX equivalentes (boom→boom/impact/
+  bass_drop, etc.) y elige AL AZAR entre ellos → cada render suena distinto. Aplica a AUTO y CLON.
+**Clon / Reemplazar (estaba "muy suave"):**
+- REGLA de cobertura total: el producto AJENO no queda visible NUNCA — sin dinámicas hace corte duro a
+  quieta; red de seguridad final cubre con CUALQUIER toma propia (las de Juan SÍ pueden repetirse).
+- Detección más fina: 32→48 frames de muestreo (step mín 0.3s) en detect_product_ranges.
+- Clon ahora con selector de ESTILO y TAMAÑO de subtítulos (antes hardcodeado "karaoke").
+Verificado: imports OK, preview S/M/G escala bien (grid visual), UI sin errores JS, _pick_sfx devuelve
+familia variada. AVISO Jack: toqué caption_styles/orchestrator/auto_studio/producto_clips/winner_clone/
+product_swap/assemble/phase_effects/app.py/index.html — todo con defaults retro-compatibles.

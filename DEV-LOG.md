@@ -1506,3 +1506,19 @@ Siguiendo el análisis de los 24 creativos que no funcionaron, mejoré para "mej
   Probado real: bee venom "Crema para eliminar lunares..." (arriba) → tapado; almohadillas (abajo) → sin
   falso positivo. Verificado con frame: top limpio, producto intacto.
   AVISO Juan: toqué subtitle_band.py (detect_top_band) + auto_studio.py (2 bandas + pacing) + assemble.py.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔎 Buscar TikTok: llegar a más links (11 → 21) del MISMO producto
+Jack: pedía 30 links y llegaban ~11. Diagnóstico: (1) las búsquedas eran frases LARGAS y específicas →
+tikwm devolvía poquísimos y repetidos (~44 candidatos); (2) solo se verificaban los primeros 28; (3) la
+verificación exigía la MISMA MARCA/frasco (rechazaba el mismo producto de otro vendedor).
+Cambios en tiktok_search.py:
+- analizar_foto: pide 7-9 búsquedas CORTAS y VARIADAS, MEZCLA español + INGLÉS (mucho contenido es en
+  inglés) + términos amplios. _expandir: agrega versiones más cortas/amplias (recorta la frase) + más
+  sufijos de demostración/compra.
+- Gathering en PARALELO (10 términos × 3 páginas) y verifica un pool GRANDE escalado al count (max(60,
+  count*4)) con 10 workers, no 28.
+- _verificar: sigue estricto en CATEGORÍA + PROPÓSITO + forma (crema≠pastilla/bótox; aparato = misma
+  forma física), pero YA NO exige misma marca/etiqueta → otro vendedor del MISMO producto SÍ cuenta.
+- Probado real (foto del frasco bee venom, count=30): 11 → 21 verificados. (El techo real depende de
+  cuántos videos de ese producto exacto existan en TikTok; productos nicho pueden dar ~20-25.)
+  AVISO Juan: toqué tiktok_search.py (analizar_foto, _expandir, buscar, _verificar). No cambié el shape.

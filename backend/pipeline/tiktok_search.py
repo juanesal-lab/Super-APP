@@ -47,11 +47,14 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
             "(2) si es un APARATO/DISPOSITIVO, su FORMA física exacta (cuadrado, rectangular, redondo, tipo "
             "lápiz/pen, tipo pistola, de mano…), color(es) y algún rasgo distintivo (botón, luz, pantalla, cable). "
             f"El usuario lo llama: \"{nombre}\". Devuelve SOLO un JSON:\n"
-            '{"keywords":"3-5 palabras en español ESPECÍFICAS: tipo de producto + para qué sirve (ej. '
+            '{"keywords":"2-4 palabras CORTAS en español: tipo de producto + para qué sirve (ej. '
             '\'laser hongos uñas\', no solo \'laser\')",'
-            '"variants":["4 búsquedas DISTINTAS en español para encontrar videos que MUESTREN este '
-            'MISMO producto y sus resultados/demostración (añade \'resultados\', \'antes y después\', '
-            '\'cómo funciona\', \'reseña\')"],'
+            '"variants":["7-9 búsquedas CORTAS y VARIADAS (2-4 palabras cada una) para encontrar el MÁXIMO '
+            'de videos del MISMO producto. MEZCLA español E INGLÉS (mucho contenido está en inglés). '
+            'Incluye: el nombre genérico del producto, su beneficio, y términos AMPLIOS. Ej. para una crema '
+            'de veneno de abeja: \'veneno de abeja\', \'bee venom cream\', \'crema quita lunares\', '
+            '\'mole removal cream\', \'quitar verrugas\', \'wart remover\', \'skin tag remover\'. '
+            'NUNCA frases largas (dan poquísimos resultados)."],'
             '"desc":"1-2 líneas: qué es + su FORMA FÍSICA exacta (ej. \'dispositivo láser CUADRADO de mano, '
             'azul, con botón y luz\') + para qué sirve"}')
         resp = _client(api_key).models.generate_content(
@@ -70,15 +73,23 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
 
 
 def _expandir(kw: str, variants: list[str]) -> list[str]:
-    """Garantiza VARIAS consultas (amplía) con términos de beneficios/demostración, sin duplicar."""
+    """Garantiza HARTAS consultas (amplía) con términos de beneficios/demostración/compra, sin duplicar.
+    Más consultas = más candidatos únicos = más chance de llegar a los links pedidos (mismo producto)."""
     kw = (kw or "").strip()
-    extra = [kw, f"{kw} resultados", f"{kw} antes y después", f"{kw} reseña", f"{kw} cómo funciona"]
+    pal = kw.split()
+    # versiones más CORTAS/AMPLIAS de la frase (las cortas devuelven MUCHOS más resultados en tikwm)
+    core = " ".join(pal[:3]) if len(pal) > 3 else kw
+    base = " ".join(pal[:2]) if len(pal) >= 2 else kw
+    # sufijos de demostración/compra sobre el núcleo CORTO (no sobre la frase larga)
+    sufijos = ["", "resultados", "antes y después", "reseña", "cómo funciona",
+               "review", "opiniones", "testimonio", "comprar"]
+    extra = [f"{core} {s}".strip() for s in sufijos] + [base, f"{base} review"]
     out: list[str] = []
-    for q in [kw] + variants + extra:
+    for q in [kw, core] + variants + extra:
         q = (q or "").strip()
         if q and q.lower() not in {x.lower() for x in out}:
             out.append(q)
-    return out[:5]
+    return out[:10]
 
 
 # Regiones donde el contenido suele estar en español (para priorizar sin gastar visión)
@@ -137,12 +148,15 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         prompt = (
             f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
             f"Foto 2 = portada de un video de TikTok (título: \"{titulo}\"). "
-            "Compara FÍSICAMENTE los dos productos. match=true SOLO si la Foto 2 muestra CLARAMENTE el MISMO "
-            "producto que la Foto 1: mismo tipo de objeto, misma CATEGORÍA, y —MUY IMPORTANTE— la MISMA FORMA/"
-            "FORMATO FÍSICO. Ejemplos de lo que NO cuenta (match=false): un dispositivo CUADRADO vs uno "
-            "rectangular o tipo lápiz/pistola; un láser vs otro aparato distinto; una crema vs pastillas/spray. "
-            "Si la Foto 2 muestra OTRO producto, otra forma, otro aparato, no se ve claro el producto, o hay "
-            "CUALQUIER duda → match=false. Sé DURO: mejor descartar que dejar pasar un producto equivocado. "
+            "match=true si la Foto 2 muestra el MISMO PRODUCTO en lo que IMPORTA: la MISMA CATEGORÍA/FORMATO "
+            "(crema=crema, gel=gel, cápsulas=cápsulas, aparato=aparato) Y el MISMO PROPÓSITO/beneficio que la "
+            "Foto 1 (ej. crema de veneno de abeja para lunares/verrugas). NO exijas la misma MARCA/etiqueta/"
+            "envase: OTRO vendedor con el MISMO producto (misma categoría + mismo propósito) SÍ cuenta "
+            "(match=true) — así encontramos más creativos del mismo producto. "
+            "match=false si es OTRA categoría/formato (crema vs pastillas/spray/bótox/inyección), otro "
+            "propósito, u otro tipo de producto. Si es un APARATO/dispositivo, además debe tener la MISMA "
+            "FORMA física (cuadrado vs lápiz/pistola = false). Si no se ve el producto o hay duda de "
+            "categoría/propósito → match=false. "
             "TEXTO SOBREPUESTO: distingue el texto AÑADIDO DIGITALMENTE encima del video (subtítulos, "
             "captions, títulos, stickers de texto — lo típico que pone el creador de TikTok) del texto que "
             "es parte REAL de la escena (la etiqueta o empaque del producto, letreros del lugar). SOLO cuenta "
@@ -183,14 +197,16 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 ref_bytes = f.read()
         except Exception:  # noqa: BLE001
             ref_bytes = None
-    queries = [q for q in queries if q][:5] or [(nombre or "").strip()]
+    queries = [q for q in queries if q][:10] or [(nombre or "").strip()]
     kw = queries[0]
 
-    # AMPLIAR: varias consultas (producto + beneficios) × varias páginas → muchos candidatos únicos
+    # AMPLIAR: MUCHAS consultas (producto + beneficios/compra) × varias páginas → muchísimos candidatos.
+    # En PARALELO para que buscar en 10 términos × 3 páginas no se demore.
     cands: dict[str, dict] = {}
-    for q in queries:
-        for c in buscar_tiktok(q, count=40, pages=2):
-            cands.setdefault(c["url"], c)
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=3), queries):
+            for c in res:
+                cands.setdefault(c["url"], c)
     cand_list = list(cands.values())
     # EXCLUIR COLOMBIA (regla del dueño) + descartar duraciones raras (fuera de 4-120s)
     filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120 and c.get("region") != "CO"]
@@ -202,9 +218,12 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     verificado = False
     if ref_bytes and api_key and cand_list:
         verificado = True
-        pool = cand_list[:28]                 # verifica los MEJORES (hispanos + virales) primero
+        # Verifica MUCHOS más (escalado a lo que pide el usuario): como el filtro estricto de "mismo
+        # producto" descarta hartos, hay que revisar un pool grande para LLEGAR al count pedido.
+        pool_n = min(len(cand_list), max(60, count * 4))
+        pool = cand_list[:pool_n]             # verifica los MEJORES (hispanos + virales) primero
         matches: list[dict] = []
-        with ThreadPoolExecutor(max_workers=6) as ex:
+        with ThreadPoolExecutor(max_workers=10) as ex:
             futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c for c in pool}
             for fut in as_completed(futs):
                 v = fut.result()

@@ -1785,3 +1785,24 @@ VERIFICADO: caso reproducido (video 8s + voz 20s) → salida 20.00s exactos, CER
 (detector perceptual); mock 60 clips cortos → 8 versiones de 24-25s, 0 clips repetidos internos, overlap
 entre versiones mínimo. AVISO Jack: toqué add_voiceover, add_voiceover_and_sfx y plan de versiones
 (duración-based); tu rotación de hooks y usage-based del pool chico siguen ahí.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🏠✨ HOME PREMIUM nuevo: saludo dinámico + auto concepto 3D + 2 tarjetas módulo
+Juan pidió una primera impresión "inolvidable": home tipo sistema operativo premium (filosofía Porsche/Linear/
+Apple/Tesla), NO e-commerce. Construido como CAPA de entrada (sección #home) SIN tocar la app existente:
+- **Saludo dinámico** con shimmer dorado (rota entre 4 frases según la hora, fade suave).
+- **AUTO CONCEPTO 3D 100% original** (Three.js CDN via importmap, procedural — sin modelos externos):
+  silueta GT extruida con clearcoat negro, cabina de vidrio, línea de luz + faros dorados emisivos, rines
+  dorados, piso reflectivo con halo dorado, RoomEnvironment (reflejos dinámicos), niebla, ACES tone mapping.
+  Interactivo: OrbitControls (giro 360°, zoom con scroll/pinch, damping), auto-rotación continua,
+  "respiración" sutil, y reacciona al puntero y al giroscopio del celular. Si no hay WebGL/CDN → fallback
+  de glow (no rompe nada).
+- **2 tarjetas módulo premium** (solo dos, como pidió): "Buscar Productos" → p-foreplay; "Crear Creativos" →
+  p-crear. Hover con profundidad, sheen que barre, iconografía SVG line-art, micro-flecha.
+- **"¿Cómo funciona?"** editorial: 3 pasos (Descubre/Crea/Inspírate-Foreplay) con revelado escalonado al
+  scroll (IntersectionObserver).
+- **Transiciones**: home sale con scale+blur → app entra con fade; el LOGO "CreativeMaxing" (h1) ahora es
+  clickeable y vuelve al home. `.wrap` arranca oculto. prefers-reduced-motion respetado.
+- VERIFICADO en navegador: carga, 3D renderiza y rota, saludo rota, tarjetas entran a su tab, logo vuelve,
+  reveal del scroll funciona, consola sin errores de la app.
+- AVISO Jack: todo AUTOCONTENIDO al inicio del body (sección #home + 2 scripts); lo único tocado de lo
+  existente: `.wrap` display:none inicial + onclick en el h1. Los tabs/paneles intactos.

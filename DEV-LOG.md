@@ -1806,3 +1806,17 @@ Apple/Tesla), NO e-commerce. Construido como CAPA de entrada (sección #home) SI
   reveal del scroll funciona, consola sin errores de la app.
 - AVISO Jack: todo AUTOCONTENIDO al inicio del body (sección #home + 2 scripts); lo único tocado de lo
   existente: `.wrap` display:none inicial + onclick en el h1. Los tabs/paneles intactos.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎬 Búsqueda: B-ROLL de apoyo adaptado al ángulo (manual)
+Juan: además de los 30 videos del producto exacto, 10 escenas de B-ROLL/stock de TikTok adaptadas al ÁNGULO
+(skincare→antes/después facial y rutinas; gadget→manos usándolo/limpieza satisfactoria) para intercalar y
+hacer el video más dopamínico. MANUAL por ahora (él elige; si le gusta lo hacemos automático).
+- `tiktok_search.buscar_broll(ref_desc, nombre, api_key, n=10)`: Gemini inventa 6 búsquedas de escenas de
+  APOYO (no del producto) desde la ficha del producto → tikwm en paralelo → filtra duración/CO → ordena por
+  views → 1 por autor (variedad). `buscar()` lo incluye como `broll:[...]` (fluye por /api/tiktok-search y
+  por el nuevo /api/creative-search de Jack vía tk.broll).
+- UI (tkPaint): grupo 3 "🎬 B-roll de apoyo" con explicación + copiar links + lista. Probado: crema
+  antiarrugas → 9 escenas ASMR skincare/ojeras con views altos.
+- AVISO Jack: solo agregué broll al final de buscar() y el grupo 3 en tkPaint; tu refactor creative_search
+  intacto. VIENEN EN CAMINO (agente mapeando): tamaño de subtítulos seleccionable, SFX variados en TODAS
+  las secciones, clon con detección precisa, y garantía dura de no-repetición.

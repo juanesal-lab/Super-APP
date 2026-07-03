@@ -193,6 +193,54 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
         return None
 
 
+def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
+    """Gemini inventa búsquedas de B-ROLL (escenas de APOYO, no del producto) adaptadas al ÁNGULO del
+    producto: para skincare → 'antes y después rostro', 'piel lisa primer plano'; para un gadget →
+    'manos usando', 'problema que resuelve'... Devuelve 4-6 consultas cortas."""
+    try:
+        prompt = (
+            f"Producto: \"{nombre}\". Ficha: \"{ref_desc[:400]}\". Para armar un anuncio DOPAMÍNICO de este "
+            "producto necesito B-ROLL de apoyo (escenas que NO muestran el producto, pero apoyan su ángulo "
+            "de venta): el DOLOR en acción, la transformación/resultado, la situación de uso, reacciones. "
+            "Dame 6 búsquedas CORTAS para TikTok (2-4 palabras, español o inglés según qué dé más resultados) "
+            "de ese b-roll. Ej. crema facial → ['antes despues rostro','piel lisa primer plano','mujer "
+            "aplicando crema','skin transformation']. Ej. gadget de limpieza → ['limpieza satisfactoria', "
+            "'cleaning asmr','mugre antes despues']. Responde SOLO JSON: {\"broll\":[\"...\"]}")
+        resp = _client(api_key).models.generate_content(model=_MODEL, contents=[prompt])
+        m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
+        if m:
+            qs = [str(q).strip() for q in (json.loads(m.group(0)).get("broll") or []) if str(q).strip()]
+            return qs[:6]
+    except Exception:  # noqa: BLE001
+        pass
+    return []
+
+
+def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10) -> list[dict]:
+    """Busca N escenas de B-ROLL/stock en TikTok adaptadas al ángulo del producto (apoyo visual,
+    'dopamínico'). Sin verificación visual (es apoyo, el usuario elige manualmente)."""
+    queries = _queries_broll(ref_desc, nombre, api_key) or [f"{nombre} antes y después", "satisfying asmr"]
+    cands: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
+        for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
+            for c in res:
+                cands.setdefault(c["url"], c)
+    lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
+    # más views primero (b-roll viral = más dopamínico) y variedad de autores
+    lst.sort(key=lambda c: c.get("plays", 0), reverse=True)
+    out, autores = [], set()
+    for c in lst:
+        autor = c["url"].split("@")[1].split("/")[0] if "@" in c["url"] else c["url"]
+        if autor in autores:
+            continue
+        autores.add(autor)
+        out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
+                    "plays": c.get("plays", 0), "tipo": "broll"})
+        if len(out) >= n:
+            break
+    return out
+
+
 def _foreplay_candidatos(queries: list[str], foreplay_key: str | None, max_q: int = 3) -> list[dict]:
     """Candidatos EXTRA desde Foreplay (biblioteca de ads GANADORES con video descargable).
 
@@ -514,8 +562,17 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         c.pop("_deep", None)
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
+
+    # B-ROLL de apoyo (escenas adaptadas al ángulo, para un video más dopamínico) — manual:
+    # se muestran aparte y el usuario elige cuáles usar.
+    broll = []
+    if api_key:
+        try:
+            broll = buscar_broll(ref_desc, nombre or kw, api_key, n=10)
+        except Exception:  # noqa: BLE001
+            broll = []
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
-            "n_confirmados": n_conf,
+            "n_confirmados": n_conf, "broll": broll,
             "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}"}
 
 

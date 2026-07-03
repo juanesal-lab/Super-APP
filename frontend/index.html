@@ -620,7 +620,7 @@ try{
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
-                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[]};
+                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[])};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
         tkPaint();
       }
@@ -653,6 +653,14 @@ try{
           h+='<div class="fpGrid">';
           ads.forEach((a,i)=>{ h+=tkFpCard(a,i,S.fpVerif); });
           h+='</div>';
+        }
+        // ── grupo 3: 🎬 B-ROLL de apoyo (escenas para darle ritmo/dopamina al ad) ──
+        const br=S.broll||[];
+        if(br.length){
+          h+=`<h3 style="margin:26px 0 4px">🎬 B-roll de apoyo (${br.length})</h3>`;
+          h+=`<div class="pmsg" style="margin:0 0 10px">Escenas de stock/TikTok adaptadas al ÁNGULO de tu producto (antes/después, uso, reacciones) — para intercalar y hacer el video más dopamínico. Elige las que te cuadren.</div>`;
+          h+=`<button class="btn sec" style="margin:0 0 10px;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${br.map(b=>b.url).join('\n').replace(/"/g,'&quot;')}">📋 Copiar los ${br.length} links de b-roll</button>`;
+          br.forEach((b,i)=>{ h+=`<div class="autoStep">🎬 <a href="${tkEsc(b.url)}" target="_blank" style="color:var(--accent)">${i+1}. ${tkEsc(b.url.length>70?b.url.slice(0,67)+'…':b.url)}</a>${b.title?` <span>· ${tkEsc(b.title).slice(0,80)}</span>`:''}</div>`; });
         }
         document.getElementById('tkResult').innerHTML=h;
       }

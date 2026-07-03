@@ -1,53 +1,48 @@
-"""🔁 VARIAR EL HOOK DEL WINNER — capa de VIDEO sobre el cerebro de Juan (creative_variator).
+"""VARIAR EL HOOK del winner — capa de VIDEO sobre creative_variator (creative scaling).
 
-De UN creativo GANADOR salen N videos (default 4) que CONSERVAN el cuerpo validado y cambian
-SOLO el HOOK (los primeros ~3s que enganchan). Por cada variación:
-  1. creative_variator.generar_variaciones (Claude) da el hook nuevo + el brief de qué toma buscar.
-  2. tiktok_search.buscar_tiktok encuentra la toma con ese brief (gratis, sin IA; excluye Colombia).
-  3. downloader / CDN de tikwm la baja.
-  4. voiceover narra el hook con la voz colombiana y caption_styles lo quema palabra x palabra.
-  5. assemble (venc GPU) empalma hook nuevo + cuerpo y punch_pace le da el ritmo final.
-Si no hay toma buena para una variación, se REUSA el hook original LIMPIO (text_translate
-modo="tapar" cubre el texto quemado viejo) con el hook nuevo encima — nunca se queda sin video.
-El texto del CUERPO en otro idioma se traduce (fondo del bloque + Poppins) y el español se deja
-(text_translate modo="solo_otro").
+De UN creativo GANADOR saca N videos nuevos. Dos modos:
+  - "hook":  cambia SOLO el gancho (0-3s): toma elegida SIN texto (ventana limpia vía EAST, $0),
+             voz nueva CO de ElevenLabs + subtítulos palabra x palabra; el CUERPO queda INTACTO.
+             Plan B si no hay ventana limpia: el hook original con su texto TAPADO (EAST blur).
+  - "tomas": además del hook, REEMPLAZA la toma de CADA fase (video ~100% nuevo): por cada
+             escena del brief [{fase, buscar}] busca la toma en TikTok ($0, sin IA), le saca su
+             ventana limpia, la normaliza, narra el guion COMPLETO (voz CO) y ensambla en orden
+             con concat + punch. Plan B por fase: metraje del propio winner.
 
-REGLAS DE ORO: nunca precio (los hooks con cifras/$/% se descartan), búsquedas sin Colombia
-(region != "CO"). El CTA vive en el cuerpo del ganador, que no se toca.
+El CEREBRO es creative_variator.generar_variaciones (no se toca — solo se consume).
+REGLAS: tomas con region != "CO" SIEMPRE; el guion cierra contraentrega sin precio (lo garantiza
+el cerebro); EAST y buscar_tiktok son GRATIS — las IAs de pago son narrativa (1 Gemini),
+variaciones (1 Claude) y voz (1 ElevenLabs por variación).
 """
 from __future__ import annotations
 
 import os
 import re
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import shutil
+import subprocess
 from typing import Callable
 
+import cv2
 import requests
 
+from . import text_detect as td
 from .analyze import Segment
-from .assemble import _normalized_clip, add_voiceover, concat_clips, punch_pace
+from .assemble import concat_clips, punch_pace, add_voiceover, _normalized_clip, venc, FPS
 from .caption_styles import burn_word_captions
 from .creative_variator import generar_variaciones
-from .downloader import download_urls
-from .ffmpeg_utils import probe
+from .ffmpeg_utils import run, probe
 from .narrative import analyze_narrative, mmss_to_seconds
-from .text_translate import traducir_texto_pantalla
-from .tiktok_search import _ES_REGIONS, buscar_tiktok
+from .tiktok_search import buscar_tiktok
 from .voiceover import synthesize_with_timestamps
 
-_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-_MAX_ESCENA_MB = 30
-_HOOK_MIN, _HOOK_MAX = 2.0, 7.0      # duración sana del hook (la manda la voz en off)
-_HOOK_DEFAULT = 3.0                  # si no se pudo leer la narrativa
-
-# Regla de oro: NUNCA precio. Ofertas sin cifra ("2x1", "envío gratis") SÍ pasan; claims de
-# beneficio tipo "100% algodón" también (el % solo bloquea si huele a DESCUENTO).
+# Regla de oro: NUNCA precio. Ofertas sin cifra ("2x1", "envío gratis") SÍ pasan; claims tipo
+# "100% algodón" también (el % solo bloquea si huele a DESCUENTO). Red de seguridad dura por si
+# el cerebro (creative_variator) se le escapa una cifra.
 _PRECIO = re.compile(
     r"[$€]|\bprecio\b"
     r"|\d[\d.,]*\s*(?:cop|usd|pesos|mil)\b"            # 49.900 pesos / 20 mil / 30 usd
     r"|\b(?:cop|usd)\s*\d"                             # COP 49900 / USD 30
-    r"|\b(?:pesos|d[oó]lares?|euros?)\b"               # "cuarenta mil pesos" (precio en letras)
+    r"|\b(?:pesos|d[oó]lares?|euros?)\b"               # "cuarenta mil pesos" (en letras)
     r"|\d+\s*%\s*(?:de\s+)?(?:descuento|dcto|off|rebaja|menos)"
     r"|(?:descuento|dcto|rebaja)s?\s*(?:del?\s*)?\d+\s*%",
     re.IGNORECASE)
@@ -57,422 +52,317 @@ def _sin_precio(texto: str) -> bool:
     return not _PRECIO.search(texto or "")
 
 
-def _arco_de_blueprint(bp: dict | None) -> str:
-    """Convierte los tramos de analyze_narrative en el arco_texto que espera el variator de Juan."""
-    if not bp or not bp.get("segments"):
-        return ""
-    lineas = []
-    for s in bp["segments"]:
-        dice, ve = s.get("que_se_dice", ""), s.get("que_se_ve", "")
-        lineas.append(f"[{s.get('etiqueta', '?')} {s.get('inicio', '')}-{s.get('fin', '')}] "
-                      f"dice: \"{dice}\" | se ve: {ve}")
-    return "\n".join(lineas)
+_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+_MAX_TOMA_MB = 25          # tope de descarga por toma (igual que la verificación profunda)
+_MIN_FASE_S = 1.5          # ninguna fase queda más corta que esto
+_HOOK_FALLBACK_S = 3.0     # si la narrativa no marca el HOOK, se asume 0-3s
 
 
-def _fin_del_hook(bp: dict | None, dur: float) -> float:
-    """Segundo donde TERMINA el hook original: el primer tramo HOOK del blueprint (con tope),
-    o ~3s si no hay narrativa. Nunca más de la mitad del video."""
-    fin = _HOOK_DEFAULT
+# ---------------------------------------------------------------- ventana limpia (EAST, $0)
+
+def ventana_limpia(video_path: str, dur: float, *, desde: float = 0.0, step_s: float = 0.5,
+                   max_scan_s: float = 60.0) -> tuple[float, float] | None:
+    """Busca una ventana de `dur` segundos SIN texto quemado (EAST) desde `desde`. Devuelve
+    (inicio, fin) o None. Muestrea 1 frame cada `step_s`; racha limpia >= dur gana. $0 (local)."""
+    if dur <= 0 or not td.available() and not td.ensure_model():
+        return None
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return None
+    total = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / (cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    total = min(total or max_scan_s, max_scan_s)
+    if desde >= total - dur:                     # no alcanza desde ahí → busca desde el inicio
+        desde = 0.0
+    net = td._load()
+    limpio_desde, mejor = None, None
+    t = max(0.0, desde)
     try:
-        segs = (bp or {}).get("segments") or []
-        if segs and segs[0].get("etiqueta") == "HOOK":
-            fin = mmss_to_seconds(segs[0].get("fin", _HOOK_DEFAULT))
+        while t < total:
+            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                break
+            boxes = td._detect(net, frame)
+            if not boxes:
+                if limpio_desde is None:
+                    limpio_desde = t
+                if t + step_s - limpio_desde >= dur:
+                    mejor = (limpio_desde, limpio_desde + dur)
+                    break
+            else:
+                limpio_desde = None
+            t += step_s
+    except Exception:  # noqa: BLE001 — si EAST falla a mitad, que decida el plan B (no abortar)
+        mejor = None
+    finally:
+        cap.release()
+    return mejor
+
+
+# ---------------------------------------------------------------- helpers
+
+def _dur_media(path: str) -> float:
+    info = probe(path)
+    return float(info.duration or 0.0)
+
+
+def _dur_av(path: str) -> float:
+    """Duración por formato — sirve para AUDIO y video (probe() exige stream de video)."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                              "-of", "csv=p=0", path], capture_output=True, text=True, timeout=30)
+        return float((out.stdout or "").strip() or 0.0)
     except Exception:  # noqa: BLE001
-        fin = _HOOK_DEFAULT
-    return max(1.5, min(fin, _HOOK_MAX, dur * 0.5))
+        return 0.0
 
 
-def _buscar_escena(brief: str, hook: str, usadas: set[str], lock: threading.Lock,
-                   n_cands: int = 8) -> list[dict]:
-    """Candidatos de TikTok para el brief (sin IA, gratis). Excluye Colombia (regla de oro),
-    duraciones raras y escenas ya usadas por otra variación. Los mejores primero."""
-    query = (brief or "").strip() or " ".join((hook or "").split()[:5])
-    cands = buscar_tiktok(query, count=30, pages=1)
-    if not cands and brief:                       # el brief no dio nada → intenta con el hook
-        cands = buscar_tiktok(" ".join(hook.split()[:5]), count=30, pages=1)
-    out = []
-    with lock:
-        vistos = set(usadas)
-    for c in cands:
-        if c.get("region") == "CO" or c["url"] in vistos:
-            continue
-        if not (3 <= c.get("dur", 0) <= 90):
-            continue
-        out.append(c)
-    out.sort(key=lambda c: (1 if c.get("region") in _ES_REGIONS else 0, c.get("plays", 0)),
-             reverse=True)
-    return out[:n_cands]
-
-
-def _ventana_limpia(path: str, sdur: float, need: float) -> tuple[float, int]:
-    """Elige el tramo de la toma con MENOS texto quemado (EAST local, $0): los memes/captions de
-    TikTok entran y salen — casi siempre hay una ventana limpia. Devuelve (t0, cajas_de_texto);
-    cajas=-1 si no hay modelo EAST (desconocido). Empates → lo más cerca de ~1/4 (salta intros)."""
-    t0_def = max(0.0, min(sdur * 0.25, sdur - need))
+def _hook_fin(blueprint: dict | None) -> float:
+    """Fin del primer tramo HOOK según la narrativa (clamp 1.5-6s; fallback 3s)."""
     try:
-        import cv2
-        from . import text_detect as TD
-        if not TD.available():
-            return t0_def, -1
-        net = TD._load()
-        span = max(0.0, sdur - need)
-        cands = [i * span / 5 for i in range(6)] if span > 1.0 else [t0_def]
-        cap = cv2.VideoCapture(path)
-        mejor, mejor_n = t0_def, 10 ** 9
-        try:
-            for t0 in cands:
-                n = 0
-                for f in (0.15, 0.5, 0.85):
-                    cap.set(cv2.CAP_PROP_POS_MSEC, (t0 + need * f) * 1000.0)
-                    ok, fr = cap.read()
-                    if ok and fr is not None:
-                        n += len(TD._detect(net, fr))
-                if n < mejor_n or (n == mejor_n and abs(t0 - t0_def) < abs(mejor - t0_def)):
-                    mejor, mejor_n = t0, n
-        finally:
-            cap.release()
-        return mejor, mejor_n
-    except Exception:  # noqa: BLE001
-        return t0_def, -1
-
-
-def _bajar_escena(cand: dict, out_base: str) -> str | None:
-    """Baja la toma: primero el mp4 directo de tikwm (rápido), si no yt-dlp. None si falla."""
-    play = cand.get("play") or ""
-    if play:
-        try:
-            out = out_base + ".mp4"
-            with requests.get(play, headers=_UA, timeout=45, stream=True,
-                              allow_redirects=True) as r:   # tikwm→CDN SIEMPRE redirige
-                r.raise_for_status()
-                total = 0
-                with open(out, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=1 << 16):
-                        total += len(chunk)
-                        if total > _MAX_ESCENA_MB * (1 << 20):
-                            raise ValueError("escena demasiado pesada")
-                        f.write(chunk)
-            if probe(out).duration >= 1.0:
-                return out
-        except Exception:  # noqa: BLE001
-            pass
-    try:
-        res = download_urls([cand["url"]], os.path.dirname(out_base))
-        if res and res[0].get("ok") and probe(res[0]["path"]).duration >= 1.0:
-            return res[0]["path"]
+        for s in (blueprint or {}).get("segments") or []:
+            if (s.get("etiqueta") or "").upper().startswith("HOOK"):
+                fin = mmss_to_seconds(s.get("fin", "00:03"))
+                return max(1.5, min(6.0, float(fin)))
     except Exception:  # noqa: BLE001
         pass
+    return _HOOK_FALLBACK_S
+
+
+def _arco_de(blueprint: dict | None) -> str:
+    """El arco del winner como texto (transcripción etiquetada) para el cerebro."""
+    filas = []
+    for s in (blueprint or {}).get("segments") or []:
+        que = (s.get("que_se_dice") or "").strip()
+        if que:
+            filas.append(f"[{s.get('etiqueta', '?')}] {que}")
+    return "\n".join(filas)
+
+
+def _descargar_toma(cand: dict, out_path: str) -> bool:
+    """Baja el mp4 directo de un candidato de TikTok (sigue redirects: tikwm→CDN siempre redirige)."""
+    url = cand.get("play") or ""
+    if not url:
+        return False
+    try:
+        with requests.get(url, headers=_UA, timeout=40, stream=True, allow_redirects=True) as r:
+            if r.status_code != 200:
+                return False
+            tam = 0
+            with open(out_path, "wb") as f:
+                for chunk in r.iter_content(1 << 16):
+                    tam += len(chunk)
+                    if tam > _MAX_TOMA_MB * (1 << 20):
+                        return False
+                    f.write(chunk)
+        return _dur_media(out_path) >= 1.0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _buscar_toma(buscar: str, out_path: str, usadas: set[str]) -> str | None:
+    """Busca la toma en TikTok ($0, sin IA) y baja el mejor candidato NO usado y NO colombiano."""
+    cands = [c for c in buscar_tiktok(buscar, count=15, pages=1)
+             if c.get("region") != "CO" and 4 <= c.get("dur", 0) <= 90
+             and c.get("url") not in usadas]
+    cands.sort(key=lambda c: -(c.get("plays") or 0))
+    for c in cands[:4]:
+        if _descargar_toma(c, out_path):
+            usadas.add(c.get("url", ""))
+            return out_path
     return None
 
 
-def variar_hook(
-    winner_path: str,
-    *,
-    product_desc: str = "",
-    n: int = 4,
-    voz: str = "juan_carlos",
-    caption_style: str = "hormozi",
-    traducir_cuerpo: bool = True,
-    evitar: list[str] | None = None,
-    gemini_key: str | None = None,
-    eleven_key: str | None = None,
-    anthropic_key: str | None = None,
-    work_dir: str | None = None,
-    progress: Callable[[str, int], None] | None = None,
-) -> dict:
-    """Genera n videos variando SOLO el hook del ganador (cuerpo intacto).
+def _cortar(src: str, a: float, b: float, out: str, dims: tuple[int, int]) -> str:
+    """Corta [a,b] normalizado a dims con audio garantizado (para concat sin sorpresas)."""
+    seg = Segment(video=src, source_index=0, start=a, end=b, score=50.0)
+    return _normalized_clip(seg, out, dims)
 
-    Devuelve {"ok", "videos":[{path, hook, angulo, copy_pantalla, brief, fuente_url,
-    fuente_titulo, origen}], "pasos":[...], "resumen"}. `evitar`: hooks ya vistos que no
-    gustaron (se le pasan al cerebro de Juan para que dé otros). Nunca lanza.
-    """
-    pasos: list[dict] = []
+
+def _voz(eleven_key: str, texto: str, voz: str, out_mp3: str) -> tuple[str, list[dict]]:
+    words = synthesize_with_timestamps(eleven_key, texto, voz, out_mp3)
+    return out_mp3, words
+
+
+# ---------------------------------------------------------------- armado por variación
+
+def _armar_hook(winner: str, var: dict, hook_fin: float, wd: str, *,
+                voz: str, eleven_key: str, pasos: list) -> str | None:
+    """Modo 'hook': hook nuevo (ventana limpia o tapado) + voz CO + subs; CUERPO INTACTO."""
+    dims_info = probe(winner)
+    dims = (dims_info.width or 1080, dims_info.height or 1920)
+
+    mp3, words = _voz(eleven_key, var["hook"], voz, os.path.join(wd, "hook_vo.mp3"))
+    vo_dur = max((w.get("end") or 0.0) for w in words) if words else _dur_av(mp3)
+    vo_dur = max(1.2, vo_dur + 0.15)
+
+    # Toma para el hook: 1º ventana limpia DESPUÉS del hook original (que no se repita metraje
+    # con el cuerpo). Plan B: el hook original con su texto TAPADO (EAST blur).
+    win = ventana_limpia(winner, vo_dur, desde=hook_fin)
+    if win and win[0] < hook_fin:                          # el fallback interno rebuscó desde 0:
+        win = None                                         # se solaparía con el cuerpo → plan B
+    base = os.path.join(wd, "hook_base.mp4")
+    if win:
+        _cortar(winner, win[0], win[1], base, dims)
+        pasos.append({"paso": "Toma del hook", "ok": True,
+                      "detalle": f"ventana limpia {win[0]:.1f}-{win[1]:.1f}s (EAST)"})
+    else:
+        crudo = os.path.join(wd, "hook_crudo.mp4")
+        _cortar(winner, 0.0, max(vo_dur, hook_fin), crudo, dims)
+        try:
+            base = td.mask_video(crudo, base)              # OJO: devuelve in_path si no tapó nada
+            tapado = base != crudo
+            pasos.append({"paso": "Toma del hook", "ok": True,
+                          "detalle": "plan B: hook original con texto tapado" if tapado
+                                     else "plan B: hook original (EAST no vio texto que tapar)"})
+        except Exception as e:  # noqa: BLE001
+            base = crudo
+            pasos.append({"paso": "Toma del hook", "ok": False, "detalle": f"sin tapar: {e}"})
+
+    con_voz = os.path.join(wd, "hook_voz.mp4")
+    add_voiceover(base, mp3, con_voz)                      # dura EXACTO lo que la voz
+    con_subs = burn_word_captions(con_voz, words, wd, os.path.join(wd, "hook_subs.mp4"))
+    hook_listo = os.path.join(wd, "hook_48k.mp4")          # audio a 48k = mismos parámetros que el
+    run(["ffmpeg", "-y", "-i", con_subs, "-c:v", "copy",   # cuerpo (el concat exige streams iguales)
+         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2", hook_listo])
+
+    cuerpo = os.path.join(wd, "cuerpo.mp4")                # intacto: mismo metraje y su audio
+    total = _dur_media(winner)
+    if total - hook_fin < 0.5:
+        pasos.append({"paso": "Cuerpo", "ok": False, "detalle": "winner sin cuerpo tras el hook"})
+        return hook_listo
+    run(["ffmpeg", "-y", "-ss", f"{hook_fin:.3f}", "-i", winner,
+         "-vf", f"scale={dims[0]}:{dims[1]}:force_original_aspect_ratio=increase,"
+                f"crop={dims[0]}:{dims[1]},setsar=1,fps={FPS}",
+         *venc(), "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2", cuerpo])
+    return concat_clips([hook_listo, cuerpo], os.path.join(wd, "final.mp4"), wd)
+
+
+def _armar_tomas(winner: str, var: dict, wd: str, *, voz: str, eleven_key: str,
+                 usadas: set[str], pasos: list,
+                 progress: Callable[[str], None] | None = None) -> str | None:
+    """Modo 'tomas': narra el guion completo y reemplaza la toma de CADA fase (buscada en TikTok)."""
+    dims = (1080, 1920)                                    # las tomas de TikTok son 9:16
+    mp3, words = _voz(eleven_key, var["guion"], voz, os.path.join(wd, "guion_vo.mp3"))
+    vo_dur = max((w.get("end") or 0.0) for w in words) if words else _dur_av(mp3)
+    escenas = [e for e in (var.get("escenas") or []) if (e.get("buscar") or "").strip()]
+    if not escenas:
+        pasos.append({"paso": "Escenas", "ok": False, "detalle": "el cerebro no dio brief de escenas"})
+        return None
+
+    dur_fase = max(_MIN_FASE_S, vo_dur / len(escenas))
+    clips = []
+    for i, esc in enumerate(escenas):
+        if progress:
+            progress(f"🎬 Toma {i + 1}/{len(escenas)}: {esc.get('fase', '?')}")
+        toma = _buscar_toma(esc["buscar"], os.path.join(wd, f"toma_{i:02d}_raw.mp4"), usadas)
+        origen, desde = "TikTok", 0.0
+        if not toma:                                       # plan B: metraje del propio winner,
+            toma, origen = winner, "winner (plan B)"       # arrancando en un punto DISTINTO por
+            desde = i * dur_fase                           # fase (que no se repita la misma toma)
+        toma_dur = _dur_media(toma)
+        win = ventana_limpia(toma, dur_fase, desde=desde)
+        a = win[0] if win else min(desde, max(0.0, toma_dur - dur_fase))
+        b = a + min(dur_fase, max(1.0, toma_dur - a))
+        clip = _cortar(toma, a, b, os.path.join(wd, f"toma_{i:02d}.mp4"), dims)
+        detalle = f"{origen}, ventana limpia {a:.1f}s"
+        if not win:                                        # sin ventana limpia → texto TAPADO (EAST)
+            try:
+                clip = td.mask_video(clip, os.path.join(wd, f"toma_{i:02d}_tapada.mp4"))
+                detalle = f"{origen}, sin ventana limpia → texto tapado"
+            except Exception as e:  # noqa: BLE001
+                detalle = f"{origen}, sin tapar: {e}"
+        clips.append(clip)
+        pasos.append({"paso": f"Fase {esc.get('fase', i)}", "ok": True, "detalle": detalle})
+
+    montaje = concat_clips(clips, os.path.join(wd, "montaje.mp4"), wd)
+    con_voz = os.path.join(wd, "voz.mp4")
+    add_voiceover(montaje, mp3, con_voz)
+    con_subs = burn_word_captions(con_voz, words, wd, os.path.join(wd, "subs.mp4"))
+    return punch_pace(con_subs, os.path.join(wd, "final.mp4"))
+
+
+# ---------------------------------------------------------------- API principal
+
+def variar_hook(winner_path: str, product_desc: str, *,
+                n: int = 4, modo: str = "hook", voz: str = "juan_carlos",
+                page_text: str = "", evitar: list[str] | None = None,
+                gemini_key: str | None = None, eleven_key: str | None = None,
+                anthropic_key: str | None = None,
+                variaciones: list[dict] | None = None, hook_fin: float | None = None,
+                work_dir: str | None = None,
+                progress: Callable[[str, int], None] | None = None) -> dict:
+    """1 ganador → N videos con hook nuevo (modo 'hook') o hook + tomas nuevas (modo 'tomas').
+
+    `variaciones`: si vienen pre-generadas (🎲 otro hook / tests) NO se llama al cerebro; con
+    `hook_fin` dado tampoco se re-analiza la narrativa (los devuelve el primer run en el result).
+    Devuelve {"ok", "modo", "arco", "hook_fin", "variaciones":[{hook, angulo, guion,
+    copy_pantalla, video, pasos}]}."""
+    gemini_key = gemini_key or os.environ.get("GEMINI_API_KEY")
+    eleven_key = eleven_key or os.environ.get("ELEVENLABS_API_KEY")
+    anthropic_key = anthropic_key or os.environ.get("ANTHROPIC_API_KEY")
 
     def report(m, p):
         if progress:
             progress(m, p)
 
-    def paso(nombre, ok, det=""):
-        pasos.append({"paso": nombre, "ok": bool(ok), "detalle": det})
-
-    gemini_key = gemini_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    eleven_key = eleven_key or os.environ.get("ELEVENLABS_API_KEY")
-    anthropic_key = anthropic_key or os.environ.get("ANTHROPIC_API_KEY")
     if not os.path.exists(winner_path):
-        return {"ok": False, "error": "No encuentro el video ganador.", "pasos": pasos}
-    if not anthropic_key:
-        return {"ok": False, "error": "Falta la API key de Anthropic (pestaña 🔑 Claves) — es el cerebro que inventa los hooks.", "pasos": pasos}
+        return {"ok": False, "error": "No encuentro el video ganador."}
     if not eleven_key:
-        return {"ok": False, "error": "Falta la API key de ElevenLabs (pestaña 🔑 Claves) — narra el hook con la voz colombiana.", "pasos": pasos}
-
-    work_dir = work_dir or os.path.splitext(winner_path)[0] + "_varhook"
+        return {"ok": False, "error": "Falta la API key de ElevenLabs (ponla en 🔑 Claves)."}
+    modo = "tomas" if str(modo).strip().lower() in ("tomas", "hook+tomas", "hook_tomas") else "hook"
+    work_dir = work_dir or os.path.join(os.path.dirname(winner_path), "varhook")
     os.makedirs(work_dir, exist_ok=True)
-    n = max(1, min(int(n), 6))
 
-    try:
-        info = probe(winner_path)
-        dur = info.duration
-        dims = (info.width - info.width % 2, info.height - info.height % 2)
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"No pude leer el video: {e}", "pasos": pasos}
-
-    # 1) Narrativa del ganador (dónde termina el hook + arco para el cerebro de Juan)
-    report("📖 Leyendo la narrativa del ganador...", 6)
-    bp = None
-    if gemini_key:
+    blueprint = None
+    necesita_narrativa = variaciones is None or (modo == "hook" and hook_fin is None)
+    if necesita_narrativa:
+        report("📖 Leyendo el arco del ganador (narrativa)...", 5)
         try:
-            r = analyze_narrative(winner_path, api_key=gemini_key, product_desc=product_desc)
-            bp = r if r.get("ok") else None
+            bp = analyze_narrative(winner_path, api_key=gemini_key, product_desc=product_desc)
+            blueprint = bp if bp.get("ok") else None
         except Exception:  # noqa: BLE001
-            bp = None
-    hook_fin = _fin_del_hook(bp, dur)
-    arco = _arco_de_blueprint(bp)
-    paso("Narrativa", bool(bp), f"hook original 0-{hook_fin:.1f}s" + ("" if bp else " (sin Gemini: ~3s)"))
+            blueprint = None
+    if hook_fin is None:
+        hook_fin = _hook_fin(blueprint)
+    arco = _arco_de(blueprint) or product_desc
 
-    # 2) Variaciones de hook (cerebro de Juan). Pide 2 extra por si alguna trae precio o falla.
-    report("🧠 Inventando hooks nuevos (Claude)...", 14)
-    variaciones = generar_variaciones(arco or f"(sin transcripción; video de {dur:.0f}s)",
-                                      product_desc, anthropic_key,
-                                      n=n + 2, con_escenas=True, evitar=evitar or [])
-    variaciones = [v for v in variaciones if (v.get("hook") or "").strip()
-                   and _sin_precio(v.get("hook", "")) and _sin_precio(v.get("copy_pantalla", ""))]
+    if variaciones is None:
+        if not anthropic_key:
+            return {"ok": False, "error": "Falta la API key de Anthropic (ponla en 🔑 Claves)."}
+        report(f"🧠 Generando {n} variaciones ({'hook + tomas' if modo == 'tomas' else 'solo hook'})...", 12)
+        variaciones = generar_variaciones(arco, product_desc, anthropic_key,
+                                          page_text=page_text, n=n + 2,
+                                          con_escenas=(modo == "tomas"), evitar=evitar)
+    # REGLA DE ORO: nunca precio — filtro duro sobre hooks/copys (por eso se piden 2 de más)
+    variaciones = [v for v in (variaciones or [])
+                   if _sin_precio(v.get("hook", "")) and _sin_precio(v.get("copy_pantalla", ""))][:n]
     if not variaciones:
-        return {"ok": False, "error": "El cerebro no devolvió variaciones (¿key de Anthropic ok?).",
-                "pasos": pasos}
-    variaciones = variaciones[:n]
-    paso("Hooks nuevos", True, f"{len(variaciones)} hooks (sin precio ✓)")
+        return {"ok": False, "error": "El cerebro no entregó variaciones (revisa la key de Anthropic)."}
 
-    # 3) Cuerpo del ganador (una sola vez, compartido): corte normalizado + texto extranjero traducido
-    report("✂️ Separando el cuerpo del ganador...", 22)
-    body = os.path.join(work_dir, "cuerpo.mp4")
-    try:
-        _normalized_clip(Segment(video=winner_path, source_index=0, start=hook_fin,
-                                 end=dur, score=0.0), body, dims)
-        paso("Cuerpo", True, f"{hook_fin:.1f}s → {dur:.1f}s")
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"No pude cortar el cuerpo: {e}", "pasos": pasos}
-    if traducir_cuerpo and gemini_key:
-        report("🔤 Traduciendo el texto del cuerpo (si hay en otro idioma)...", 30)
+    salida, usadas = [], set()
+    for i, var in enumerate(variaciones):
+        pasos: list[dict] = []
+        pct = 15 + int(80 * i / max(1, len(variaciones)))
+        report(f"🎬 Variación {i + 1}/{len(variaciones)}: “{var.get('hook', '')[:40]}...”", pct)
+        wd = os.path.join(work_dir, f"var_{i:02d}")
+        os.makedirs(wd, exist_ok=True)
+        video = None
         try:
-            t = traducir_texto_pantalla(body, api_key=gemini_key,
-                                        out_path=os.path.join(work_dir, "cuerpo_es.mp4"),
-                                        modo="solo_otro")
-            if t.get("ok"):
-                body = t["video"]
-                paso("Texto del cuerpo", True,
-                     f"{len(t.get('bloques', []))} bloque(s); el español se deja igual")
+            if modo == "tomas":
+                video = _armar_tomas(winner_path, var, wd, voz=voz, eleven_key=eleven_key,
+                                     usadas=usadas, pasos=pasos,
+                                     progress=(lambda m: report(m, pct)) if progress else None)
             else:
-                paso("Texto del cuerpo", False, t.get("error", ""))
+                video = _armar_hook(winner_path, var, hook_fin, wd,
+                                    voz=voz, eleven_key=eleven_key, pasos=pasos)
         except Exception as e:  # noqa: BLE001
-            paso("Texto del cuerpo", False, str(e))
+            pasos.append({"paso": "Armado", "ok": False, "detalle": str(e)})
+        salida.append({"hook": var.get("hook", ""), "angulo": var.get("angulo", ""),
+                       "guion": var.get("guion", ""), "copy_pantalla": var.get("copy_pantalla", ""),
+                       "escenas": var.get("escenas") or [], "video": video, "pasos": pasos})
 
-    # Hook original normalizado (plan B si a una variación no le sirve ninguna toma de TikTok)
-    hook_orig = os.path.join(work_dir, "hook_original.mp4")
-    try:
-        _normalized_clip(Segment(video=winner_path, source_index=0, start=0.0,
-                                 end=hook_fin, score=0.0), hook_orig, dims)
-    except Exception:  # noqa: BLE001
-        hook_orig = None
-    hook_orig_limpio: dict = {"path": None}      # se limpia UNA vez, solo si hace falta
-    limpieza_lock = threading.Lock()
-
-    usadas: set[str] = set()
-    usadas_lock = threading.Lock()
-    listos = {"n": 0}
-
-    def _hook_original_limpio() -> str | None:
-        """Tapar el texto quemado del hook original (1 sola vez, compartido entre variaciones)."""
-        with limpieza_lock:
-            if hook_orig_limpio["path"]:
-                return hook_orig_limpio["path"]
-            if not hook_orig:
-                return None
-            src = hook_orig
-            if gemini_key:
-                try:
-                    t = traducir_texto_pantalla(src, api_key=gemini_key,
-                                                out_path=os.path.join(work_dir, "hook_orig_limpio.mp4"),
-                                                modo="tapar")
-                    if t.get("ok"):
-                        src = t["video"]
-                        paso("Hook original", True, "texto viejo tapado (plan B listo)")
-                    else:
-                        paso("Hook original", False,
-                             f"no se pudo tapar el texto viejo: {t.get('error', '')} — va sin limpiar")
-                except Exception as e:  # noqa: BLE001
-                    paso("Hook original", False, f"no se pudo tapar el texto viejo: {e} — va sin limpiar")
-            else:
-                paso("Hook original", False, "sin key de Gemini: el texto viejo del hook queda sin tapar")
-            hook_orig_limpio["path"] = src
-            return src
-
-    def _armar(i: int, var: dict) -> dict:
-        hook_txt = var["hook"].strip()
-        brief = ""
-        for e in var.get("escenas") or []:
-            if str(e.get("fase", "")).strip().upper().startswith("HOOK"):
-                brief = e.get("buscar", "").strip()
-                break
-        vdir = os.path.join(work_dir, f"v{i+1}")
-        os.makedirs(vdir, exist_ok=True)
-        out: dict = {"hook": hook_txt, "angulo": var.get("angulo", ""),
-                     "copy_pantalla": var.get("copy_pantalla", ""), "brief": brief,
-                     "fuente_url": "", "fuente_titulo": "", "origen": "", "ok": False}
-
-        # a) Voz en off del hook (ElevenLabs, cortica = barata). Su duración manda.
-        try:
-            vo = os.path.join(vdir, "hook_vo.mp3")
-            words = synthesize_with_timestamps(eleven_key, hook_txt, voz, vo)
-        except Exception as e:  # noqa: BLE001
-            out["error"] = f"voz: {e}"
-            return out
-        try:
-            vo_dur = probe(vo).duration
-        except Exception:  # noqa: BLE001
-            vo_dur = max((w.get("end", 0) for w in words), default=_HOOK_DEFAULT)
-        need = max(_HOOK_MIN, min(_HOOK_MAX, vo_dur + 0.25))
-
-        # b) Toma nueva de TikTok con el brief de Juan (sin Colombia; sin repetir entre variaciones).
-        #    Las tomas casi siempre traen SU texto quemado (memes/captions) que pelearía con
-        #    nuestro hook → EAST local ($0) busca la ventana SIN texto; se prueban hasta 3
-        #    descargas y gana la primera limpia (si ninguna, la de menos texto).
-        escena = None                        # la mejor: (path, cand, t0, n_texto)
-        descargas = 0
-        for cand in _buscar_escena(brief, hook_txt, usadas, usadas_lock):
-            if descargas >= 3:
-                break
-            with usadas_lock:
-                if cand["url"] in usadas:
-                    continue
-                usadas.add(cand["url"])
-            p = _bajar_escena(cand, os.path.join(vdir, f"escena_{descargas}"))
-            if not p:
-                with usadas_lock:  # descarga fallida → se libera para las otras variaciones
-                    usadas.discard(cand["url"])
-                continue
-            descargas += 1
-            try:
-                sdur = probe(p).duration
-                t0, n_texto = _ventana_limpia(p, sdur, need)
-            except Exception:  # noqa: BLE001
-                continue
-            if escena is None or n_texto < escena[3]:
-                escena = (p, cand, t0, n_texto)
-            if n_texto == 0:                 # ventana limpia → no hay que buscar más
-                break
-
-        # c) Clip del hook: la toma nueva; si falla al procesarse → hook original LIMPIO (plan B)
-        clip = None
-        if escena:
-            try:
-                path, cand, t0, n_texto = escena
-                sdur = probe(path).duration
-                clip = os.path.join(vdir, "hook_clip.mp4")
-                _normalized_clip(Segment(video=path, source_index=0, start=t0,
-                                         end=min(sdur, t0 + need), score=0.0), clip, dims)
-                out.update(fuente_url=cand["url"], fuente_titulo=cand.get("title", ""),
-                           origen="toma nueva de TikTok"
-                           + (" (ventana sin texto)" if n_texto == 0 else ""))
-                # Si NI la mejor ventana quedó limpia (o EAST no está) → tapar con Gemini (clip
-                # cortico = llamada barata). Con ventana limpia no se gasta nada.
-                if gemini_key and n_texto != 0:
-                    try:
-                        t = traducir_texto_pantalla(clip, api_key=gemini_key,
-                                                    out_path=os.path.join(vdir, "hook_clip_limpio.mp4"),
-                                                    modo="tapar")
-                        if t.get("ok") and t.get("bloques"):
-                            clip = t["video"]
-                            out["origen"] = "toma nueva de TikTok (texto original tapado)"
-                    except Exception:  # noqa: BLE001
-                        pass          # con texto de la toma es feo pero no fatal
-            except Exception as e:  # noqa: BLE001
-                paso(f"Toma para «{hook_txt[:36]}»", False,
-                     f"la descarga no sirvió ({e}) — uso el hook original")
-                clip = None
-        if clip is None:
-            base = _hook_original_limpio()
-            if not base:
-                out["error"] = "sin toma de TikTok y no pude preparar el hook original"
-                return out
-            clip = base
-            out["origen"] = "hook original limpio (no hubo toma nueva)"
-            out.update(fuente_url="", fuente_titulo="")
-
-        # d) Voz encima (el video se corta/loopea a la duración de la voz) + texto palabra x palabra
-        try:
-            con_voz = add_voiceover(clip, vo, os.path.join(vdir, "hook_voz.mp4"))
-        except Exception as e:  # noqa: BLE001
-            out["error"] = f"voz sobre el clip: {e}"
-            return out
-        try:
-            con_subs = burn_word_captions(con_voz, words, vdir,
-                                          os.path.join(vdir, "hook_subs.mp4"),
-                                          style=caption_style)
-        except Exception as e:  # noqa: BLE001
-            con_subs = con_voz
-            paso(f"Texto de «{hook_txt[:36]}»", False, f"no se pudo quemar ({e}) — va solo con voz")
-
-        # e) Hook nuevo + cuerpo del ganador, y pacing final
-        try:
-            final = concat_clips([con_subs, body], os.path.join(vdir, f"variacion_{i+1}.mp4"), vdir)
-            final = punch_pace(final, os.path.join(vdir, f"variacion_{i+1}_pace.mp4"))
-        except Exception as e:  # noqa: BLE001
-            out["error"] = f"ensamble: {e}"
-            return out
-        out.update(path=final, ok=True)
-        with usadas_lock:
-            listos["n"] += 1
-            k = listos["n"]
-        report(f"🎬 Variación {k}/{len(variaciones)} lista: «{hook_txt[:48]}»",
-               35 + int(60 * k / len(variaciones)))
-        return out
-
-    report("🎬 Armando las variaciones (toma + voz + texto + ensamble)...", 35)
-    resultados: list[dict | None] = [None] * len(variaciones)
-    with ThreadPoolExecutor(max_workers=2) as ex:      # 2: el encoder GPU serializa sesiones
-        futs = {ex.submit(_armar, i, v): i for i, v in enumerate(variaciones)}
-        for f in as_completed(futs):
-            i = futs[f]
-            try:
-                resultados[i] = f.result()
-            except Exception as e:  # noqa: BLE001
-                resultados[i] = {"ok": False, "error": str(e),
-                                 "hook": variaciones[i].get("hook", "")}
-
-    videos = [r for r in resultados if r and r.get("ok")]
-    fallidas = [r for r in resultados if r and not r.get("ok")]
-    for r in fallidas:
-        paso(f"Variación «{(r.get('hook') or '')[:40]}»", False, r.get("error", ""))
-    con_toma = sum(1 for v in videos if v["origen"].startswith("toma"))
-    paso("Variaciones", bool(videos),
-         f"{len(videos)}/{len(variaciones)} listas ({con_toma} con toma nueva de TikTok)")
-
-    report("✅ Hooks variados", 100)
-    if not videos:
-        return {"ok": False, "error": "Ninguna variación se pudo armar. " +
-                (fallidas[0].get("error", "") if fallidas else ""), "pasos": pasos}
-    return {"ok": True, "videos": videos, "pasos": pasos,
-            "hook_fin": round(hook_fin, 2),
-            "resumen": f"{len(videos)} video(s) con hook nuevo · cuerpo del ganador intacto"}
-
-
-if __name__ == "__main__":
-    import json
-    import sys
-    if len(sys.argv) < 2:
-        print("Uso: python -m backend.pipeline.hook_variator <ganador.mp4> [--desc 'producto'] "
-              "[--n 4] [--voz juan_carlos] [--estilo hormozi]")
-        raise SystemExit(1)
-    args = sys.argv[2:]
-
-    def _arg(flag, default):
-        return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else default
-
-    def _p(m, p):
-        print(f"[{p:3d}%] {m}", file=sys.stderr)
-
-    r = variar_hook(sys.argv[1], product_desc=_arg("--desc", ""), n=int(_arg("--n", 4)),
-                    voz=_arg("--voz", "juan_carlos"), caption_style=_arg("--estilo", "hormozi"),
-                    progress=_p)
-    r.pop("videos_raw", None)
-    print(json.dumps(r, ensure_ascii=False, indent=2))
+    ok_n = sum(1 for v in salida if v["video"])
+    report("✅ Variaciones listas", 100)
+    return {"ok": ok_n > 0, "modo": modo, "arco": arco, "hook_fin": hook_fin,
+            "variaciones": salida, "resumen": f"{ok_n}/{len(salida)} videos OK"}

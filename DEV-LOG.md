@@ -1778,45 +1778,187 @@ Iterado 3 veces contra producto delicado (gel reductor): salió fluido, con voz 
 policy-safe. AVISO Jack: toqué scripts.py (prompt/cap/ritmo) y el framework .md — tu flujo de VO no cambia,
 el campo nuevo `fases` es opcional.
 
-### 2026-07-03 · Claude (jackingshop1-cell) · 🔁 VARIAR EL HOOK del winner — la capa de VIDEO sobre tu creative_variator (¡enchufados, Juan!)
-Pendiente #1 del handoff, hecho con 2 agentes (constructor + revisor). Tu cerebro + nuestro video, como
-lo propusiste ("Enchufémoslos"):
-- NUEVO `backend/pipeline/hook_variator.py` → `variar_hook(winner_path, product_desc=, n=4, voz=,
-  caption_style=, traducir_cuerpo=, evitar=, ...)`: de UN ganador salen 4 videos con el MISMO cuerpo
-  y HOOKS distintos. Por variación: tu `generar_variaciones` (n+2, con_escenas=True) da hook + brief →
-  `buscar_tiktok(brief)` (GRATIS, region != CO, dedup entre variaciones) → mp4 directo de tikwm
-  (fallback yt-dlp) → EAST local ($0) elige la VENTANA SIN TEXTO de la toma (los memes entran/salen;
-  hasta 3 descargas y gana la primera limpia; si ninguna → `tapar` con Gemini sobre el clip cortico) →
-  `synthesize_with_timestamps` narra el hook (la voz MANDA la duración; add_voiceover loopea si falta
-  video) → `burn_word_captions` (5 estilos) → `concat_clips` con el cuerpo + `punch_pace`. 2 en paralelo.
-- PLAN B sin toma: hook ORIGINAL limpio (`tapar`, 1 sola vez compartida) con hook/voz nuevos encima.
-- CUERPO: cortado 1 vez (normalizado) y compartido; texto extranjero → traducido; el ESPAÑOL SE DEJA
-  (modo NUEVO `"solo_otro"` en text_translate.py, aditivo, tus modos intactos). CTA del ganador intacto.
-- REGLAS DE ORO: regex anti-precio v2 (bloquea $/€/precio/“COP 49900”/“cuarenta mil pesos”/“50% off”
-  pero DEJA “2x1”, “envío gratis”, “100% algodón”) — 16/16 casos; Colombia excluida; se piden n+2 hooks
-  para reponer descartes.
-- `backend/app.py`: NUEVO POST `/api/variar-hook` (job en background como los demás, whitelists) +
-  Form `vo_guiones` en /api/producto-clips. Frontend: pestaña NUEVA "🔁 Variar hook" (patrón autoHero,
-  preview de estilos, grid con hook/origen/link de la toma/descargar; poll con reintentos — no se
-  congela si el server está ocupado encodeando; render escapado), selector "Guiones: 8/4/2" en Mi
-  producto (control de costo ElevenLabs, pendiente pequeño del handoff) y Guía actualizada.
-- FIX IMPORTANTE del revisor en `assemble.add_voiceover`: forzar `-ar 48000 -ac 2`. El mp3 de
-  ElevenLabs es 44.1k mono y el demuxer de `concat_clips` RALENTIZABA/desafinaba el audio de lo
-  concatenado después (×48/44.1 ≈ +9%, medido por FFT: cuerpo de 220 Hz sonaba a 202 Hz y el sync se
-  corría ~1s por cada 9s). Con el fix: 220.0 Hz exactos y audio=video ±0.03s. OJO: si concatenas algo
-  DESPUÉS de un add_voiceover viejo en otro flujo, tenías este mismo bug latente.
-- VERIFICADO: py_compile + node --check 10/10; revisor corrió el pipeline REAL de ffmpeg con IA
-  mockeada ($0, videos sintéticos): shapes cruzados con inspect, whitelists, path-traversal contenido,
-  CO filtrado, precio filtrado, lock del plan B (tapar 1 sola vez con 2 threads), fallback completo.
-  E2E REAL (1 corrida, video ganador de toallas de tela 23.5s): 4/4 videos, 3 con toma nueva + 1 plan
-  B, hooks MUY distintos (demo shock / ahorro / testimonio / secreto), frames mirados uno a uno,
-  audio 48k estéreo en sync (22.00s vs 22.00s), pacing 26→22s, texto del cuerpo español intacto
-  (0 bloques tocados). La ventana-sin-texto EAST validada sobre las 3 tomas reales descargadas
-  (limpia en t0=0 para una; 10 y 3 cajas en las otras → tapar). Muestras en work/e3ec35398393/v*/.
-- QUÉ FALTA / IDEAS PARA TI: modo "hook + tomas" (reemplazar la toma de CADA fase con tus briefs — tu
-  motor ya lo entrega, es iterar este mismo flujo); botón "🎲 otro hook" pasándote `evitar` (como tu
-  disruptive-swap-concept); usar `copy_pantalla` como texto estático; persistir el job a disco como tu
-  `_persist_disruptive` (si el server se reinicia a mitad, el poll lo pierde).
-- AVISO: NO toqué creative_variator.py (solo lo consumo) ni tiktok_search/caption_styles/downloader
-  (solo imports). En assemble.py SOLO la línea de add_voiceover explicada arriba; en text_translate.py
-  SOLO el modo "solo_otro" aditivo.
+### 2026-07-03 · Claude (juanesal-lab) · 🚨 ENCONTRADO Y MUERTO el bug de los cortes repetidos (era el LOOP de la voz en off)
+Juan (con toda la razón, furioso): "en el MISMO video aparece como 4 veces el mismo corte". EVIDENCIA en su
+file(49).mp4: cada corte se repetía con desfase constante de +10.8s → el MONTAJE ENTERO se reproducía otra
+vez. NO era la selección de clips: era `add_voiceover`/`add_voiceover_and_sfx` con `-stream_loop -1` en el
+video — si la voz duraba más que el montaje, el video ENTERO se repetía 2-4 veces. Y el montaje quedaba corto
+porque se armaba por NÚMERO de clips (cpv), no por duración (9 clips de ~1.2s = 10.8s vs voz de 20s).
+FIX doble en `assemble.py`:
+1. **Loop ELIMINADO**: el video ya NO se repite jamás; si faltara video se sostiene el último frame
+   (tpad stop_mode=clone) + corte EXACTO a la duración real de la voz (`_dur_flag` con ffprobe — probe()
+   fallaba con audio puro y el -shortest con filtro no cortaba fino).
+2. **Versiones por DURACIÓN**: cada versión acumula clips hasta target*1.15+1s (no un número fijo) →
+   el montaje SIEMPRE alcanza la voz. Si el bucket disjunto no da, completa con clips no usados; si el pool
+   se agota, puede reusar de OTRAS versiones pero NUNCA dentro de la misma.
+VERIFICADO: caso reproducido (video 8s + voz 20s) → salida 20.00s exactos, CERO repeticiones de contenido
+(detector perceptual); mock 60 clips cortos → 8 versiones de 24-25s, 0 clips repetidos internos, overlap
+entre versiones mínimo. AVISO Jack: toqué add_voiceover, add_voiceover_and_sfx y plan de versiones
+(duración-based); tu rotación de hooks y usage-based del pool chico siguen ahí.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🏠✨ HOME PREMIUM nuevo: saludo dinámico + auto concepto 3D + 2 tarjetas módulo
+Juan pidió una primera impresión "inolvidable": home tipo sistema operativo premium (filosofía Porsche/Linear/
+Apple/Tesla), NO e-commerce. Construido como CAPA de entrada (sección #home) SIN tocar la app existente:
+- **Saludo dinámico** con shimmer dorado (rota entre 4 frases según la hora, fade suave).
+- **AUTO CONCEPTO 3D 100% original** (Three.js CDN via importmap, procedural — sin modelos externos):
+  silueta GT extruida con clearcoat negro, cabina de vidrio, línea de luz + faros dorados emisivos, rines
+  dorados, piso reflectivo con halo dorado, RoomEnvironment (reflejos dinámicos), niebla, ACES tone mapping.
+  Interactivo: OrbitControls (giro 360°, zoom con scroll/pinch, damping), auto-rotación continua,
+  "respiración" sutil, y reacciona al puntero y al giroscopio del celular. Si no hay WebGL/CDN → fallback
+  de glow (no rompe nada).
+- **2 tarjetas módulo premium** (solo dos, como pidió): "Buscar Productos" → p-foreplay; "Crear Creativos" →
+  p-crear. Hover con profundidad, sheen que barre, iconografía SVG line-art, micro-flecha.
+- **"¿Cómo funciona?"** editorial: 3 pasos (Descubre/Crea/Inspírate-Foreplay) con revelado escalonado al
+  scroll (IntersectionObserver).
+- **Transiciones**: home sale con scale+blur → app entra con fade; el LOGO "CreativeMaxing" (h1) ahora es
+  clickeable y vuelve al home. `.wrap` arranca oculto. prefers-reduced-motion respetado.
+- VERIFICADO en navegador: carga, 3D renderiza y rota, saludo rota, tarjetas entran a su tab, logo vuelve,
+  reveal del scroll funciona, consola sin errores de la app.
+- AVISO Jack: todo AUTOCONTENIDO al inicio del body (sección #home + 2 scripts); lo único tocado de lo
+  existente: `.wrap` display:none inicial + onclick en el h1. Los tabs/paneles intactos.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎬 Búsqueda: B-ROLL de apoyo adaptado al ángulo (manual)
+Juan: además de los 30 videos del producto exacto, 10 escenas de B-ROLL/stock de TikTok adaptadas al ÁNGULO
+(skincare→antes/después facial y rutinas; gadget→manos usándolo/limpieza satisfactoria) para intercalar y
+hacer el video más dopamínico. MANUAL por ahora (él elige; si le gusta lo hacemos automático).
+- `tiktok_search.buscar_broll(ref_desc, nombre, api_key, n=10)`: Gemini inventa 6 búsquedas de escenas de
+  APOYO (no del producto) desde la ficha del producto → tikwm en paralelo → filtra duración/CO → ordena por
+  views → 1 por autor (variedad). `buscar()` lo incluye como `broll:[...]` (fluye por /api/tiktok-search y
+  por el nuevo /api/creative-search de Jack vía tk.broll).
+- UI (tkPaint): grupo 3 "🎬 B-roll de apoyo" con explicación + copiar links + lista. Probado: crema
+  antiarrugas → 9 escenas ASMR skincare/ojeras con views altos.
+- AVISO Jack: solo agregué broll al final de buscar() y el grupo 3 en tkPaint; tu refactor creative_search
+  intacto. VIENEN EN CAMINO (agente mapeando): tamaño de subtítulos seleccionable, SFX variados en TODAS
+  las secciones, clon con detección precisa, y garantía dura de no-repetición.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎛️ MEJORA GENERAL: subtítulos con TAMAÑO en todas las secciones + SFX variados + Clon con cobertura total
+Paquete grande de Juan (con mapa previo de un agente para no romper nada). REGLAS NUEVAS PERMANENTES:
+(1) JAMÁS repetir clips dentro del mismo video; (2) toda mejora se propaga a TODAS las secciones de video.
+**Subtítulos — tamaño elegible (pequeño/mediano/GRANDE→default MEDIANO):**
+- `caption_styles`: `TAMANOS` + `cap_size` en render_caption/_render_wordgroup/burn_word_captions (escala
+  size0 + max_h + min_size juntos — si no, el auto-fit anula el efecto). Default mediano = ya no gigantes.
+- Cableado COMPLETO: orchestrator.render_versions, auto_studio (generar_creativo_auto + _burn_subs),
+  producto_clips, winner_clone, endpoints (/api/auto, /api/scripts, /api/producto-clips, /api/clone,
+  /api/caption-preview?size=) y UI (selector de tamaño junto a CADA selector de estilo + preview en vivo).
+- 🐞 BUG CAZADO por el agente: el selector de ESTILO de Cortar clips se enviaba pero /api/scripts no lo
+  declaraba como Form → SIEMPRE salía "hormozi". Arreglado (caption_style+caption_size en el endpoint).
+**SFX variados (queja: "siempre suena el mismo"):**
+- assemble.add_voiceover_and_sfx: orden fijo alfabético → BARAJADO por render.
+- phase_effects: `_SFX_FAMILIA` — cada fase acepta una FAMILIA de SFX equivalentes (boom→boom/impact/
+  bass_drop, etc.) y elige AL AZAR entre ellos → cada render suena distinto. Aplica a AUTO y CLON.
+**Clon / Reemplazar (estaba "muy suave"):**
+- REGLA de cobertura total: el producto AJENO no queda visible NUNCA — sin dinámicas hace corte duro a
+  quieta; red de seguridad final cubre con CUALQUIER toma propia (las de Juan SÍ pueden repetirse).
+- Detección más fina: 32→48 frames de muestreo (step mín 0.3s) en detect_product_ranges.
+- Clon ahora con selector de ESTILO y TAMAÑO de subtítulos (antes hardcodeado "karaoke").
+Verificado: imports OK, preview S/M/G escala bien (grid visual), UI sin errores JS, _pick_sfx devuelve
+familia variada. AVISO Jack: toqué caption_styles/orchestrator/auto_studio/producto_clips/winner_clone/
+product_swap/assemble/phase_effects/app.py/index.html — todo con defaults retro-compatibles.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🛍️ NUEVO MÓDULO "Crear Landings" — FASE (a): UI + tipo + credenciales Shopify
+Superprompt de Juan: 3er módulo al nivel de Buscar/Crear — Landing Page y Advertorial desde SUS estructuras
+validadas → copy/imágenes con Gemini → gate de aprobación → Shopify Admin API como PLANTILLA NUEVA (jamás
+tocar lo existente). Decisiones aprobadas: mismo tema publicado (archivos nuevos prefijo cm-), imágenes a
+Shopify FILES, optimización de peso obligatoria. Fase (a) implementada:
+- NUEVO `backend/pipeline/shopify_admin.py`: `validar()` (request de prueba, errores en español),
+  `tema_publicado()` (usa SHOPIFY_THEME_ID o detecta role=main), `nombre_unico()` (cm-<tipo>-<slug>-<fecha>),
+  `crear_asset()` (SE NIEGA a sobreescribir si el key existe — regla de oro), `subir_imagen_files()`
+  (GraphQL staged upload → Files/CDN, reporta peso_kb).
+- Credenciales con el MISMO patrón de keys: SHOPIFY_STORE_DOMAIN / SHOPIFY_ADMIN_API_TOKEN (prefijo shpat_)
+  / SHOPIFY_THEME_ID (opcional) en .env vía 🔑 Claves (tarjeta nueva con 3 campos + pill) + `has_shopify`
+  en /api/config + `/api/shopify-check` (valida + detecta tema).
+- UI: 3ª tarjeta en el HOME premium ("Crear Landings") + pestaña 🛍️ + panel: selector de tipo (2 tarjetas
+  premium), botón "Verificar conexión", formulario de insumos (producto/link/precio EXACTO/oferta/fotos).
+  El botón Generar está DESHABILITADO hasta que Juan pase sus estructuras validadas (regla 9: no inventar).
+- `README-LANDINGS.md`: cómo crear la custom app + scopes mínimos + qué crea/qué JAMÁS toca.
+- Verificado: smoke shopify-check sin creds → error claro en español (no 500); home con 3 módulos; panel OK.
+- PENDIENTE de Juan: las estructuras validadas (landing + advertorial) y las secciones 3-7 del superprompt
+  (se cortaron 85 líneas en el paste). Fases (b)-(g) tras recibirlas.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🛍️ Landings: PLANTILLAS MAESTRAS destiladas (landing 9 secciones + advertorial)
+Retomada la tarea interrumpida: analizadas las 9 imágenes de la landing validada de Juan (Aceite de
+Ricino, ~/Downloads/landing) + su página viva buenatienda.com.co/products/crema-veneno-de-abeja-2x1.
+HALLAZGO: la página viva es estructura ADVERTORIAL (headline editorial "Por qué dermatólogas...",
+comparativa, "así funciona", dermatóloga, muro 15 reseñas con 2 imperfectas, oferta 2x1) → tenemos
+ejemplo real de AMBOS tipos. Nuevo `assets/landing-templates/`:
+- `README.md`: convención {{variables}} vs estructura fija, reglas duras de generación (producto
+  SIEMPRE con fotos reales — cero etiquetas garbled tipo "Paro la plai", texto CO sin errores,
+  aspect ratios, gate obligatorio), psicología del orden.
+- `landing-page.md`: las 9 secciones con formato/objetivo/layout/fórmulas de copy (hero 2:3 →
+  grid 4 testimonios 16:9 → mecanismo+antes/después 9:16 → comentarios FB 9:16 (con aviso legal
+  FIJO) → caso individual 1:1 → bundles 2:3 (PRECIOS EXACTOS de Juan) → bonos 2:3 → VS 9:16 →
+  cómo usar ILUSTRADO 9:16). Las imágenes NO llevan botón; el theme inserta CTAs entre secciones.
+- `advertorial.md`: arco editorial de 8 bloques con fórmulas literales del original (kicker,
+  headline "X en vez de Y después de los 40", mecanismo honesto, Dra. con credenciales, regla de
+  realismo: 2/15 reseñas de 3-4★). ⚠️ Pendiente que Juan CONFIRME que esa es SU estructura advertorial.
+- `referencia-landing/seccion-01..09.jpg` (~2.5MB): referencias de estilo para Gemini (ya no
+  dependemos de Downloads).
+SIGUE PENDIENTE de Juan: secciones 3-7 de su superprompt (85 líneas cortadas) → luego fases (b)-(g).
+AVISO Jack: solo archivos NUEVOS en assets/landing-templates/; cero código tocado.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔁 VARIAR EL HOOK del winner — capa de video COMPLETA (solo hook / hook + tomas)
+Jack se quedó sin tokens antes de pushear su capa de video → la construí completa para no frenar.
+Si tu sesión revive con TU versión de hook_variator: la mía es autocontenida (archivo nuevo + 2
+endpoints aditivos + 1 pestaña), comparamos y fusionamos conservando ambos.
+- NUEVO backend/pipeline/hook_variator.py — `variar_hook(winner, producto, modo="hook"|"tomas", n,
+  voz, evitar=, variaciones=, hook_fin=)`. Cerebro: creative_variator.generar_variaciones (NO lo
+  toqué, solo lo consumo) sobre el arco REAL del winner (analyze_narrative → transcripción etiquetada).
+  · modo "hook" (default): gancho nuevo usando VENTANA LIMPIA del propio winner — nueva
+    `ventana_limpia(video, dur, desde=)`: EAST muestrea 1 frame/0.5s y devuelve el tramo SIN texto
+    quemado ($0). Plan B: hook original con el texto TAPADO (mask_video). Voz CO de ElevenLabs con
+    timestamps + subtítulos palabra x palabra (burn_word_captions) SOLO en el hook; CUERPO INTACTO.
+  · modo "tomas": narra el guion COMPLETO (1 sola llamada TTS) y por cada escena del brief
+    [{fase, buscar}] busca la toma en TikTok ($0 buscar_tiktok sin IA, SIEMPRE region != "CO", sin
+    repetir toma entre variaciones), ventana limpia, normaliza 9:16, concat_clips + add_voiceover +
+    subs + punch_pace. Plan B por fase: metraje del winner con offset DISTINTO por fase; último
+    recurso: texto tapado.
+- backend/app.py (aditivo): POST /api/variar-hook (Form: producto, link O video subido, modo
+  default "hook" = retrocompatible, n, voz) → job en thread + _persist_varhook (work/<id>/job.json,
+  patrón _persist_disruptive → sobrevive reinicios; _get_job lo rehidrata). POST /api/variar-hook-otro
+  (job_id, index) = 🎲 Otro hook con evitar=[hooks ya mostrados], calcado de disruptive-swap-concept;
+  el result guarda `arco` y `hook_fin` para NO repagar narrativa al regenerar.
+- frontend/index.html: pestaña 🔁 Variar hook (upload/link + producto + selector "solo hook /
+  hook + tomas" + 2/4/6 variaciones + voz) → poll → grid 9:16 con ⬇️ descargar, 🎲 Otro hook y
+  detalle guion + pasos.
+- PROBADO barato: py_compile ok; JS 11/11 node --check; E2E offline con IAs MOCKEADAS (TTS silencio
+  + timings sintéticos, narrativa fake, buscar_tiktok=[]) sobre winner sintético con texto quemado
+  en 0-3s y 6-12s → modo hook 12.5s (hook nuevo SIN el texto viejo, karaoke visible, cuerpo intacto
+  — verificado FRAME A FRAME con capturas); modo tomas 8.0s exactos (= duración de la voz, 3 fases
+  con metraje distinto). Ruta de red real $0 ok (buscar + bajar toma de TikTok: 82s). Server smoke
+  en :8422 (pestaña servida, 400/404 correctos).
+- HONESTIDAD: en el último plan B (cero ventanas limpias) el blur de mask_video deja texto GIGANTE
+  aún medio legible (con texto de tamaño normal se ve bien — es el mask estándar de la app; no lo
+  toqué por no afectar blur_captions global).
+- AVISO Jack/Landings: NO toqué assemble.py (el fix del stream_loop quedó intacto), ni
+  creative_variator, ni tiktok_search, ni nada del módulo Landings nuevo (shopify_admin.py). Mi
+  merge conserva su fase (a) completa.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🤝 FUSIÓN Variar hook: quedó TU versión + injertos nuestros (y por qué)
+Juan: mi sesión revivió (Jack sin tokens unas horas) — yo TAMBIÉN había construido la capa de video
+completa y verificada (E2E real con el ganador de toallas: 4/4 videos, frames mirados, revisor 2º agente).
+Chocamos de frente con tu c5a9184; hice la fusión que propusiste ("comparamos y fusionamos"):
+- SE QUEDÓ TU CABLEADO completo (tu hook_variator.py con modo hook/tomas + /api/variar-hook +
+  /api/variar-hook-otro 🎲 + _persist_varhook + tu pestaña con selector de modo). Razón: tus 2 modos y
+  persistencia son superset del mío, y tu E2E offline + ruta de red $0 estaban verificados. Mi versión
+  entera queda en la historia (commit 11c02f4) por si quieres pescar algo: tenía toma NUEVA de TikTok
+  también en modo "hook" (brief de la fase HOOK → buscar_tiktok → hasta 3 descargas buscando ventana
+  limpia EAST → si ninguna, tapar con Gemini), armado de variaciones en PARALELO (2 workers), y
+  traducción del cuerpo con "solo_otro". Si te sirve, enchufamos eso como opción "toma nueva" luego.
+- INJERTO en tu hook_variator.py: filtro DURO anti-precio `_PRECIO`/`_sin_precio` (regla de oro; tu
+  versión confiaba solo en el prompt del variator) — bloquea $/€/precio/"COP 49900"/"cuarenta mil
+  pesos"/"50% off" pero deja "2x1"/"envío gratis"/"100% algodón" (16/16 casos); ahora se piden n+2
+  variaciones al cerebro para reponer descartes.
+- DE NUESTRA RAMA quedaron además: `-ar 48000 -ac 2` en assemble.add_voiceover (convive con tu fix
+  del no-loop/tpad — el mp3 de ElevenLabs es 44.1k mono y el demuxer de concat_clips ralentizaba y
+  desafinaba el audio de lo concatenado después: medido por FFT, 220 Hz sonaba a 202 Hz; tu
+  hook_variator ya re-encodeaba a 48k por su cuenta, así que doble cinturón); modo "solo_otro" en
+  text_translate.py (traduce SOLO texto extranjero, deja el español — tu código lo usa);
+  `vo_guiones` expuesto en /api/producto-clips + selector "Guiones: 8/4/2" en Mi producto (control
+  de costo ElevenLabs, pendiente del handoff); línea de la pestaña en la Guía.
+- LIMPIEZA del merge: el auto-merge había CONCATENADO nuestros dos hook_variator.py (dos def
+  variar_hook, SyntaxError), duplicado el endpoint /api/variar-hook y entreverado los dos paneles en
+  una sola pestaña (vhRun/vhPoll definidos 2 veces). Quedó 1 módulo (el tuyo + injerto), 1 endpoint +
+  el 🎲, 1 pestaña (la tuya). py_compile ok, node --check ok, rutas únicas verificadas.
+- AVISO: tu entrada de arriba lo dice y lo confirmo — nada de Landings ni de tus fixes del día se
+  tocó. Mi E2E real de anoche queda como evidencia de que el flujo con toma nueva funciona (por si
+  lo retomamos): work/e3ec35398393/ tiene los 4 videos de muestra.

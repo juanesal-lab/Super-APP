@@ -46,6 +46,13 @@ SAFE = 120                      # margen seguro por borde (UI de TikTok)
 ESTILOS = ["bold_outline", "hormozi", "yellow_highlight", "red_highlight", "highlight_box",
            "pill", "clean_minimal", "karaoke", "bounce", "typewriter"]
 
+# Tamaño del subtítulo elegible por el usuario (regla de Juan: default MEDIANO, los gigantes no)
+TAMANOS = {"pequeno": 0.66, "mediano": 0.82, "grande": 1.0}
+
+
+def _tam(cap_size) -> float:
+    return TAMANOS.get(str(cap_size or "mediano").lower().replace("ñ", "n"), 0.82)
+
 # Palabras que NO son "clave" (para no resaltarlas)
 _STOP = set("de la el que y a en un una los las por con para su tu mi es se lo le al del "
             "o u ni si no me te nos ¿ ? ¡ ! yo".split())
@@ -178,21 +185,25 @@ def _line_width(draw, words, font):
     return sum(draw.textlength(w, font=font) for w in words) + space * (len(words) - 1)
 
 
-def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Image.Image:
+def render_caption(text: str, W: int, H: int, style: str = "bold_outline",
+                   cap_size: str = "mediano") -> Image.Image:
     """Devuelve un PNG RGBA (W×H, transparente) con el subtítulo en el estilo pedido, auto-ajustado
-    dentro de la zona segura, en el tercio inferior-medio. Overlay directo en 0:0."""
+    dentro de la zona segura, en el tercio inferior-medio. Overlay directo en 0:0.
+    `cap_size`: pequeno | mediano (default) | grande."""
     text = _strip_emoji(text)
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if not text:
         return img
     draw = ImageDraw.Draw(img)
+    f = _tam(cap_size)
     max_w = W - 2 * SAFE
-    max_h = int(H * 0.34)                       # alto máximo del bloque de texto
+    max_h = int(H * 0.34 * f)                   # alto máximo del bloque de texto
     xbold = style in ("hormozi", "bounce")
     fontpath = _fontpath(xbold)
     disp = text.upper() if style in ("hormozi",) else text
-    size0 = int(H * (0.066 if style in ("hormozi", "bounce") else 0.05))
-    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, max_h, size0)
+    size0 = int(H * (0.066 if style in ("hormozi", "bounce") else 0.05) * f)
+    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, max_h, size0,
+                                     min_size=max(18, int(30 * f)))
     stroke = max(2, size // 9)
     keywords = _keywords(text)
 
@@ -282,10 +293,12 @@ def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Im
     return img
 
 
-def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str) -> Image.Image:
+def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str,
+                      cap_size: str = "mediano") -> Image.Image:
     """Dibuja un grupo corto de palabras (2-4) con la palabra ACTIVA resaltada (estilo adapta).
 
     Palabra por palabra: se muestran pocas palabras a la vez y la que se está diciendo se resalta.
+    `cap_size`: pequeno | mediano (default) | grande.
     """
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     words = [_strip_emoji(w.get("word", "")) for w in group]
@@ -293,13 +306,15 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     if not words:
         return img
     draw = ImageDraw.Draw(img)
+    f = _tam(cap_size)
     text = " ".join(words)
     max_w = W - 2 * SAFE
     xbold = style in ("hormozi", "bounce", "wordpop")
     fontpath = _fontpath(xbold)
     disp = text.upper() if style in ("hormozi", "karaoke", "wordpop") else text
     # Más pequeño, líneas juntas y en el tercio INFERIOR (tapa menos el video)
-    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.165), int(H * 0.046))
+    font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.165 * f), int(H * 0.046 * f),
+                                     min_size=max(16, int(30 * f)))
     stroke = max(3, size // 8)
     total_h = line_h * len(lines)
     y0 = max(int(H * 0.60), min(int(H * 0.80) - total_h // 2, H - SAFE - total_h))
@@ -337,7 +352,8 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
 
 
 def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
-                       style: str = "karaoke", group_size: int = 4) -> str:
+                       style: str = "karaoke", group_size: int = 4,
+                       cap_size: str = "mediano") -> str:
     """Quema subtítulos PALABRA POR PALABRA sincronizados (usa tiempos reales de ElevenLabs).
 
     Agrupa en bloques cortos (group_size) y resalta la palabra que se está diciendo. Estilo adapta.
@@ -361,7 +377,7 @@ def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
             nxt = float(words[gidx + 1]["start"]) if gidx + 1 < len(words) else float(w["end"]) + 0.3
             end = max(start + 0.05, nxt)
             png = os.path.join(work_dir, f"wc_{n}.png")
-            _render_wordgroup(g, j, W, H, style).save(png)
+            _render_wordgroup(g, j, W, H, style, cap_size).save(png)
             inputs += ["-i", png]
             filt.append(f"{last}[{n + 1}:v]overlay=0:0:enable='between(t,{start:.2f},{end:.2f})'[v{n}]")
             last = f"[v{n}]"; n += 1

@@ -32,6 +32,8 @@ from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullpromp
                                         generar_ad_fullprompt, _integrar_producto_ia,
                                         editar_imagen_ia)
 from pipeline import foreplay_search as fp
+from pipeline.hook_variator import variar_hook
+from pipeline.creative_variator import generar_variaciones
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -121,6 +123,12 @@ def _load_foreplay_key() -> str | None:
     return _load_key("FOREPLAY_API_KEY")
 
 
+def _load_shopify() -> tuple[str | None, str | None, str | None]:
+    """(dominio, admin_token, theme_id opcional) para el módulo Crear Landings."""
+    return (_load_key("SHOPIFY_STORE_DOMAIN"), _load_key("SHOPIFY_ADMIN_API_TOKEN"),
+            _load_key("SHOPIFY_THEME_ID"))
+
+
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
     """Cortar clips: música de fondo (baja) + SFX variados en los cortes, conservando el audio del clip."""
     from pipeline.assemble import add_music_sfx
@@ -207,13 +215,14 @@ def get_config():
         "has_eleven_key": bool(_load_eleven_key()),
         "has_anthropic_key": bool(_load_anthropic_key()),
         "has_foreplay_key": bool(_load_foreplay_key()),
+        "has_shopify": bool(_load_shopify()[0] and _load_shopify()[1]),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
 
 
 @app.get("/api/caption-preview")
-def caption_preview(style: str = "hormozi"):
+def caption_preview(style: str = "hormozi", size: str = "mediano"):
     """Preview PNG de un estilo de subtítulo (para elegir viendo cómo se ve)."""
     import io
     from PIL import Image
@@ -222,7 +231,7 @@ def caption_preview(style: str = "hormozi"):
     W, H = 640, 260
     grp = [{"word": "MIRA"}, {"word": "ESTO"}, {"word": "GRATIS"}]
     try:
-        cap = _render_wordgroup(grp, 1, W, H, st)
+        cap = _render_wordgroup(grp, 1, W, H, st, size)
     except Exception:  # noqa: BLE001
         raise HTTPException(500, "no se pudo renderizar el preview")
     bg = Image.new("RGB", (W, H), (32, 30, 36))
@@ -234,13 +243,17 @@ def caption_preview(style: str = "hormozi"):
 
 
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY"}
+            "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY",
+            "shopify_domain": "SHOPIFY_STORE_DOMAIN", "shopify_token": "SHOPIFY_ADMIN_API_TOKEN",
+            "shopify_theme": "SHOPIFY_THEME_ID"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
 # (fue lo que pasó: un key de Anthropic terminó en GEMINI_API_KEY y rompió todo lo de Gemini).
-_KEY_PREFIX = {"gemini": ("AIza", "AQ."), "eleven": ("sk_",), "anthropic": ("sk-ant-",)}
+_KEY_PREFIX = {"gemini": ("AIza", "AQ."), "eleven": ("sk_",), "anthropic": ("sk-ant-",),
+               "shopify_token": ("shpat_", "shpca_")}
 _KEY_LABEL = {"gemini": "Gemini (empieza con AIza o AQ.)",
               "eleven": "ElevenLabs (empieza con sk_)",
-              "anthropic": "Claude/Anthropic (empieza con sk-ant-)"}
+              "anthropic": "Claude/Anthropic (empieza con sk-ant-)",
+              "shopify_token": "Shopify Admin API (empieza con shpat_)"}
 
 
 @app.post("/api/save-key")
@@ -401,6 +414,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
                 oferta_2x1=settings.get("oferta_2x1", False),
                 verticalizar=settings.get("verticalizar", True),
                 caption_style=settings.get("caption_style", "bold_outline"),
+                caption_size=settings.get("caption_size", "mediano"),
                 oferta=settings.get("oferta", ""),
                 banner_oferta=settings.get("banner_oferta", False),
                 work_dir=os.path.join(WORK_DIR, job_id, f"c{i}"),
@@ -427,6 +441,7 @@ async def auto(
     oferta_2x1: bool = Form(False),
     verticalizar: bool = Form(True),
     caption_style: str = Form("bold_outline"),
+    caption_size: str = Form("mediano"),
     oferta: str = Form(""),
     banner_oferta: bool = Form(False),
 ):
@@ -441,6 +456,7 @@ async def auto(
         "oferta_2x1": bool(oferta_2x1),
         "verticalizar": bool(verticalizar),
         "caption_style": caption_style,
+        "caption_size": caption_size,
         "oferta": oferta.strip(),
         "banner_oferta": bool(banner_oferta),
     }
@@ -535,6 +551,8 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
             doblar=settings.get("doblar", False),
             voz=settings.get("voz", "juan_carlos"),
             verticalizar=settings.get("verticalizar", True),
+            caption_style=settings.get("caption_style", "karaoke"),
+            caption_size=settings.get("caption_size", "mediano"),
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
             work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
         )
@@ -556,6 +574,8 @@ async def clone(
     doblar: bool = Form(False),
     voz: str = Form("juan_carlos"),
     verticalizar: bool = Form(True),
+    caption_style: str = Form("karaoke"),
+    caption_size: str = Form("mediano"),
 ):
     if not winner:
         raise HTTPException(400, "Sube el creativo ganador")
@@ -580,76 +600,12 @@ async def clone(
         "product_desc": product_desc.strip(), "old_desc": old_desc.strip(),
         "doblar": bool(doblar), "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
         "verticalizar": bool(verticalizar),
+        "caption_style": caption_style, "caption_size": caption_size,
     }
     threading.Thread(target=_run_clone_job,
                      args=(job_id, winner_path, photo_paths, video_paths, settings),
                      daemon=True).start()
     return {"job_id": job_id}
-
-
-# ---- 🔁 VARIAR EL HOOK del winner (cuerpo intacto, 4 hooks nuevos) ----
-
-def _run_variar_hook_job(job_id: str, winner: str, settings: dict):
-    from pipeline.hook_variator import variar_hook
-    job = JOBS[job_id]
-
-    def progress(msg, pct):
-        job["message"] = msg
-        job["progress"] = pct
-
-    try:
-        result = variar_hook(
-            winner,
-            product_desc=settings.get("product_desc", ""),
-            n=settings.get("n", 4),
-            voz=settings.get("voz", "juan_carlos"),
-            caption_style=settings.get("caption_style", "hormozi"),
-            traducir_cuerpo=settings.get("traducir_cuerpo", True),
-            gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
-            anthropic_key=_load_anthropic_key(),
-            work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
-        )
-        job["result"] = result
-        job["status"] = "done" if result.get("ok") else "error"
-        if not result.get("ok"):
-            job["message"] = result.get("error", "Error")
-    except Exception as e:  # noqa: BLE001
-        job["status"] = "error"; job["message"] = f"Error: {e}"
-
-
-@app.post("/api/variar-hook")
-async def variar_hook_api(
-    winner: UploadFile = File(...),
-    product_desc: str = Form(""),
-    n: int = Form(4),
-    voz: str = Form("juan_carlos"),
-    caption_style: str = Form("hormozi"),
-    traducir_cuerpo: bool = Form(True),
-):
-    if not winner or not winner.filename:
-        raise HTTPException(400, "Sube el video ganador")
-    job_id = uuid.uuid4().hex[:12]
-    up = os.path.join(UPLOAD_DIR, job_id)
-    os.makedirs(up, exist_ok=True)
-    winner_path = os.path.join(up, "winner_" + os.path.basename(winner.filename))
-    with open(winner_path, "wb") as f:
-        shutil.copyfileobj(winner.file, f)
-
-    settings = {
-        "product_desc": product_desc.strip(),
-        "n": max(1, min(int(n), 6)),
-        "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
-        "caption_style": caption_style if caption_style in (
-            "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
-            else "hormozi",
-        "traducir_cuerpo": bool(traducir_cuerpo),
-    }
-    JOBS[job_id] = {"status": "running", "progress": 0,
-                    "message": "Iniciando...", "result": None, "created": time.time()}
-    threading.Thread(target=_run_variar_hook_job,
-                     args=(job_id, winner_path, settings), daemon=True).start()
-    return {"job_id": job_id}
-
 
 # ---- Proceso por pasos para VOZ EN OFF ----
 
@@ -740,6 +696,8 @@ async def scripts(
     use_music: bool = Form(False),
     use_captions: bool = Form(False),
     oferta_2x1: bool = Form(False),
+    caption_style: str = Form("hormozi"),
+    caption_size: str = Form("mediano"),
     reference_ad: UploadFile | None = File(None),
 ):
     job_id, paths = _save_uploads(files or [])
@@ -768,6 +726,7 @@ async def scripts(
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "use_music": bool(use_music), "captions": bool(use_captions),
         "oferta_2x1": bool(oferta_2x1),
+        "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
     }
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
@@ -828,6 +787,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             blur_captions=s.get("blur_captions", False), text_mode=s.get("text_mode", "tapar"),
             caption_pos=s.get("caption_pos", "abajo"),
             captions=s.get("captions", False), caption_style=s.get("caption_style", "hormozi"),
+            caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
             progress=progress)
@@ -1105,6 +1065,7 @@ async def producto_clips(
     voz_en_off: bool = Form(False),
     voz: str = Form("juan_carlos"),
     caption_style: str = Form("hormozi"),
+    caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
     vo_guiones: int = Form(0),
 ):
@@ -1136,6 +1097,7 @@ async def producto_clips(
         "caption_style": caption_style if caption_style in (
             "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
             else "hormozi",
+        "caption_size": caption_size if caption_size in ("pequeno", "mediano", "grande") else "mediano",
         "subtitulos": bool(subtitulos),
         # Control de costo de ElevenLabs: cuántas narraciones distintas (0 = una por versión).
         # El selector manda 8 (una por video) → equivale al comportamiento por defecto.
@@ -1154,6 +1116,22 @@ async def producto_clips(
 def foreplay_usage():
     """Créditos disponibles de Foreplay (para mostrar en la pestaña)."""
     return fp.usage(_load_foreplay_key() or "")
+
+
+@app.get("/api/shopify-check")
+def shopify_check():
+    """Valida las credenciales de Shopify (request de prueba) + detecta el tema publicado.
+    Es el 'gate' de arranque del módulo Crear Landings."""
+    from pipeline import shopify_admin as sh
+    dom, tok, theme = _load_shopify()
+    v = sh.validar(dom or "", tok or "")
+    if not v.get("ok"):
+        return v
+    t = sh.tema_publicado(dom, tok, theme)
+    if not t.get("ok"):
+        return {"ok": False, "error": t.get("error", "No pude detectar el tema")}
+    return {"ok": True, "shop": v.get("shop"), "moneda": v.get("moneda"),
+            "tema": {"id": t.get("id"), "nombre": t.get("nombre"), "rol": t.get("rol")}}
 
 
 @app.get("/api/foreplay-thumb")
@@ -1620,6 +1598,112 @@ def download(path: str, res: str = "1080", name: str = "clip"):
         export_resolution(full, out_path, width)
     return FileResponse(out_path, media_type="video/mp4",
                         filename=f"{name}_{width}w.mp4")
+
+
+# ==================== 🔁 VARIAR HOOK (creative scaling de video) ====================
+
+def _persist_varhook(job_id: str):
+    """Persiste el job de Variar hook a work/<id>/job.json — mismo patrón que _persist_disruptive
+    (si el server se reinicia, el poll del front y el 🎲 siguen funcionando)."""
+    import json as _json
+    job = JOBS.get(job_id)
+    if not job:
+        return
+    data = {k: job.get(k) for k in ("status", "result", "created", "_winner", "_producto",
+                                    "_modo", "_voz", "_page_text")}
+    try:
+        d = os.path.join(WORK_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "job.json"), "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _run_varhook_job(job_id: str, winner: str, producto: str, modo: str, n: int, voz: str):
+    job = JOBS[job_id]
+
+    def progress(m, p):
+        job["message"], job["progress"] = m, p
+
+    try:
+        r = variar_hook(winner, producto, n=n, modo=modo, voz=voz,
+                        gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
+                        anthropic_key=_load_anthropic_key(),
+                        work_dir=os.path.join(WORK_DIR, job_id), progress=progress)
+        if r.get("ok"):
+            job["result"], job["status"] = r, "done"
+        else:
+            job["status"] = "error"
+            job["message"] = r.get("error") or "No se pudieron armar las variaciones"
+    except Exception as e:  # noqa: BLE001
+        job["status"], job["message"] = "error", str(e)
+    _persist_varhook(job_id)
+
+
+@app.post("/api/variar-hook")
+def variar_hook_ep(producto: str = Form(""), link: str = Form(""),
+                   modo: str = Form("hook"), n: int = Form(4),
+                   voz: str = Form("juan_carlos"), video: UploadFile = File(None)):
+    """1 creativo GANADOR → N videos: hook nuevo (modo 'hook', default) o hook + tomas nuevas
+    por fase (modo 'tomas'). Retrocompatible: sin `modo`, se comporta como solo-hook."""
+    if not producto.strip():
+        raise HTTPException(400, "Describe el producto (nombre + qué hace)")
+    job_id = uuid.uuid4().hex[:12]
+    src_dir = os.path.join(WORK_DIR, job_id, "src")
+    os.makedirs(src_dir, exist_ok=True)
+    winner = None
+    if video is not None and getattr(video, "filename", ""):
+        winner = os.path.join(src_dir, "winner.mp4")
+        with open(winner, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+    elif link.strip():
+        bajados = download_urls([link.strip()], src_dir)
+        winner = next((b.get("path") for b in bajados if b.get("ok") and b.get("path")), None)
+    if not winner or not os.path.exists(winner):
+        raise HTTPException(400, "Sube el video ganador o pega su link de TikTok")
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time(), "_winner": winner,
+                    "_producto": producto, "_modo": modo, "_voz": voz, "_page_text": ""}
+    threading.Thread(target=_run_varhook_job,
+                     args=(job_id, winner, producto, modo, max(1, min(8, n)), voz),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/variar-hook-otro")
+def variar_hook_otro(job_id: str = Form(...), index: int = Form(...)):
+    """🎲 Otro hook: regenera UNA variación con evitar=[hooks ya mostrados] y re-arma su video.
+    Mismo patrón que /api/disruptive-swap-concept (síncrono, muta el job y persiste)."""
+    job = _get_job(job_id)
+    if not job or not (job.get("result") or {}).get("variaciones"):
+        raise HTTPException(404, "Ese trabajo ya no existe. Genera las variaciones de nuevo.")
+    variaciones = job["result"]["variaciones"]
+    if not (0 <= index < len(variaciones)):
+        raise HTTPException(400, "Índice fuera de rango")
+    winner, producto = job.get("_winner") or "", job.get("_producto") or ""
+    if not (winner and os.path.exists(winner) and producto):
+        raise HTTPException(400, "Proyecto viejo sin contexto — genera las variaciones de nuevo.")
+    modo = job.get("_modo") or job["result"].get("modo") or "hook"
+    evitar = [v.get("hook", "") for v in variaciones if v.get("hook")]
+    arco = job["result"].get("arco") or producto
+    nuevas = generar_variaciones(arco, producto, _load_anthropic_key(),
+                                 page_text=job.get("_page_text") or "", n=1,
+                                 con_escenas=(modo == "tomas"), evitar=evitar)
+    if not nuevas:
+        raise HTTPException(502, "El cerebro no entregó otra variación (revisa la key de Anthropic)")
+    wd = os.path.join(WORK_DIR, job_id, f"otro_{uuid.uuid4().hex[:6]}")
+    r = variar_hook(winner, producto, modo=modo, voz=job.get("_voz") or "juan_carlos",
+                    variaciones=nuevas[:1], hook_fin=job["result"].get("hook_fin"),
+                    gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
+                    anthropic_key=_load_anthropic_key(), work_dir=wd)
+    v = (r.get("variaciones") or [None])[0]
+    if not (v and v.get("video")):
+        raise HTTPException(502, "No se pudo armar el video de la nueva variación")
+    variaciones[index] = v
+    JOBS[job_id] = job         # re-ancla en memoria (por si _gc_jobs lo sacó durante el render largo)
+    _persist_varhook(job_id)
+    return {"variacion": v}
 
 
 if __name__ == "__main__":

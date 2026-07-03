@@ -134,8 +134,289 @@
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Creative<span>Maxing</span></h1>
+
+<!-- ═══════════════════ HOME PREMIUM — "no parece una app común" ═══════════════════ -->
+<section id="home">
+  <style>
+    #home{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+      padding:0 24px 70px;position:relative;overflow:hidden;
+      background:radial-gradient(1200px 500px at 50% -8%, rgba(212,175,55,.10), transparent 60%), var(--bg)}
+    #home.saliendo{animation:homeOut .55s cubic-bezier(.4,0,.2,1) forwards}
+    @keyframes homeOut{to{opacity:0;transform:scale(.985);filter:blur(6px)}}
+    .hGreet{margin:9vh 0 0;text-align:center;opacity:0;animation:hUp .9s .1s cubic-bezier(.2,.7,.2,1) forwards}
+    .hGreet h2{font-size:clamp(28px,4.6vw,52px);font-weight:800;letter-spacing:-.02em;margin:0;
+      background:linear-gradient(100deg,#f6efdd 30%, #d4af37 50%, #f6efdd 70%);background-size:220% 100%;
+      -webkit-background-clip:text;background-clip:text;color:transparent;animation:hShimmer 7s linear infinite}
+    @keyframes hShimmer{to{background-position:-220% 0}}
+    .hGreet p{color:var(--muted);font-size:clamp(13px,1.5vw,16px);margin:10px 0 0;font-weight:500;letter-spacing:.04em}
+    @keyframes hUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+    #hStage{width:min(1040px,96vw);height:min(46vh,470px);position:relative;margin:1.5vh 0 0;
+      opacity:0;animation:hUp 1s .25s cubic-bezier(.2,.7,.2,1) forwards}
+    #hStage canvas{display:block;border-radius:24px;cursor:grab}
+    #hStage canvas:active{cursor:grabbing}
+    .hHint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:var(--muted);
+      font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;pointer-events:none;opacity:.75}
+    .hCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:22px;width:min(1180px,96vw);margin-top:3vh;
+      opacity:0;animation:hUp 1s .45s cubic-bezier(.2,.7,.2,1) forwards}
+    @media(max-width:760px){.hCards{grid-template-columns:1fr}}
+    .hCard{position:relative;border-radius:26px;padding:34px 32px 30px;cursor:pointer;overflow:hidden;
+      background:linear-gradient(160deg,#16141a 0%, #1b1712 100%);
+      border:1px solid rgba(212,175,55,.16);box-shadow:0 20px 50px rgba(0,0,0,.5);
+      transition:transform .45s cubic-bezier(.2,.7,.2,1), box-shadow .45s, border-color .45s;
+      transform-style:preserve-3d;will-change:transform}
+    .hCard:hover{transform:translateY(-7px);border-color:rgba(212,175,55,.5);
+      box-shadow:0 30px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(212,175,55,.25), 0 18px 60px rgba(212,175,55,.12)}
+    .hCard .sheen{position:absolute;inset:0;background:linear-gradient(115deg,transparent 42%,rgba(246,233,208,.10) 50%,transparent 58%);
+      background-size:260% 100%;background-position:120% 0;transition:background-position 1s cubic-bezier(.2,.7,.2,1);pointer-events:none}
+    .hCard:hover .sheen{background-position:-120% 0}
+    .hCard .hIco{width:64px;height:64px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(140deg,rgba(212,175,55,.16),rgba(212,175,55,.05));
+      border:1px solid rgba(212,175,55,.3);margin-bottom:20px;transition:transform .45s}
+    .hCard:hover .hIco{transform:translateY(-3px) scale(1.05)}
+    .hCard h3{margin:0 0 8px;font-size:24px;font-weight:800;letter-spacing:-.01em}
+    .hCard p{margin:0;color:var(--muted);font-size:14.5px;line-height:1.65;max-width:40ch}
+    .hCard .hGo{margin-top:22px;display:inline-flex;align-items:center;gap:9px;color:var(--accent2);
+      font-weight:700;font-size:13.5px;letter-spacing:.06em;text-transform:uppercase}
+    .hCard .hGo span{transition:transform .35s}
+    .hCard:hover .hGo span{transform:translateX(6px)}
+    .hComo{width:min(1040px,96vw);margin-top:9vh}
+    .hComo h4{text-align:center;font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);
+      font-weight:700;margin:0 0 8px}
+    .hComo .hT{text-align:center;font-size:clamp(22px,3vw,32px);font-weight:800;margin:0 0 34px;letter-spacing:-.01em}
+    .hSteps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+    @media(max-width:820px){.hSteps{grid-template-columns:1fr}}
+    .hStep{border-radius:22px;padding:26px 24px;background:#141218;border:1px solid #262129;
+      opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1), border-color .4s}
+    .hStep.vis{opacity:1;transform:none}
+    .hStep:hover{border-color:rgba(212,175,55,.35)}
+    .hStep .n{font-size:11px;letter-spacing:.2em;color:var(--accent);font-weight:800;margin-bottom:14px}
+    .hStep h5{margin:0 0 8px;font-size:17.5px;font-weight:800}
+    .hStep p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.7}
+    #homeBrand{position:absolute;top:26px;left:50%;transform:translateX(-50%);font-weight:800;font-size:15px;
+      letter-spacing:.30em;text-transform:uppercase;color:var(--muted);opacity:0;animation:hUp .8s forwards}
+    #homeBrand b{color:var(--accent)}
+    @media (prefers-reduced-motion: reduce){#home *{animation-duration:.01s !important;transition-duration:.01s !important}}
+  </style>
+
+  <div id="homeBrand">Creative<b>Maxing</b></div>
+
+  <div class="hGreet">
+    <h2 id="hGreetTxt">¿Qué vamos a construir hoy?</h2>
+    <p>Tu estudio de creativos impulsado por IA</p>
+  </div>
+
+  <div id="hStage"><div class="hHint">Arrastra · Gira 360° · Acerca con el scroll</div></div>
+
+  <div class="hCards">
+    <div class="hCard" onclick="homeEnter('p-foreplay')">
+      <div class="sheen"></div>
+      <div class="hIco">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ecca6e" stroke-width="1.6" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/><path d="M11 8a3 3 0 0 1 3 3"/>
+        </svg>
+      </div>
+      <h3>Buscar Productos</h3>
+      <p>Un explorador inteligente que rastrea TikTok y bibliotecas de anuncios para descubrir productos ganadores — verificados con visión por IA.</p>
+      <div class="hGo">Explorar <span>→</span></div>
+    </div>
+    <div class="hCard" onclick="homeEnter('p-crear')">
+      <div class="sheen"></div>
+      <div class="hIco">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ecca6e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="13" height="13" rx="2.5"/><path d="M8 3h11a2 2 0 0 1 2 2v11"/><path d="m9.5 9 4 2.5-4 2.5z"/>
+        </svg>
+      </div>
+      <h3>Crear Creativos</h3>
+      <p>El sistema completo de creación: clips con IA, ads de imagen, doblaje, guiones ganadores y análisis de campañas con Foreplay — sin salir de aquí.</p>
+      <div class="hGo">Crear <span>→</span></div>
+    </div>
+    <div class="hCard" onclick="homeEnter('p-landings')">
+      <div class="sheen"></div>
+      <div class="hIco">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ecca6e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18"/><path d="M7 6h.01"/><path d="m8 14 2.5 2.5L15 12"/>
+        </svg>
+      </div>
+      <h3>Crear Landings</h3>
+      <p>Landing pages y advertoriales con tu estructura validada: copy e imágenes con IA, tu aprobación, y a Shopify como plantilla nueva — sin tocar tu tienda.</p>
+      <div class="hGo">Construir <span>→</span></div>
+    </div>
+  </div>
+
+  <div class="hComo">
+    <h4>El flujo</h4>
+    <p class="hT">¿Cómo funciona?</p>
+    <div class="hSteps">
+      <div class="hStep"><div class="n">01 — DESCUBRE</div><h5>🔍 Buscar Productos</h5>
+        <p>La IA analiza tendencias, rastrea creativos reales y verifica con visión que cada video sea EXACTAMENTE tu producto — separando lo confirmado de lo dudoso.</p></div>
+      <div class="hStep"><div class="n">02 — CREA</div><h5>🎬 Crear Creativos</h5>
+        <p>Clips editados con ritmo profesional, ads de imagen disruptivos, guiones con estructura ganadora y doblaje — todo generado y verificado por IA.</p></div>
+      <div class="hStep"><div class="n">03 — INSPÍRATE</div><h5>🔥 Inspiración</h5>
+        <p>Integración con Foreplay: estudia anuncios que llevan semanas pagando tráfico, analiza sus ángulos y conviértelos en tu próximo ganador.</p></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // ── Saludo dinámico (por hora + rotación suave) ──
+  (function(){
+    const h=new Date().getHours();
+    const base = h<12 ? "Hoy es un buen día para encontrar un producto ganador."
+               : h<19 ? "¿Qué vamos a construir hoy?" : "Bienvenido de nuevo.";
+    const frases=[base,"¿Qué quieres crear hoy?","¿Qué vamos a construir hoy?","Bienvenido de nuevo."];
+    const el=document.getElementById('hGreetTxt'); let k=0;
+    el.textContent=frases[0];
+    setInterval(()=>{ k=(k+1)%frases.length;
+      el.style.transition='opacity .6s'; el.style.opacity=0;
+      setTimeout(()=>{ el.textContent=frases[k]; el.style.opacity=1; }, 620);
+    }, 7000);
+  })();
+
+  // ── Entrar a la app (transición fluida) / volver al home tocando el logo ──
+  function homeEnter(tabId){
+    const home=document.getElementById('home'), wrap=document.querySelector('.wrap');
+    home.classList.add('saliendo');
+    setTimeout(()=>{
+      home.style.display='none';
+      wrap.style.display='';
+      wrap.style.opacity=0; wrap.style.transition='opacity .5s'; requestAnimationFrame(()=>wrap.style.opacity=1);
+      const b=document.querySelector(`#tabs button[data-p="${tabId}"]`); if(b) b.click();
+      window.scrollTo({top:0});
+    }, 520);
+  }
+  function homeBack(){
+    const home=document.getElementById('home'), wrap=document.querySelector('.wrap');
+    wrap.style.opacity=0;
+    setTimeout(()=>{ wrap.style.display='none'; home.style.display='flex';
+      home.classList.remove('saliendo'); window.scrollTo({top:0}); }, 350);
+  }
+
+  // ── Revelado editorial de "¿Cómo funciona?" al hacer scroll ──
+  (function(){
+    const io=new IntersectionObserver(es=>es.forEach((e,i)=>{
+      if(e.isIntersecting){ setTimeout(()=>e.target.classList.add('vis'), (Array.from(document.querySelectorAll('.hStep')).indexOf(e.target)%3)*140); io.unobserve(e.target); }
+    }),{threshold:.25});
+    document.querySelectorAll('.hStep').forEach(s=>io.observe(s));
+  })();
+</script>
+
+<!-- ── AUTO CONCEPTO 3D — original, interactivo (giro 360°, zoom, reflejos, luz premium) ── -->
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
+<script type="module">
+try{
+  const THREE = await import('three');
+  const {OrbitControls} = await import('three/addons/controls/OrbitControls.js');
+  const {RoomEnvironment} = await import('three/addons/environments/RoomEnvironment.js');
+
+  const stage=document.getElementById('hStage');
+  const W=stage.clientWidth, H=stage.clientHeight;
+  const renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(W,H);
+  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
+  stage.prepend(renderer.domElement);
+
+  const scene=new THREE.Scene();
+  scene.fog=new THREE.Fog(0x0c0b0e, 9, 17);
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  scene.environment=pmrem.fromScene(new RoomEnvironment(), .06).texture;   // reflejos dinámicos
+
+  const cam=new THREE.PerspectiveCamera(38, W/H, .1, 60);
+  cam.position.set(4.1, 1.7, 4.6);
+
+  const ctl=new OrbitControls(cam, renderer.domElement);
+  ctl.target.set(0,.42,0); ctl.enableDamping=true; ctl.dampingFactor=.05;
+  ctl.autoRotate=true; ctl.autoRotateSpeed=.9;                    // movimiento continuo
+  ctl.minDistance=3.2; ctl.maxDistance=8.5;
+  ctl.maxPolarAngle=Math.PI/2.05; ctl.enablePan=false;
+
+  // ——— Carrocería: silueta GT extruida (concepto propio) ———
+  const negro=new THREE.MeshPhysicalMaterial({color:0x0b0b0e, metalness:.9, roughness:.32,
+    clearcoat:1, clearcoatRoughness:.08});
+  const vidrio=new THREE.MeshPhysicalMaterial({color:0x05060a, metalness:.95, roughness:.05,
+    clearcoat:1, clearcoatRoughness:.03});
+  const oro=new THREE.MeshPhysicalMaterial({color:0xd4af37, metalness:1, roughness:.22});
+  const oroLuz=new THREE.MeshStandardMaterial({color:0x1a1408, emissive:0xecca6e, emissiveIntensity:2.6});
+
+  const auto=new THREE.Group();
+  const perfil=new THREE.Shape();
+  perfil.moveTo(-2.35,.16);
+  perfil.splineThru([[-2.42,.40],[-2.05,.56],[-1.30,.62],[-.55,.66],[.30,.60],[1.15,.46],[1.90,.30],[2.42,.18]].map(p=>new THREE.Vector2(p[0],p[1])));
+  perfil.lineTo(2.30,.06); perfil.lineTo(-2.25,.06); perfil.closePath();
+  const cuerpo=new THREE.Mesh(new THREE.ExtrudeGeometry(perfil,{depth:1.06,bevelEnabled:true,
+    bevelThickness:.20,bevelSize:.16,bevelSegments:6,curveSegments:24}), negro);
+  cuerpo.geometry.translate(0,0,-.53); cuerpo.position.y=.12; auto.add(cuerpo);
+
+  const cab=new THREE.Shape();
+  cab.moveTo(.95,.46);
+  cab.splineThru([[.35,.78],[-.45,.84],[-1.25,.66]].map(p=>new THREE.Vector2(p[0],p[1])));
+  cab.lineTo(-1.05,.46); cab.closePath();
+  const cabina=new THREE.Mesh(new THREE.ExtrudeGeometry(cab,{depth:.78,bevelEnabled:true,
+    bevelThickness:.10,bevelSize:.09,bevelSegments:5,curveSegments:20}), vidrio);
+  cabina.geometry.translate(0,0,-.39); cabina.position.y=.12; auto.add(cabina);
+
+  // línea de luz dorada lateral + faros + luz trasera (el acento)
+  for(const z of [.72,-.72]){
+    const strip=new THREE.Mesh(new THREE.BoxGeometry(3.9,.022,.012), oroLuz);
+    strip.position.set(-.1,.40,z); auto.add(strip);
+  }
+  const faro=new THREE.Mesh(new THREE.BoxGeometry(.05,.05,.85), oroLuz); faro.position.set(2.47,.30,0); auto.add(faro);
+  const trasera=new THREE.Mesh(new THREE.BoxGeometry(.04,.06,1.15), oroLuz); trasera.position.set(-2.46,.42,0); auto.add(trasera);
+
+  // ruedas con rin dorado
+  const ruedas=[];
+  for(const [x,z] of [[1.52,.68],[1.52,-.68],[-1.52,.68],[-1.52,-.68]]){
+    const g=new THREE.Group();
+    const llanta=new THREE.Mesh(new THREE.CylinderGeometry(.36,.36,.24,40),
+      new THREE.MeshStandardMaterial({color:0x0a0a0c, roughness:.85}));
+    llanta.rotation.x=Math.PI/2;
+    const rin=new THREE.Mesh(new THREE.TorusGeometry(.22,.035,12,40), oro);
+    rin.position.z=(z>0?.13:-.13);
+    const eje=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.26,20), oro); eje.rotation.x=Math.PI/2;
+    g.add(llanta,rin,eje); g.position.set(x,.36,z); auto.add(g); ruedas.push(g);
+  }
+  auto.position.y=.02; scene.add(auto);
+
+  // piso reflectivo + halo dorado
+  const piso=new THREE.Mesh(new THREE.CircleGeometry(5.4,72),
+    new THREE.MeshPhysicalMaterial({color:0x0e0d11, metalness:.75, roughness:.28}));
+  piso.rotation.x=-Math.PI/2; scene.add(piso);
+  const halo=new THREE.Mesh(new THREE.RingGeometry(5.15,5.4,72),
+    new THREE.MeshBasicMaterial({color:0xd4af37, transparent:true, opacity:.20, side:THREE.DoubleSide}));
+  halo.rotation.x=-Math.PI/2; halo.position.y=.005; scene.add(halo);
+
+  // iluminación premium
+  scene.add(new THREE.AmbientLight(0xfff3d8,.22));
+  const key=new THREE.SpotLight(0xfff0cf, 900, 30, .6, .55); key.position.set(5,7,4); scene.add(key);
+  const rim=new THREE.SpotLight(0xd4af37, 500, 30, .7, .6); rim.position.set(-6,4,-5); scene.add(rim);
+
+  // reacciona al puntero (parallax sutil) y al movimiento del dispositivo
+  let px=0,py=0;
+  addEventListener('pointermove',e=>{px=(e.clientX/innerWidth-.5);py=(e.clientY/innerHeight-.5);},{passive:true});
+  addEventListener('deviceorientation',e=>{ if(e.gamma!=null){px=Math.max(-.5,Math.min(.5,e.gamma/60)); py=Math.max(-.5,Math.min(.5,(e.beta-45)/90));} },{passive:true});
+
+  addEventListener('resize',()=>{ const w=stage.clientWidth,h=stage.clientHeight;
+    cam.aspect=w/h; cam.updateProjectionMatrix(); renderer.setSize(w,h); });
+
+  const clock=new THREE.Clock();
+  (function anim(){
+    requestAnimationFrame(anim);
+    const t=clock.getElapsedTime();
+    auto.position.y=.02+Math.sin(t*1.1)*.012;                     // respiración sutil
+    auto.rotation.z=px*.03; auto.rotation.x=py*.02;               // reacción al usuario
+    ruedas.forEach(r=>r.rotation.z-=.02);
+    ctl.update(); renderer.render(scene,cam);
+  })();
+}catch(err){ /* sin WebGL/CDN: el home vive sin el 3D, nada se rompe */
+  const s=document.getElementById('hStage');
+  if(s) s.innerHTML='<div style="height:100%;border-radius:24px;background:radial-gradient(600px 220px at 50% 60%, rgba(212,175,55,.18), transparent 70%)"></div>';
+}
+</script>
+
+<div class="wrap" style="display:none">
+  <h1 onclick="homeBack()" style="cursor:pointer" title="⌂ Volver al inicio">Creative<span>Maxing</span></h1>
   <p class="sub">Tu estudio de creativos con IA para dropshipping — clips, versiones, doblaje, GIFs y más, en un solo lugar.</p>
 
   <nav class="tabs" id="tabs">
@@ -147,6 +428,7 @@
     <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
+    <button data-p="p-landings">🛍️ Crear Landings</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
@@ -227,6 +509,7 @@
         <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
         <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
       </select>
+      <select id="autoCapSize" class="full" title="Tamaño de los subtítulos" onchange="document.getElementById('autoCapPrev').src='/api/caption-preview?style='+document.getElementById('autoCapStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
       <img id="autoCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ven los subtítulos" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
     </div>
     <div class="autoChk">
@@ -261,6 +544,7 @@
       fd.append('product_desc',document.getElementById('autoDesc').value);
       fd.append('voz',document.getElementById('autoVoz').value);
       fd.append('caption_style',document.getElementById('autoCapStyle').value);
+      fd.append('caption_size',document.getElementById('autoCapSize').value);
       fd.append('oferta_2x1',document.getElementById('auto2x1').checked);
       fd.append('banner_oferta',document.getElementById('autoBanner').checked);
       fd.append('verticalizar',document.getElementById('autoVert').value);
@@ -351,7 +635,7 @@
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
-                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[]};
+                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[])};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
         tkPaint();
       }
@@ -384,6 +668,14 @@
           h+='<div class="fpGrid">';
           ads.forEach((a,i)=>{ h+=tkFpCard(a,i,S.fpVerif); });
           h+='</div>';
+        }
+        // ── grupo 3: 🎬 B-ROLL de apoyo (escenas para darle ritmo/dopamina al ad) ──
+        const br=S.broll||[];
+        if(br.length){
+          h+=`<h3 style="margin:26px 0 4px">🎬 B-roll de apoyo (${br.length})</h3>`;
+          h+=`<div class="pmsg" style="margin:0 0 10px">Escenas de stock/TikTok adaptadas al ÁNGULO de tu producto (antes/después, uso, reacciones) — para intercalar y hacer el video más dopamínico. Elige las que te cuadren.</div>`;
+          h+=`<button class="btn sec" style="margin:0 0 10px;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${br.map(b=>b.url).join('\n').replace(/"/g,'&quot;')}">📋 Copiar los ${br.length} links de b-roll</button>`;
+          br.forEach((b,i)=>{ h+=`<div class="autoStep">🎬 <a href="${tkEsc(b.url)}" target="_blank" style="color:var(--accent)">${i+1}. ${tkEsc(b.url.length>70?b.url.slice(0,67)+'…':b.url)}</a>${b.title?` <span>· ${tkEsc(b.title).slice(0,80)}</span>`:''}</div>`; });
         }
         document.getElementById('tkResult').innerHTML=h;
       }
@@ -474,6 +766,69 @@
     </script>
   </div><!-- /p-buscar -->
 
+  <div class="panel" id="p-landings" style="display:none">
+  <div class="autoHero">
+    <h2>🛍️ <span>Crear Landings</span> — de tu estructura validada a Shopify</h2>
+    <p class="lead">Eliges el tipo, das el producto y los precios EXACTOS, la IA adapta <b>tu estructura
+      validada</b> (copy + imágenes optimizadas de peso), me apruebas el resultado, y se sube a tu tienda como
+      <b>plantilla NUEVA</b> — sin tocar absolutamente nada de lo existente.</p>
+
+    <div class="pmsg" id="ldShopStatus" style="margin:4px 0 14px">🛍️ <b>Shopify:</b> <span id="ldShopTxt">sin verificar</span>
+      <button class="btn sec" style="width:auto;padding:6px 12px;font-size:12.5px;margin-left:8px" onclick="ldCheckShopify(this)">Verificar conexión</button></div>
+
+    <div class="hCards" style="margin:6px 0 18px;opacity:1;animation:none;grid-template-columns:1fr 1fr;width:auto">
+      <div class="hCard ldTipo" data-tipo="landing" onclick="ldPickTipo(this)" style="padding:24px">
+        <div class="sheen"></div>
+        <h3 style="font-size:20px">📄 Landing Page</h3>
+        <p style="font-size:13.5px">La página de venta completa del producto, con tu estructura ganadora.</p>
+      </div>
+      <div class="hCard ldTipo" data-tipo="advertorial" onclick="ldPickTipo(this)" style="padding:24px">
+        <div class="sheen"></div>
+        <h3 style="font-size:20px">📰 Advertorial</h3>
+        <p style="font-size:13.5px">El artículo editorial que precalienta y vende (CTA a venta directa por defecto).</p>
+      </div>
+    </div>
+
+    <div id="ldForm" class="hidden">
+      <textarea id="ldProducto" class="full" rows="2" placeholder="¿Qué es tu producto y qué dolor resuelve?"></textarea>
+      <input type="text" id="ldLink" class="full" style="margin-top:10px" placeholder="🔗 Link del producto (Dropi/AliExpress/tu tienda — para sacar info real)">
+      <div class="autoOpts" style="margin:12px 0">
+        <input type="text" id="ldPrecio" placeholder="💲 Precio EXACTO (ej: $79.900) — se usa tal cual">
+        <input type="text" id="ldOferta" placeholder="🎁 Oferta EXACTA (ej: 2x1 + envío gratis) — opcional">
+      </div>
+      <input type="file" id="ldImgs" accept="image/*" multiple class="hidden">
+      <label class="autoDrop" for="ldImgs"><b id="ldImgsName">🖼️ Fotos del producto (las de la landing)</b>
+        <div class="s">Se optimizan de peso automáticamente antes de subir</div></label>
+      <button class="autoBtn" id="ldGo" disabled title="Pendiente: cargar tus estructuras validadas">🚧 Generar (esperando tus estructuras validadas)</button>
+      <p class="pmsg" style="margin-top:10px">⏳ Falta que me pases las <b>estructuras validadas</b> (ejemplos de landing y advertorial). Cuando las cargue como plantillas maestras, este botón se activa.</p>
+    </div>
+  </div>
+
+  <script>
+    function ldPickTipo(el){
+      document.querySelectorAll('.ldTipo').forEach(c=>{c.style.borderColor='';c.style.boxShadow='';});
+      el.style.borderColor='var(--accent)'; el.style.boxShadow='0 0 0 2px var(--accent) inset';
+      window._ldTipo=el.dataset.tipo;
+      document.getElementById('ldForm').classList.remove('hidden');
+    }
+    async function ldCheckShopify(btn){
+      const t=btn.textContent; btn.textContent='⏳ Verificando…'; btn.disabled=true;
+      try{
+        const j=await (await fetch('/api/shopify-check')).json();
+        document.getElementById('ldShopTxt').innerHTML = j.ok
+          ? `✅ <b>${j.shop}</b> (${j.moneda}) · tema: <b>${j.tema.nombre}</b>${j.tema.rol==='main'?' (publicado)':''}`
+          : `<span style="color:var(--warn)">${j.error||'Error'}</span>`;
+      }catch(e){ document.getElementById('ldShopTxt').innerHTML='<span style="color:var(--warn)">Error: '+e+'</span>'; }
+      btn.textContent=t; btn.disabled=false;
+    }
+    document.getElementById('ldImgs').addEventListener('change',e=>{
+      window._ldImgs=Array.from(e.target.files);
+      document.getElementById('ldImgsName').textContent = e.target.files.length
+        ? ('🖼️ '+e.target.files.length+' foto(s) elegidas') : '🖼️ Fotos del producto (las de la landing)';
+    });
+  </script>
+  </div><!-- /p-landings -->
+
   <div class="panel" id="p-clone" style="display:none">
   <!-- 🎯 CLON GANADOR CON MI PRODUCTO (sección nueva, autocontenida, reusa clases auto*) -->
   <div class="autoHero" style="margin-top:0">
@@ -499,6 +854,8 @@
       <input type="text" id="clDesc" class="full" placeholder="Tu producto (ej. crema para dolor de espalda)">
       <input type="text" id="clOld" class="full" placeholder="Producto del ganador (ej. cápsulas) — ayuda a detectarlo">
       <select id="clVoz"><option value="juan_carlos">Voz: Juan Carlos</option><option value="kate">Voz: Kate</option></select>
+      <select id="clCapStyle" title="Estilo de subtítulos"><option value="karaoke">Subt: Karaoke</option><option value="hormozi">Subt: Hormozi</option><option value="highlight_box">Subt: Caja</option><option value="bold_outline">Subt: Bold</option><option value="yellow_highlight">Subt: Amarillo</option></select>
+      <select id="clCapSize" title="Tamaño de los subtítulos" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Subt: Pequeño</option><option value="mediano" selected>Subt: Mediano</option><option value="grande">Subt: Grande</option></select>
       <select id="clVert"><option value="true">9:16 vertical (blur)</option><option value="false">Dejar formato</option></select>
     </div>
     <div class="autoChk">
@@ -539,6 +896,8 @@
       fd.append('product_desc',document.getElementById('clDesc').value);
       fd.append('old_desc',document.getElementById('clOld').value);
       fd.append('voz',document.getElementById('clVoz').value);
+      fd.append('caption_style',document.getElementById('clCapStyle').value);
+      fd.append('caption_size',document.getElementById('clCapSize').value);
       fd.append('verticalizar',document.getElementById('clVert').value);
       fd.append('doblar',document.getElementById('clDoblar').checked);
       document.getElementById('clGo').disabled=true;
@@ -577,43 +936,30 @@
   </div><!-- /p-clone -->
 
   <div class="panel" id="p-varhook" style="display:none">
-  <!-- 🔁 VARIAR EL HOOK DEL WINNER (sección autocontenida, reusa clases auto*) -->
+  <!-- 🔁 VARIAR HOOK del winner (creative scaling de video — consume creative_variator) -->
   <div class="autoHero" style="margin-top:0">
-    <h2>🔁 <span>Variar el Hook</span> del Winner</h2>
-    <p class="lead">Sube un video que YA te funciona y salen <b>4 videos nuevos</b>: el mismo cuerpo
-      ganador, pero cada uno abre con un <b>HOOK distinto</b> (toma nueva de TikTok + voz colombiana +
-      texto quemado). Mata el ad-fatigue sin dañar lo que ya vende. Si el video trae texto en otro
-      idioma, se traduce; el texto en español se deja igual.</p>
+    <h2>🔁 <span>Variar el Hook</span> del winner</h2>
+    <p class="lead">Sube tu creativo GANADOR (o pega su link de TikTok) y saca variaciones frescas:
+      <b>solo hook</b> (gancho nuevo con voz colombiana + subtítulos palabra x palabra, cuerpo
+      intacto) o <b>hook + tomas</b> (reemplaza la toma de CADA fase — el video queda ~100% nuevo).
+      Mata el ad-fatigue sin perder el arco que ya vende.</p>
 
     <input type="file" id="vhWinner" accept="video/*" class="hidden">
-    <label class="autoDrop" for="vhWinner"><b id="vhWinnerName">🏆 Elige tu video GANADOR</b>
-      <div class="s">el creativo validado al que quieres cambiarle solo el gancho</div></label>
+    <label class="autoDrop" for="vhWinner"><b id="vhWinnerName">🏆 Tu creativo GANADOR</b>
+      <div class="s">el ad que ya está vendiendo — o pega el link abajo</div></label>
 
     <div class="autoOpts">
-      <input type="text" id="vhDesc" class="full" placeholder="¿Qué producto es? (ej. almohadilla para dolor de espalda)">
-      <select id="vhN">
-        <option value="4">Videos: 4 hooks distintos</option>
-        <option value="3">Videos: 3</option>
-        <option value="2">Videos: 2</option>
+      <input type="text" id="vhLink" class="full" placeholder="…o pega el link del TikTok ganador">
+      <input type="text" id="vhDesc" class="full" placeholder="Tu producto (ej. láser para hongos de uñas)">
+      <select id="vhModo" title="Qué tanto se renueva el video">
+        <option value="hook" selected>Solo hook (rápido — cuerpo intacto)</option>
+        <option value="tomas">Hook + tomas nuevas (video ~100% nuevo)</option>
       </select>
-      <select id="vhVoz">
-        <option value="juan_carlos">Voz del hook: Juan Carlos</option>
-        <option value="kate">Voz del hook: Kate</option>
-      </select>
-      <select id="vhCapStyle" class="full" onchange="document.getElementById('vhCapPrev').src='/api/caption-preview?style='+this.value">
-        <option value="hormozi">Texto del hook: Hormozi (palabra x palabra, keyword amarilla)</option>
-        <option value="karaoke">Texto del hook: Karaoke (resalta la palabra que suena)</option>
-        <option value="highlight_box">Texto del hook: Caja (palabra en caja de color)</option>
-        <option value="bold_outline">Texto del hook: Bold (blanco con borde grueso)</option>
-        <option value="yellow_highlight">Texto del hook: Amarillo (claves resaltadas)</option>
-      </select>
-      <img id="vhCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ve el texto del hook" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
-    </div>
-    <div class="autoChk">
-      <label><input type="checkbox" id="vhTraducir" checked> Traducir el texto en pantalla del cuerpo si está en otro idioma (el español se deja)</label>
+      <select id="vhN"><option value="2">2 variaciones</option><option value="4" selected>4 variaciones</option><option value="6">6 variaciones</option></select>
+      <select id="vhVoz"><option value="juan_carlos">Voz: Juan Carlos</option><option value="kate">Voz: Kate</option></select>
     </div>
 
-    <button class="autoBtn" id="vhGo" disabled onclick="vhRun()">🔁 Variar el hook (4 videos)</button>
+    <button class="autoBtn" id="vhGo" onclick="vhRun()">🔁 Variar el hook</button>
 
     <div class="autoProg hidden" id="vhProg">
       <div class="autoBarWrap"><div class="autoBar" id="vhBar"></div></div>
@@ -623,75 +969,83 @@
   </div>
 
   <script>
-    (function(){
-      const el=document.getElementById('vhWinner');
-      el.addEventListener('change',e=>{
-        const fs=e.target.files;
-        window._vhWinner=fs[0];
-        document.getElementById('vhWinnerName').textContent=fs.length?'🏆 '+fs[0].name:'🏆 Elige tu video GANADOR';
-        document.getElementById('vhGo').disabled=!fs.length;
-      });
-      document.getElementById('vhN').addEventListener('change',e=>{
-        document.getElementById('vhGo').textContent=`🔁 Variar el hook (${e.target.value} videos)`;
-      });
-    })();
+    document.getElementById('vhWinner').addEventListener('change',e=>{
+      const f=e.target.files[0]; window._vhWinner=f||null;
+      document.getElementById('vhWinnerName').textContent=f?('🏆 '+f.name):'🏆 Tu creativo GANADOR';
+    });
+    function vhEsc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
     async function vhRun(){
-      const w=window._vhWinner; if(!w) return;
+      const f=window._vhWinner, link=document.getElementById('vhLink').value.trim();
+      const desc=document.getElementById('vhDesc').value.trim();
+      const msg=document.getElementById('vhMsg');
+      document.getElementById('vhProg').classList.remove('hidden');
+      if(!f && !link){ msg.innerHTML='<span style="color:var(--warn)">Sube el video ganador o pega su link</span>'; return; }
+      if(!desc){ msg.innerHTML='<span style="color:var(--warn)">Describe el producto</span>'; return; }
       const fd=new FormData();
-      fd.append('winner',w);
-      fd.append('product_desc',document.getElementById('vhDesc').value);
+      if(f) fd.append('video',f); else fd.append('link',link);
+      fd.append('producto',desc);
+      fd.append('modo',document.getElementById('vhModo').value);
       fd.append('n',document.getElementById('vhN').value);
       fd.append('voz',document.getElementById('vhVoz').value);
-      fd.append('caption_style',document.getElementById('vhCapStyle').value);
-      fd.append('traducir_cuerpo',document.getElementById('vhTraducir').checked);
       document.getElementById('vhGo').disabled=true;
       document.getElementById('vhResult').innerHTML='';
-      document.getElementById('vhProg').classList.remove('hidden');
       document.getElementById('vhBar').style.width='0%';
-      try{ const r=await fetch('/api/variar-hook',{method:'POST',body:fd}); const j=await r.json();
-        if(!r.ok) throw (j.detail||'Error'); vhPoll(j.job_id); }
-      catch(e){ document.getElementById('vhMsg').textContent='Error: '+e; document.getElementById('vhGo').disabled=false; }
-    }
-    let vhFallos=0;
-    async function vhPoll(id){
-      let j;
       try{
-        const r=await fetch('/api/status/'+id); if(!r.ok) throw new Error('status '+r.status);
-        j=await r.json(); vhFallos=0;
+        const r=await fetch('/api/variar-hook',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!r.ok||!j.job_id) throw new Error(j.detail||'No se pudo iniciar');
+        vhPoll(j.job_id);
       }catch(e){
-        // El server puede tardar en responder mientras encodea (ffmpeg) — reintentar, no congelarse.
-        vhFallos++;
-        if(vhFallos<=40){ document.getElementById('vhMsg').textContent='⏳ El server está ocupado armando los videos… sigo pendiente'; setTimeout(()=>vhPoll(id),3000); return; }
-        document.getElementById('vhMsg').innerHTML='<span style="color:var(--warn)">Perdí la conexión con el trabajo (¿se reinició el server?). Recarga la página e intenta de nuevo.</span>';
-        document.getElementById('vhGo').disabled=false; return;
+        msg.innerHTML='<span style="color:var(--warn)">'+vhEsc(e.message)+'</span>';
+        document.getElementById('vhGo').disabled=false;
       }
+    }
+    async function vhPoll(id){
+      const r=await fetch('/api/status/'+id); const j=await r.json();
       document.getElementById('vhBar').style.width=(j.progress||0)+'%';
       document.getElementById('vhMsg').textContent=j.message||'';
-      if(j.status==='running'){ setTimeout(()=>vhPoll(id),1300); return; }
+      if(j.status==='running'){ setTimeout(()=>vhPoll(id),1600); return; }
       document.getElementById('vhGo').disabled=false;
       if(j.status==='error'){ document.getElementById('vhMsg').innerHTML='<span style="color:var(--warn)">'+vhEsc(j.message||'Error')+'</span>'; return; }
-      vhRender(j.result);
+      window._vhJob=id; vhRender(j.result);
     }
-    function vhEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function vhRender(res){
-      if(!res) return; const box=document.getElementById('vhResult'); let h='';
-      if(res.resumen) document.getElementById('vhMsg').textContent='✅ '+res.resumen;
-      (res.pasos||[]).forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${vhEsc(p.paso)}${p.detalle?` <span>· ${vhEsc(p.detalle)}</span>`:''}</div>`; });
-      if(res.videos && res.videos.length){
-        h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px">';
-        res.videos.forEach((v,i)=>{
-          const u='/api/file?path='+encodeURIComponent(v.path), dl='/api/download?path='+encodeURIComponent(v.path)+'&name=hook_'+(i+1);
-          h+=`<div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px">
-            <video src="${u}" controls playsinline style="width:100%;border-radius:10px"></video>
-            <div style="font-weight:800;font-size:13.5px;margin:10px 0 2px">💬 «${vhEsc(v.hook)}»</div>
-            <div style="color:var(--muted);font-size:12px">${vhEsc(v.angulo||'')}</div>
-            <div style="color:var(--muted);font-size:12px;margin-top:4px">🎬 ${vhEsc(v.origen||'')}${v.fuente_url?` · <a href="${vhEsc(v.fuente_url)}" target="_blank" style="color:var(--accent)">ver toma</a>`:''}</div>
-            <a class="autoBtn" style="margin-top:10px;padding:10px;font-size:13.5px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${dl}" download>⬇️ Descargar</a>
-          </div>`;
-        });
-        h+='</div>';
+      if(!res||!res.variaciones) return;
+      const bust=window._vhBust||0;
+      document.getElementById('vhResult').innerHTML=
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px">'+
+        res.variaciones.map((v,i)=>{
+          const src='/api/file?path='+encodeURIComponent(v.video||'')+'&_='+bust;
+          const vid=v.video
+            ?('<video src="'+src+'" controls playsinline preload="metadata" style="width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:10px;background:#000"></video>')
+            :'<div class="s" style="color:var(--warn);padding:20px 6px">⚠️ Esta variación no se pudo armar (mira los pasos)</div>';
+          const pasos=(v.pasos||[]).map(p=>(p.ok?'✅ ':'⚠️ ')+vhEsc(p.paso)+(p.detalle?(' — '+vhEsc(p.detalle)):'')).join('<br>');
+          return '<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px">'+vid+
+            '<div style="margin-top:8px;font-weight:700">'+vhEsc(v.hook)+'</div>'+
+            '<div class="s" style="opacity:.8">'+vhEsc(v.angulo)+'</div>'+
+            '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+
+            (v.video?('<a class="btn" style="text-decoration:none" href="'+src+'" download="variacion_'+(i+1)+'.mp4">⬇️ Descargar</a>'):'')+
+            '<button class="btn" onclick="vhOtro('+i+',this)">🎲 Otro hook</button></div>'+
+            '<details class="s" style="margin-top:8px"><summary>guion + pasos</summary>'+
+            '<div style="margin-top:6px;white-space:pre-wrap">'+vhEsc(v.guion)+'</div>'+
+            '<div style="margin-top:6px">'+pasos+'</div></details></div>';
+        }).join('')+'</div>';
+    }
+    async function vhOtro(i,btn){
+      if(!window._vhJob) return;
+      const old=btn.textContent; btn.disabled=true; btn.textContent='🎲 Armando otro…';
+      try{
+        const fd=new FormData(); fd.append('job_id',window._vhJob); fd.append('index',i);
+        const r=await fetch('/api/variar-hook-otro',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!r.ok||!j.variacion) throw new Error(j.detail||'No se pudo regenerar');
+        window._vhBust=Date.now();
+        const s=await fetch('/api/status/'+window._vhJob); const sj=await s.json();
+        vhRender(sj.result);
+      }catch(e){
+        btn.disabled=false; btn.textContent=old;
+        btn.insertAdjacentHTML('afterend','<div class="s" style="color:var(--warn)">'+vhEsc(e.message)+'</div>');
       }
-      box.innerHTML=h;
     }
   </script>
   </div><!-- /p-varhook -->
@@ -739,6 +1093,27 @@
       <button class="btn sec" id="foreplaySave" style="width:auto">Guardar</button>
     </div>
     <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, la pestaña <b>🔎 Foreplay</b> busca en su biblioteca de +100M ads ganadores (con video descargable) para cortarlos en clips. La sacas en app.foreplay.co → API. Cada búsqueda gasta créditos de tu plan.</p>
+  </div>
+
+  <!-- Shopify (módulo Crear Landings) -->
+  <div class="card" id="shopifyCard">
+    <h2>🛍️ Shopify · Crear Landings <span id="shopifyPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow" style="margin-bottom:8px">
+      <input type="text" id="shopDomainInput" placeholder="Dominio (mitienda.myshopify.com)">
+      <button class="btn sec" id="shopDomainSave" style="width:auto">Guardar</button>
+    </div>
+    <div class="keyrow" style="margin-bottom:8px">
+      <input type="password" id="shopTokenInput" placeholder="Admin API token (shpat_...)">
+      <button class="btn sec" id="shopTokenSave" style="width:auto">Guardar</button>
+    </div>
+    <div class="keyrow">
+      <input type="text" id="shopThemeInput" placeholder="Theme ID (opcional — se detecta el publicado)">
+      <button class="btn sec" id="shopThemeSave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Para el módulo <b>🛍️ Crear Landings</b>. Crea una custom app en tu tienda
+      (Configuración → Apps → Desarrollar apps) con scopes: <code>read_themes, write_themes, read_products,
+      write_products, read_files, write_files</code>. NUNCA se toca nada existente de tu tienda: solo se crean
+      archivos nuevos, y nada sube sin tu aprobación.</p>
   </div>
 
   </div><!-- /p-config -->
@@ -843,6 +1218,7 @@
           <option value="bold_outline">Estilo: Bold (blanco con borde grueso)</option>
           <option value="yellow_highlight">Estilo: Amarillo (claves resaltadas)</option>
         </select>
+        <select id="capSize" title="Tamaño de los subtítulos" onchange="document.getElementById('capPrev').src='/api/caption-preview?style='+document.getElementById('capStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
         <img id="capPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="clip2x1"> 🎁 Oferta 2x1</label>
         <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
@@ -912,6 +1288,7 @@
         <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
         <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
       </select>
+      <select id="prodCapSize" title="Tamaño de los subtítulos" onchange="document.getElementById('prodCapPrev').src='/api/caption-preview?style='+document.getElementById('prodCapStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
       <select id="prodVoGuiones" title="Cuántas narraciones distintas genera ElevenLabs (menos = más barato; se reparten cicladas entre los 8 videos)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
         <option value="8">Guiones: 8 (uno por video)</option>
         <option value="4">Guiones: 4 (gasta la mitad)</option>
@@ -1008,6 +1385,7 @@
         fd.append('voz_en_off',document.getElementById('prodVO').checked);
         fd.append('voz',document.getElementById('prodVoz').value);
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
+        fd.append('caption_size',document.getElementById('prodCapSize').value);
         fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
@@ -1821,6 +2199,7 @@ async function refreshConfig(){
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);
+  setPill("shopifyPill", j.has_shopify);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
   if(vs && !vs.dataset.loaded && j.voices){
@@ -1849,6 +2228,9 @@ document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
 document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
 document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
 document.getElementById("foreplaySave").onclick = ()=>saveKey("foreplay","foreplayInput");
+document.getElementById("shopDomainSave").onclick = ()=>saveKey("shopify_domain","shopDomainInput");
+document.getElementById("shopTokenSave").onclick = ()=>saveKey("shopify_token","shopTokenInput");
+document.getElementById("shopThemeSave").onclick = ()=>saveKey("shopify_theme","shopThemeInput");
 refreshConfig();
 
 // --- Textos del proveedor: mostrar selector Tapar/Traducir al activar ---
@@ -1931,6 +2313,7 @@ function buildForm(){
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);
   fd.append("caption_style", document.getElementById("capStyle").value);
+  fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
   return fd;
 }

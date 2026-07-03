@@ -258,12 +258,41 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
             prev_src = selected[pick].source_index
         return [hook] + cuerpo + ([payoff] if payoff is not None else [])
 
+    # DURACIÓN OBJETIVO con colchón: el montaje debe ALCANZAR (o superar) la voz en off. Antes se
+    # elegía por NÚMERO de clips (cpv) y con clips cortos el video quedaba en ~10s con voz de ~20s →
+    # el loop repetía TODO el montaje 2-4 veces (queja de Juan). Por DURACIÓN esto no pasa jamás.
+    need = float(target_seconds) * 1.15 + 1.0
+
     if n >= NV * 3:
         # POOL GRANDE: cada version usa clips DISJUNTOS (de videos distintos) -> máxima diversidad
         buckets = [[] for _ in range(NV)]
         for rank, i in enumerate(by_score):
             buckets[rank % NV].append(i)
-        version_orders = [(names[vi], order_version(buckets[vi][:cpv])) for vi in range(NV)]
+        usados: set[int] = set()
+        version_orders = []
+        for vi in range(NV):
+            sel, dur = [], 0.0
+            for i in buckets[vi]:                      # primero lo del bucket propio (disjunto)
+                if i in usados:
+                    continue
+                sel.append(i); usados.add(i); dur += selected[i].duration()
+                if dur >= need:
+                    break
+            if dur < need:                             # si no alcanza, completa con clips NO usados
+                for i in by_score:
+                    if i in usados:
+                        continue
+                    sel.append(i); usados.add(i); dur += selected[i].duration()
+                    if dur >= need:
+                        break
+            if dur < need:                             # pool AGOTADO: se permite reusar clips de OTRAS
+                for i in by_score:                     # versiones — NUNCA dentro de la misma versión
+                    if i in sel:
+                        continue
+                    sel.append(i); dur += selected[i].duration()
+                    if dur >= need:
+                        break
+            version_orders.append((names[vi], order_version(sel)))
     else:
         # POCOS CLIPS: (1) el GANCHO (primer clip) ROTA entre los mejores por score -> cada versión
         # abre distinto; (2) el resto se elige priorizando los clips MENOS USADOS por las versiones
@@ -276,7 +305,11 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
             pool = [i for i in range(n) if i != hook]
             pool.sort(key=lambda i: (usage[i], -selected[i].score,
                                      selected[i].source_index, selected[i].start))
-            take = pool[:max(0, cpv - 1)]
+            take, dur = [], selected[hook].duration()
+            for i in pool:                             # por DURACIÓN, no por número fijo
+                if dur >= need:
+                    break
+                take.append(i); dur += selected[i].duration()
             rest = sorted(take, key=lambda i: (selected[i].source_index, selected[i].start))
             order = [hook] + rest
             for i in order:
@@ -330,12 +363,30 @@ def build_variations(selected: list[Segment], work_dir: str,
     return {"clips": list(norm_paths.values()), "versions": out_versions}
 
 
+def _dur_flag(audio_path: str) -> list[str]:
+    """['-t', dur] con la duración REAL del audio (ffprobe soporta audio puro; probe() no)."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                              "-of", "csv=p=0", audio_path], capture_output=True, text=True, timeout=15)
+        d = float(out.stdout.strip())
+        if d > 0.5:
+            return ["-t", f"{d:.2f}"]
+    except Exception:  # noqa: BLE001
+        pass
+    return []
+
+
 def add_voiceover(video_path: str, vo_path: str, out_path: str) -> str:
-    """Pone la voz en off como audio (reemplaza el original). La duracion final = la de la voz;
-    si el video es mas corto, el video hace LOOP (sigue moviendose) en vez de congelarse."""
+    """Pone la voz en off como audio (reemplaza el original). La duracion final = la de la voz.
+
+    PROHIBIDO el loop: antes, si la voz era más larga que el video, el video ENTERO se repetía desde
+    el inicio (los mismos cortes salían 2-4 veces — queja de Juan). Ahora, si falta video, se sostiene
+    el ÚLTIMO frame (tpad clone) los segundos que falten. El montaje además ya se arma por DURACIÓN."""
+    vo_dur = _dur_flag(vo_path)   # corte EXACTO al final de la voz
     run([
-        "ffmpeg", "-y", "-stream_loop", "-1", "-i", video_path, "-i", vo_path,
-        "-map", "0:v:0", "-map", "1:a:0", "-shortest",
+        "ffmpeg", "-y", "-i", video_path, "-i", vo_path,
+        "-vf", "tpad=stop_mode=clone:stop_duration=60",
+        "-map", "0:v:0", "-map", "1:a:0", "-shortest", *vo_dur,
         *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         # 48k estéreo SIEMPRE: el mp3 de ElevenLabs viene a 44.1k mono y si esto luego se
@@ -522,14 +573,20 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
     if not has_sfx and not has_music:
         return add_voiceover(video_path, vo_path, out_path)
 
-    inputs = ["-stream_loop", "-1", "-i", video_path, "-i", vo_path]  # video en LOOP (no se congela)
-    fc = ["[1:a]volume=1.0[vo]"]
+    # SIN loop de video: si la voz es más larga, se sostiene el último frame (tpad clone).
+    # (El loop repetía TODO el montaje desde el inicio → cortes duplicados. Queja de Juan.)
+    inputs = ["-i", video_path, "-i", vo_path]
+    fc = ["[0:v]tpad=stop_mode=clone:stop_duration=60[v]", "[1:a]volume=1.0[vo]"]
     mix_labels = ["[vo]"]
     idx = 2
 
     if has_sfx:
-        # asignar un efecto a cada transicion (alternando los disponibles)
-        assign = [sfx_paths[i % len(sfx_paths)] for i in range(len(cut_times))]
+        # asignar un efecto a cada transición: BARAJADOS por render (variedad — queja de Juan:
+        # "no siempre el mismo efecto"), y nunca el mismo dos veces seguidas.
+        import random as _rnd
+        seq = sfx_paths[:]
+        _rnd.shuffle(seq)
+        assign = [seq[i % len(seq)] for i in range(len(cut_times))]
         in_index = {}
         for p in assign:
             if p not in in_index:
@@ -554,10 +611,11 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
         mix_labels.append("[mus]")
 
     fc.append("".join(mix_labels) + f"amix=inputs={len(mix_labels)}:normalize=0:duration=first[a]")
+    vo_dur = _dur_flag(vo_path)   # corte EXACTO al final de la voz
     run([
         "ffmpeg", "-y", *inputs,
         "-filter_complex", ";".join(fc),
-        "-map", "0:v:0", "-map", "[a]", "-shortest",
+        "-map", "[v]", "-map", "[a]", "-shortest", *vo_dur,
         *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "192k",

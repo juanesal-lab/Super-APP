@@ -145,7 +145,7 @@ def _sub_png(text: str, W: int, out: str) -> int:
 
 
 def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str,
-               style: str = "bold_outline") -> str:
+               style: str = "bold_outline", cap_size: str = "mediano") -> str:
     """Quema subtítulos por fase con el MOTOR caption_styles (Poppins, auto-ajuste, estilo elegible),
     SIN solaparse. Cada caption es un PNG del tamaño del frame (posición ya puesta) → overlay 0:0.
 
@@ -172,7 +172,7 @@ def _burn_subs(inp: str, segments: list[dict], work_dir: str, out: str,
         if fin - ini < 0.15:
             continue
         png = os.path.join(work_dir, f"sub_{n}.png")
-        render_caption(txt, W, H, style).save(png)   # PNG full-frame, auto-ajustado, Poppins
+        render_caption(txt, W, H, style, cap_size=cap_size).save(png)   # PNG full-frame, auto-ajustado, Poppins
         inputs += ["-i", png]
         tag = f"[v{n}]"
         filt.append(f"{last}[{n + 1}:v]overlay=0:0:enable='between(t,{ini:.2f},{fin:.2f})'{tag}")
@@ -239,6 +239,7 @@ def generar_creativo_auto(
     oferta_2x1: bool = False,
     verticalizar: bool = True,
     caption_style: str = "bold_outline",
+    caption_size: str = "mediano",
     oferta: str = "",
     banner_oferta: bool = False,
     work_dir: str | None = None,
@@ -346,14 +347,14 @@ def generar_creativo_auto(
         try:
             from .caption_styles import burn_word_captions
             out = os.path.join(work_dir, "subs.mp4")
-            current = burn_word_captions(current, word_timings, work_dir, out, style=caption_style)
+            current = burn_word_captions(current, word_timings, work_dir, out, style=caption_style, cap_size=caption_size)
             paso("Subtítulos", True, f"palabra x palabra · {len(word_timings)} palabras · {caption_style}")
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))
     elif subs:
         try:
             out = os.path.join(work_dir, "subs.mp4")
-            current = _burn_subs(current, subs, work_dir, out, style=caption_style)
+            current = _burn_subs(current, subs, work_dir, out, style=caption_style, cap_size=caption_size)
             paso("Subtítulos", True, f"{len(subs)} fase(s) · estilo {caption_style}")
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))

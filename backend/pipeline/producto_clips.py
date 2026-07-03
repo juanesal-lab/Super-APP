@@ -106,7 +106,7 @@ def _mezclar_musica(versions: list[dict], music_path: str, *, bajar_volumen: boo
 
 def _voz_y_subtitulos(versions: list[dict], work_dir: str, *, eleven_key: str | None,
                       gemini_key: str | None, desc: str, page_text: str,
-                      target_seconds: float, voz: str, caption_style: str,
+                      target_seconds: float, voz: str, caption_style: str, caption_size: str,
                       subtitulos: bool, music_path: str | None, n_guiones: int,
                       report) -> list[str] | None:
     """Voz en off por versión: guiones con Gemini (1 llamada, respeta las reglas de oro:
@@ -162,7 +162,7 @@ def _voz_y_subtitulos(versions: list[dict], work_dir: str, *, eleven_key: str | 
             try:
                 prev = v["path"]
                 np = burn_word_captions(prev, words, work_dir, base + "_vocap.mp4",
-                                        style=caption_style)
+                                        style=caption_style, cap_size=caption_size)
                 v["path"] = np
                 v["captions"] = (np != prev)
             except Exception:  # noqa: BLE001
@@ -297,6 +297,7 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
                 target_seconds=float(settings.get("target_seconds", 15.0)),
                 voz=settings.get("voz", "juan_carlos"),
                 caption_style=settings.get("caption_style", "hormozi"),
+                caption_size=settings.get("caption_size", "mediano"),
                 subtitulos=bool(settings.get("subtitulos", True)),
                 music_path=music_path, n_guiones=int(settings.get("vo_guiones", 0) or 0),
                 report=report)

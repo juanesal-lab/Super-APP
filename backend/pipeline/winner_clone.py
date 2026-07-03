@@ -102,6 +102,8 @@ def clonar_ganador(
     old_desc: str = "",
     doblar: bool = False,
     voz: str = "juan_carlos",
+    caption_style: str = "karaoke",
+    caption_size: str = "mediano",
     verticalizar: bool = True,
     gemini_key: str | None = None,
     eleven_key: str | None = None,
@@ -196,29 +198,34 @@ def clonar_ganador(
     quietas, dinamicas = _clasificar_tomas(our_photos, our_videos, gemini_key, product_desc, work_dir)
     paso("Tus tomas", bool(quietas or dinamicas), f"{len(quietas)} quietas, {len(dinamicas)} dinámicas")
 
-    # 4) DECISIÓN por movimiento: reemplazar (quieto) / cortar (movido) / dejar original
+    # 4) DECISIÓN por movimiento — REGLA DE JUAN: el producto AJENO no puede quedar visible NUNCA.
+    # Se cubre TODO rango detectado con tomas propias; si escasean, se REPITEN las de Juan (permitido).
     report("🧠 Decidiendo reemplazo inteligente por movimiento...", 58)
     rep_ranges, rep_clips = [], []
-    qi = di = 0
+    todas = (quietas or []) + (dinamicas or [])
+    qi = di = ti = 0
     for (a, b) in sorted(ranges):
         m = _motion_score(winner_path, a, b)
         chosen, accion = None, ""
-        if m < _MOTION_LOW:                                   # quieto -> reemplazar por toma quieta
+        if m < _MOTION_LOW:                                   # quieto -> preferir toma quieta
             pool = quietas or dinamicas
             if pool:
                 chosen = pool[qi % len(pool)]; qi += 1
                 accion = "reemplazar (producto quieto)"
-        elif m > _MOTION_HIGH:                                # movido -> cortar a toma dinámica
-            if dinamicas:
-                chosen = dinamicas[di % len(dinamicas)]; di += 1
-                accion = "cortar a toma propia (movido)"
-            else:
-                accion = "dejar original (movido, sin toma dinámica)"
+        elif m > _MOTION_HIGH:                                # movido -> preferir toma dinámica
+            pool = dinamicas or quietas                       # sin dinámicas → corte DURO a quieta
+            if pool:
+                chosen = pool[di % len(pool)]; di += 1
+                accion = "cortar a toma propia (movido)" if dinamicas else \
+                         "corte duro a toma quieta (movido, sin dinámicas — nunca dejar el ajeno)"
         else:                                                 # medio -> la mejor disponible
             pool = dinamicas or quietas
             if pool:
                 chosen = pool[di % len(pool)]; di += 1
                 accion = "cortar a toma propia (medio)"
+        if chosen is None and todas:                          # red de seguridad: SIEMPRE cubrir
+            chosen = todas[ti % len(todas)]; ti += 1
+            accion = "cobertura forzada con toma propia (regla: nunca se ve el producto ajeno)"
         if chosen:
             rep_ranges.append((a, b)); rep_clips.append(chosen)
         decisiones.append({"rango": f"{a:.1f}-{b:.1f}s", "movimiento": round(m, 1), "accion": accion})
@@ -281,14 +288,14 @@ def clonar_ganador(
         try:
             from .caption_styles import burn_word_captions
             out = os.path.join(work_dir, "subs.mp4")
-            current = burn_word_captions(current, word_timings, work_dir, out, style="karaoke")
+            current = burn_word_captions(current, word_timings, work_dir, out, style=caption_style, cap_size=caption_size)
             paso("Subtítulos", True, f"palabra x palabra ({len(word_timings)})")
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))
     elif subs:
         try:
             out = os.path.join(work_dir, "subs.mp4")
-            current = A._burn_subs(current, subs, work_dir, out); paso("Subtítulos", True)
+            current = A._burn_subs(current, subs, work_dir, out, style=caption_style, cap_size=caption_size); paso("Subtítulos", True)
         except Exception as e:  # noqa: BLE001
             paso("Subtítulos", False, str(e))
 

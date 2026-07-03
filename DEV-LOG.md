@@ -1922,3 +1922,24 @@ endpoints aditivos + 1 pestaña), comparamos y fusionamos conservando ambos.
 - AVISO Jack/Landings: NO toqué assemble.py (el fix del stream_loop quedó intacto), ni
   creative_variator, ni tiktok_search, ni nada del módulo Landings nuevo (shopify_admin.py). Mi
   merge conserva su fase (a) completa.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔁 FIX RAÍZ de los cortes repetidos: el plan ahora cubre la VOZ REAL
+Juan: "cada 7 clips se repite la misma secuencia" — TENÍA RAZÓN, incluso después del fix del
+stream_loop. Diagnóstico con datos (job 835a77d01678, 07:00): montajes de 6-8s vs voces de ~22s.
+- CAUSA 1 (la repetición literal que vio Juan): ese render salió de un server que arrancó ANTES
+  del fix de las 05:48 → todavía loopeaba el montaje (~3 vueltas de 8s = su queja exacta). El fix
+  de Jack está bien; había que REINICIAR el server.
+- CAUSA 2 (el hueco que quedaba): el plan del montaje usaba el TARGET pedido, pero la voz real
+  sale más larga (el guion a veces excede el tope de palabras y ElevenLabs habla a ~1.8 pal/seg,
+  no 2.6 → una voz "de 6s" salió de 22s). Montaje 8s + voz 22s = loop antes / final congelado
+  14s después. Ni el tpad ni el plan por duración cubrían esto.
+- FIX (orchestrator.render_versions): antes de plan_variations se mide la voz MÁS LARGA ya
+  sintetizada (version_vos + voiceover_path, ffprobe) y el plan usa
+  plan_seconds = max(target, voz_real + 0.5). El "pool agotado → prestar clips de otras
+  versiones" de assemble (de Jack) hace el resto — nunca repite DENTRO de una versión.
+- VALIDADO con el pool real del job caído (43 clips, 0.8-1.8s): las 8 versiones pasan de 6-8s a
+  27-28.5s (≥ need 26.8s ≥ voz 22s), 0 duplicados internos. add_voiceover corta exacto al final
+  de la voz → ni loop ni congelado. py_compile ok.
+- AVISO Jack: solo toqué render_versions (el bloque PLAN PRIMERO — tu plan_variations y tu
+  préstamo de clips quedaron intactos y ahora sí se lucen). ⚠️ REINICIAR el server después de
+  este pull (el proceso viejo sigue sirviendo código de antes de las 05:48).

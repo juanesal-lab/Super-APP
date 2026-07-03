@@ -237,11 +237,12 @@ def clonar_ganador(
     else:
         paso("Reemplazo", False, "sin momentos aptos (se deja el ganador tal cual)")
 
-    # 6) Traducir texto en pantalla
-    report("🔤 Traduciendo el texto en pantalla...", 78)
+    # 6) Texto en pantalla: traduce lo que está en OTRO idioma y TAPA los subtítulos viejos en
+    #    español (modo "limpiar") — así no quedan captions viejos peleando con los que ponemos.
+    report("🔤 Limpiando/traduciendo el texto en pantalla...", 78)
     try:
         out = os.path.join(work_dir, "traducido.mp4")
-        t = traducir_texto_pantalla(current, api_key=gemini_key, out_path=out)
+        t = traducir_texto_pantalla(current, api_key=gemini_key, out_path=out, modo="limpiar")
         if t.get("ok"):
             current = t["video"]; paso("Traducir texto", True, f"{len(t.get('bloques', []))} bloque(s)")
         else:

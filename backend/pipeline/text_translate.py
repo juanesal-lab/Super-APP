@@ -69,11 +69,15 @@ def _prompt(duration: float) -> str:
         "COLOMBIANO natural (adáptalo a marketing, no literal), su posición y sus tiempos.\n"
         "Devuelve SOLO un JSON válido (array), sin texto extra, con esta forma:\n"
         '[{"texto":"This fixed my back pain","es_colombia":"Esto me quitó el dolor de espalda",'
-        '"x":0.1,"y":0.8,"w":0.8,"h":0.08,"inicio":"00:01","fin":"00:04",'
+        '"idioma":"otro","x":0.1,"y":0.8,"w":0.8,"h":0.08,"inicio":"00:01","fin":"00:04",'
         '"fondo":"#000000","texto_color":"#FFFFFF"}, ...]\n'
         "Reglas:\n"
+        "- idioma: \"es\" si el texto YA está en español, \"otro\" si está en otro idioma.\n"
+        "- Los SUBTÍTULOS/captions van cambiando palabra por palabra: NO reportes cada palabra suelta; "
+        "reporta UN bloque que cubra TODA la banda donde aparecen (misma zona) con inicio/fin de todo el "
+        "rango en que hay caption ahí. Así se tapa la banda completa, no una sola palabra.\n"
         "- x,y,w,h en FRACCIÓN del ancho/alto del video (0..1); x,y = esquina superior izquierda "
-        "de la caja del texto. Sé generoso con la caja para tapar bien el original.\n"
+        "de la caja del texto. Sé GENEROSO con la caja para tapar bien el original ENTERO.\n"
         "- fondo: color con el que taparías el original para que combine (hex). Si el texto está "
         "sobre fondo claro usa uno claro; si oscuro, oscuro. texto_color: color legible encima.\n"
         "- inicio/fin en mm:ss (cuándo aparece y desaparece ese texto).\n"
@@ -267,8 +271,13 @@ def traducir_texto_pantalla(
     img_i = 0    # PNGs agregados como input (el input 0 es el video)
     for b in bloques:
         es = str(b.get("es_colombia", "")).strip()
-        if modo == "traducir" and not es:   # en "tapar" cubrimos aunque no haya traducción
+        idioma = str(b.get("idioma", "")).strip().lower()
+        ya_es = idioma.startswith("es")
+        if modo == "traducir" and not es:   # en "tapar"/"limpiar" cubrimos aunque no haya traducción
             continue
+        # "limpiar": traduce lo que está en OTRO idioma; TAPA (blur) lo que ya está en español o no
+        # tiene traducción — así NO quedan subtítulos viejos peleando con los nuevos que ponemos.
+        do_blur = (modo == "tapar") or (modo == "limpiar" and (ya_es or not es))
         bw, bh = int(float(b.get("w", 0.5)) * W), int(float(b.get("h", 0.1)) * H)
         bx, by = int(float(b.get("x", 0)) * W), int(float(b.get("y", 0)) * H)
         # Margen de seguridad GENEROSO: la caja debe tapar el original ENTERO (Gemini estima la
@@ -281,7 +290,7 @@ def traducir_texto_pantalla(
         if e <= s:
             e = dur
         tag = f"[v{n}]"
-        if modo == "tapar":
+        if do_blur:
             # DESENFOQUE REAL de la zona (no relleno sólido de color, que quedaba como un parche feo):
             # recorto la región, la difumino fuerte (gblur) y la pego de vuelta → borroso natural que
             # se MEZCLA con la imagen y es ESTABLE (caja fija = no titila). sigma escala con el tamaño

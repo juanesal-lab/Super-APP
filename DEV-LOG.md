@@ -1476,3 +1476,20 @@ producto). Cambios SOLO en la sección de clips SUELTOS (las versiones principal
   540x540, calidad nítida. Las fases se diversifican con Gemini activo (sin Gemini todas caen en "problema").
 - AVISO Jack: toqué gif_export.py (+to_webm) y orchestrator.py (selección de loose_set + gif webm). NO toqué
   build_variations ni las versiones — solo los clips sueltos/gifs.
+
+### 2026-07-02 · Claude (jackingshop1-cell) · 🔍 Análisis de 24 creativos reales que NO funcionaron + fix del texto viejo
+Jack pasó 5 carpetas de creativos de prueba (almohadillas, veneno de abeja, plagas). Los analicé (frames
+hook/medio/final). Hallazgos:
+1. **PROBLEMA PRINCIPAL (en TODOS): el subtítulo/texto VIEJO del original NO se tapaba** → quedaban 2
+   textos encima (nuevo + viejo). Se ve como repost robado → mata rendimiento y Meta lo marca.
+   CAUSA RAÍZ: winner_clone (Clonar ganador) llamaba `traducir_texto_pantalla` en modo "traducir", que
+   DEJA el texto que ya está en español (no lo tapa).
+   FIX: nuevo modo `"limpiar"` en text_translate — traduce lo que está en OTRO idioma y TAPA (blur) lo
+   que ya está en español o no tiene traducción. winner_clone ahora usa modo="limpiar". Prompt mejorado:
+   campo `idioma` por bloque + instrucción de reportar la BANDA completa del caption (no palabra suelta).
+   Lógica verificada; el e2e con Gemini tarda por el upload del video (58MB), no lo corrí completo.
+2. **Muchos duran 30-47s** (uno 46.7s) → LARGO para TikTok/Meta. Recomendación pendiente: acortar
+   (winner_clone conserva el largo del ganador). 
+3. auto_studio (Crear creativo) SÍ tapa con banda continua (detect_subtitle_band), pero puede escaparse
+   texto ARRIBA (ej. "Crema para eliminar lunares" en el top del bee venom) — mejora futura: banda top.
+   AVISO Juan: toqué text_translate.py (modo "limpiar" + prompt) y winner_clone.py (usa limpiar).

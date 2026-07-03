@@ -31,7 +31,17 @@ original (así el video queda ~80% nuevo). Descríbelo como se BUSCARÍA en TikT
 (ej. "primer plano de mujer frustrada frente al espejo", "manos aplicando crema", "antes/después de piel").
 
 REGLAS: nada de precio ni % médicos (usa "ayuda a / apoya"). Mantén el producto y el dolor reales del ganador.
-Variedad obligatoria: los N hooks deben ser MUY distintos entre sí (no 3 versiones de lo mismo)."""
+Variedad obligatoria: los N hooks deben ser MUY distintos entre sí (no 3 versiones de lo mismo).
+
+DINAMISMO (de ads ganadores validados): frases de 3-8 palabras, staccato; un "PERO" o "Ahora…" que gira la
+historia; números concretos (20 segundos, 3 semanas); una honestidad calculada por guion ("no te voy a
+mentir…"); social proof conversacional ("la gente te empieza a preguntar ¿qué hiciste?").
+
+🛡️ POLÍTICAS Meta/TikTok: NUNCA ataques el atributo personal del que ve. Di lo MISMO con metáfora o
+situación: "estás gordo"→"te levantas sintiéndote como un hipopótamo"; disfunción→"tu amiguito ya no
+responde como antes"; "estás viejo"→"tu cara dice algo diferente". Nada de curas absolutas, % médicos ni
+promesas con plazo garantizado (repórtalo: "muchos lo notan en pocas semanas"), nada de antes/después
+corporal explícito."""
 
 _TOOL = {
     "name": "entregar_variaciones",

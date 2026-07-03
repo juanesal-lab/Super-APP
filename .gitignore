@@ -19,6 +19,9 @@ incoming/
 *.aiff
 *.webm
 
+# === Worktrees de Claude Code (sesiones paralelas) ===
+.claude/worktrees/
+
 # === Sistema ===
 .DS_Store
 Thumbs.db

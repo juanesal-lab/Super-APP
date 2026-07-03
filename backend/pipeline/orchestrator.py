@@ -5,7 +5,7 @@ import os
 from typing import Callable
 
 from .ffmpeg_utils import probe, run
-from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, sig_distance
+from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, segment_signatures, sig_distance
 from .gemini_rank import rank_with_gemini
 from concurrent.futures import ThreadPoolExecutor
 
@@ -19,6 +19,7 @@ from .hook_gen import generate_hook, fetch_page_text
 from .captions import add_captions
 from . import supervisor
 from . import gif_export
+from . import phase_classify
 
 
 # Cuántas veces el capitán (Claude) puede mandar a re-tapar un corte hasta aprobarlo
@@ -53,10 +54,11 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     chosen_sigs: list = []
     per_source: dict[int, int] = {}
 
-    def is_duplicate(sig) -> bool:
-        if sig is None:
-            return False
-        return any(sig_distance(sig, s) < _DUP_THRESHOLD for s in chosen_sigs if s is not None)
+    def is_duplicate(sigs) -> bool:
+        # duplicado si CUALQUIERA de las firmas del segmento coincide con CUALQUIERA ya elegida
+        # (caza la misma escena aunque esté en otro archivo o en otro segundo del video)
+        return any(sig_distance(a, s) < _DUP_THRESHOLD
+                   for a in sigs for s in chosen_sigs if a is not None and s is not None)
 
     # 1ra pasada: respetando el tope por fuente (asegura variedad de videos)
     # 2da pasada: si falta, relajar el tope por fuente
@@ -68,11 +70,11 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
                 continue
             if not relax and per_source.get(seg.source_index, 0) >= cap_per_source:
                 continue
-            sig = segment_signature(seg)
-            if is_duplicate(sig):
+            sigs = segment_signatures(seg)
+            if is_duplicate(sigs):
                 continue
             chosen.append(seg)
-            chosen_sigs.append(sig)
+            chosen_sigs.extend(sigs)
             per_source[seg.source_index] = per_source.get(seg.source_index, 0) + 1
         if len(chosen) >= pool_size:
             break
@@ -197,24 +199,37 @@ def render_versions(
     # tiempos ORIGINALES (el masking remapea video/start/end de cada corte en sitio).
     version_orders = plan_variations(selected, target_seconds=target_seconds)
 
-    def _fase(s):
+    # Clips sueltos: MEZCLA por FASE narrativa (problema / solución / funcionamiento / producto /
+    # características / resultado) para que los "gifs" tengan SENTIDO y cuenten la historia.
+    # La fase la decide GEMINI mirando un frame de cada clip (1 sola llamada, sobre los tiempos
+    # ORIGINALES — el masking aún no corre); si no hay key o falla, cae a la heurística vieja.
+    def _fase_heur(s):
         if s.shows_use:
             return "solucion"
         if s.product_visible:
             return "producto"
         return "problema"
 
-    # Clips sueltos: MEZCLA por FASE (problema / solución-uso / producto) para que los
-    # "gifs" tengan SENTIDO y cuenten la historia (round-robin, mejor score primero).
-    _grupos = {"problema": [], "solucion": [], "producto": []}
-    for _i in sorted(range(len(selected)), key=lambda k: selected[k].score, reverse=True):
-        _grupos[_fase(selected[_i])].append(_i)
-    loose_idx, _ptr = [], {k: 0 for k in _grupos}
-    while len(loose_idx) < 24 and any(_ptr[k] < len(_grupos[k]) for k in _grupos):
-        for k in ("problema", "solucion", "producto"):
-            if _ptr[k] < len(_grupos[k]) and len(loose_idx) < 24:
-                loose_idx.append(_grupos[k][_ptr[k]])
+    pool_idx = sorted(range(len(selected)), key=lambda k: selected[k].score, reverse=True)[:30]
+    fases_pool = None
+    if gemini_key:
+        report("Clasificando los clips por fase (problema/solución/producto)...", 52)
+        fases_pool = phase_classify.clasificar([selected[i] for i in pool_idx],
+                                               gemini_key, product_desc)
+    if not fases_pool:
+        fases_pool = [_fase_heur(selected[i]) for i in pool_idx]
+    _orden_fases = list(phase_classify.FASES)
+    _grupos = {k: [] for k in _orden_fases}
+    for _i, _f in zip(pool_idx, fases_pool):
+        _grupos.setdefault(_f, []).append((_i, _f))
+    _pares, _ptr = [], {k: 0 for k in _grupos}   # round-robin: intercala fases, mejor score primero
+    while len(_pares) < 24 and any(_ptr[k] < len(_grupos[k]) for k in _grupos):
+        for k in _orden_fases:
+            if _ptr.get(k, 0) < len(_grupos.get(k, [])) and len(_pares) < 24:
+                _pares.append(_grupos[k][_ptr[k]])
                 _ptr[k] += 1
+    loose_idx = [i for i, _ in _pares]
+    loose_fases = [f for _, f in _pares]
     used_all = sorted({i for _, order in version_orders for i in order} | set(loose_idx))
     # ──────────────────────────────────────────────────────────────────────────────
 
@@ -320,10 +335,10 @@ def render_versions(
     report("Recortando clips..." + (" (mejorando calidad)" if enhance else ""), 62)
     clip_dims = dims_for("1:1")   # los clips sueltos siempre en 1:1 (cuadrado)
     # Clips sueltos: los elegidos por FASE en el PLAN de arriba (ya con el masking aplicado
-    # en sitio a esos mismos cortes).
+    # en sitio a esos mismos cortes). Las fases (loose_fases) vienen del plan (Gemini o heurística).
     loose_set = [selected[i] for i in loose_idx]
-    outs = [os.path.join(clips_dir, f"clip_{idx:02d}_score{int(seg.score)}.mp4")
-            for idx, seg in enumerate(loose_set)]
+    outs = [os.path.join(clips_dir, f"clip_{idx:02d}_{fase}.mp4")
+            for idx, fase in enumerate(loose_fases)]
 
     def _render_one(pair):
         seg, out = pair
@@ -346,15 +361,24 @@ def render_versions(
             for i, g in ex.map(_gif_one, list(enumerate(outs))):
                 gifs[i] = g
 
-    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución / uso", "producto": "📦 Producto"}
+    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución", "funcionamiento": "⚙️ Cómo funciona",
+                 "producto": "📦 Producto", "caracteristicas": "🔎 Características", "resultado": "✨ Resultado"}
     loose_clips = [{"path": o, "gif": g, "segment": s.to_dict(),
-                    "fase": _fase(s), "fase_label": _FASE_LBL.get(_fase(s), "")}
-                   for s, o, g in zip(loose_set, outs, gifs)]
+                    "fase": f, "fase_label": _FASE_LBL.get(f, "")}
+                   for s, f, o, g in zip(loose_set, loose_fases, outs, gifs)]
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,
                              target_seconds=target_seconds, version_orders=version_orders)
     versions = built["versions"]
+
+    # ACENTO DINÁMICO de captions: el color de resalte CONTRASTA con el color dominante del
+    # producto/video (se calcula 1 vez sobre el primer montaje). Si falla → colores clásicos.
+    try:
+        from . import caption_styles as _cs
+        _cs.set_accent(_cs.accent_for_video(versions[0]["path"]) if versions else None)
+    except Exception:  # noqa: BLE001
+        pass
 
     # Gancho: el del usuario o uno generado con IA
     final_hook = hook_text.strip()

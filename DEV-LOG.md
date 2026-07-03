@@ -1581,3 +1581,56 @@ render_versions usaba los índices DISPERSOS de used_all (podía revisar 0 corte
 Claude de más) → ahora usa la posición secuencial. Tests: pools sintéticos n=1..40 sin versiones vacías
 ni índices inválidos; fallback REST→SDK probado (timeout/500/JSON malo); corrida real $0 con EAST:
 47.4s, 8 versiones ok, remapeo del plan post-masking verificado frame a frame.
+### 2026-07-03 · Claude (juanesal-lab) · 🔎🎞️ Búsqueda TikTok honesta (✅/⚠️) + gifs por FASE real (Gemini visión)
+Juan: la búsqueda seguía dando productos equivocados y los gifs eran "cortes súper x" sin sentido.
+**Búsqueda TikTok** (`tiktok_search.py` + UI):
+- CAUSA RAÍZ del producto equivocado: cuando quedaban pocos verificados, el código RELLENABA en silencio
+  hasta 20 con candidatos SIN verificar (clínicas etc). Ahora cada link lleva `verificado_producto` y la UI
+  los separa: ✅ confirmados (ambos jueces) primero, luego "⚠️ estos NO se pudieron confirmar, revísalos".
+- Fix del 2º juez (Claude): mandaba la referencia PNG como image/jpeg → 400 en TODAS (por eso no filtraba).
+  Nuevo `_media_type()` por bytes mágicos. Portada cacheada (`_cover_bytes`) para no bajarla 2 veces;
+  Claude juzga top-10 con 5 workers. Validado: 57s (antes 134), confirmado primero, clínicas marcadas ⚠️.
+- Merge con lo de Jack: sus 10 consultas cortas ES+EN × 3 páginas (quedó lo suyo, era superset del mío).
+**Cortar clips — gifs con SENTIDO** (`phase_classify.py` NUEVO + orchestrator):
+- Antes la fase salía de 2 booleans (shows_use/product_visible) → casi todo caía en "problema" = cortes random.
+- Ahora GEMINI VISIÓN clasifica (1 sola llamada, frame medio de c/clip chico) en: problema / solucion /
+  funcionamiento / producto / caracteristicas / resultado. Round-robin cuenta la historia; archivos
+  `clip_XX_<fase>.mp4/.webm`; labels 🔴🟢⚙️📦🔎✨ en la UI. Fallback a la heurística si no hay key (no rompe).
+- VALIDADO E2E con Gemini: grid 2x2 → problema=piso sucio, solución=pistola limpiando, funcionamiento=
+  conectando boquilla, producto=presentándolo a cámara. WebM 1:1 todos ≤500KB.
+- AVISO Jack: toqué tiktok_search (dual juez + etiquetas; tu expansión de consultas quedó intacta),
+  orchestrator (bloque de loose clips) y nuevo phase_classify.py. Las 8 versiones NO se tocaron.
+
+### 2026-07-03 · Claude (juanesal-lab) · ✂️ Cortar clips PRO: cero repetición + edición TikTok + captions que contrastan con el producto
+Juan: los cortes se repetían muchísimo (aun con 30+ creativos), quería edición "súper profesional" y que las
+captions contrastaran con el color del producto. 3 mejoras (validadas con métricas):
+1. **Dedup multi-firma** (`analyze.segment_signatures` NUEVO + `_select_for_target`): antes 1 aHash del frame
+   medio → la MISMA escena en otro archivo/segundo no se detectaba (los creativos de proveedor comparten
+   metraje = raíz de la repetición). Ahora 3 firmas (20/50/80%) y basta 1 coincidencia para descartar.
+2. **Edición pro** (`assemble.order_version`): HOOK (toma más fuerte) → CUERPO (tomas cortas primero = ritmo;
+   greedy que NUNCA pone 2 tomas seguidas del mismo video) → PAYOFF (cierra con el producto en uso).
+   Métricas con pool de 36 segs/12 fuentes: overlap entre versiones 0% (antes ~70%), 3/28 consecutivos
+   mismo video, 6/8 versiones cierran con payoff.
+3. **Captions con contraste dinámico** (`caption_styles`): NUEVO `accent_for_video()` (color dominante HSV
+   ponderado por saturación, frames centrales) + paleta curada de 7 acentos → elige el tono MÁS OPUESTO
+   (rojo→cian, azul→amarillo, rosado→verde neón, verde→fucsia; validado). `set_accent()` global; se calcula
+   1 vez en `render_versions` sobre el primer montaje. Estilos y preview siguen igual si no hay acento.
+- AVISO Jack: toqué `order_version` (tu build_variations — el bucket disjunto tuyo quedó intacto),
+  `_select_for_target` (multi-sig) y caption_styles (acento opt-in, default None → tus 5 estilos idénticos).
+
+### 2026-07-03 · Claude (juanesal-lab) · 🔎 Búsqueda TikTok: de 1 a 9 confirmados (verificación PROFUNDA)
+Juan: "solo 1 de los 30 me lo encuentra bien". Diagnóstico + 3 fixes en `tiktok_search.py`:
+1. **Ranking por relevancia de TÍTULO antes de gastar visión**: el pool a verificar se llenaba de virales
+   de salones/clínicas (ordenado por views); los videos del producto (vendedores TikTok Shop) nunca se
+   verificaban. Ahora `_title_score` (términos de queries+desc) ordena el pool primero.
+2. **VERIFICACIÓN PROFUNDA** (`_verificar_video` NUEVO): la portada muchas veces NO muestra el producto
+   (sale el pie/antes-después) → falsos rechazos. Para candidatos con título prometedor no confirmados por
+   portada, se BAJA el video (play url de tikwm, tope 25MB, máx 12) y Gemini juzga 3 frames de ADENTRO.
+   Los confirmados así llevan `_deep` y NO se re-juzgan por portada (Claude los habría rechazado).
+   OJO: la descarga SIGUE redirects (tikwm→CDN siempre redirige; con allow_redirects=False moría todo).
+3. **Jueces conscientes del USO**: lámpara de secar esmalte ≠ láser para hongos (el título desempata), sin
+   exigir marca (otro vendedor del mismo producto cuenta), "estricto pero justo" (UGC en mano/ángulo).
+   Claude ahora juzga top-20 (antes 10). El relleno ⚠️ ahora completa hasta `count` (siempre etiquetado).
+RESULTADO con el láser de Juan: antes 1/30 confirmado → ahora **9/9 confirmados y TODOS el dispositivo real**
+(GoSpring device, fungus remover, naillight...), 92s. AVISO Jack: toqué tu _verificar (línea de USO) y el
+bloque de verificación de buscar(); tu expansión de queries ES+EN quedó intacta (es la que alimenta esto).

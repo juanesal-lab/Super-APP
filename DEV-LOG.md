@@ -1748,3 +1748,13 @@ Juan: el botón Regenerar no funcionaba + quería darle una instrucción a una i
   "monstruito asustado corriendo con su maleta + láser más grande" → editó exacto eso y conservó el resto.
 - AVISO Jack: nuevos _persist_disruptive/_get_job en app.py (solo Ads imagen); editar_imagen_ia en
   disruptive_images.py; botón disEdit en el frontend.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔀 Merge #2 del día: tu pool TikTok+Foreplay ⊕ nuestro Buscar creativos
+- `tiktok_search.buscar`: conviven los DOS parámetros nuevos — `analisis=` (nuestro: creative_search no
+  re-analiza la foto) y `foreplay_key=` (tuyo: ads de Foreplay al pool). creative_search NO pasa
+  foreplay_key (su grupo Foreplay va aparte con _buscar_foreplay) → cero duplicados.
+- `index.html` (tkPaint): quedó la UI de 2 grupos con cards de la pestaña Buscar creativos; tu bloque de
+  filas usaba `resto`/`j` que ya no existen en ese scope. Tu pool mixto sigue VIVO en /api/tiktok-search
+  (lo consume el otro flujo del front); si quieres el 🔥 de "viene de Foreplay" en esa vista, es re-agregarlo ahí.
+- Verificado: py_compile 5/5 tocados + node --check 9/9 bloques + cero marcas de conflicto. Nada tuyo de
+  backend se perdió (disruptive_images y app.py auto-merge limpio).

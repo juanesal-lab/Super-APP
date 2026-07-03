@@ -1658,3 +1658,11 @@ fuentes para armar los clips.
 - AVISO Juan: cero cambios en foreplay_search.py; en tiktok_search.py solo el param opcional analisis=.
   Resolvimos también el merge de tus commits de hoy (Cortar clips PRO + verificación profunda)
   conservando ambos trabajos (velocidad+variedad nuestro y lo tuyo — todo compila y probado).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🌳 Config para sesiones paralelas (worktrees) + push de lo acumulado
+- `.gitignore`: + `.claude/worktrees/` (los worktrees de Claude Code no ensucian el `git status`).
+- NUEVO `.worktreeinclude` (.env, .env.local): cada worktree nuevo recibe las API keys automáticamente.
+- Sin tocar código. Se sube también lo que estaba local sin push: el merge 126c938 (Cortar clips PRO +
+  búsqueda profunda de Juan ⊕ velocidad+variedad+voz en off nuestro) y Buscar creativos (e044706).
+- AVISO Juan: tus worktrees también quedan ignorados con esto y tu `.env` local se copia igual a tus
+  worktrees; el `.env` sigue SIN subirse a git (cada quien el suyo).

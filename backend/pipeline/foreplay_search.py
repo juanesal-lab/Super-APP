@@ -3,10 +3,13 @@
 Foreplay indexa ads reales de Meta/TikTok con su video descargable, transcripción y cuánto llevan
 corriendo (señal de ganador). Aquí: buscar por keyword/idioma/nicho + descargar el video para que el
 pipeline lo corte en clips. La key va en .env como FOREPLAY_API_KEY (header 'Authorization').
+Regla de oro: se EXCLUYE Colombia (la API no expone país → heurística local _es_colombiano).
 """
 from __future__ import annotations
 
 import os
+import re
+import unicodedata
 from typing import Callable
 
 import requests
@@ -45,6 +48,36 @@ def _corriendo(rd) -> tuple[int, str]:
     if h >= 1:
         return 0, f"{h}h corriendo"
     return 0, "nuevo"
+
+
+# ── Excluir COLOMBIA (regla de oro: español pero NO Colombia) ─────────────────
+# La API de Foreplay NO expone el país del ad/anunciante (solo idioma), así que
+# se filtra con heurística LOCAL sobre el texto del ad (sin gastar IA):
+# menciones de Colombia, ciudades grandes, moneda COP, precios estilo $59.900,
+# teléfonos +57 y dominios .com.co. Case/acento-insensible.
+_CO_RX = re.compile(
+    r"colombia"                                                    # Colombia / colombiano/a (substring, atrapa dominios tipo 'tiendacolombia')
+    r"|\b(bogota|medellin|barranquilla|bucaramanga|cali|cartagena|cucuta)\b"  # ciudades
+    r"|\bcop\b"                                                    # moneda (pesos colombianos)
+    r"|\+57[\s.\-]?\d"                                             # teléfono +57
+    r"|\$\s?\d{1,3}[.,]900\b"                                      # precios típicos COP ($59.900)
+    r"|\.com\.co\b"                                                # dominios colombianos
+)
+
+
+def _sin_acentos(s: str) -> str:
+    """minúsculas y sin tildes (para matchear 'Bogotá' == 'bogota')."""
+    return "".join(c for c in unicodedata.normalize("NFD", s)
+                   if not unicodedata.combining(c)).lower()
+
+
+def _es_colombiano(a: dict) -> bool:
+    """True si el ad CRUDO de Foreplay tiene señales colombianas claras en su texto.
+    Se corre sobre el ad crudo (antes de _norm_ad) para aprovechar full_transcription."""
+    texto = " ".join(str(a.get(k) or "") for k in
+                     ("name", "headline", "description", "cta_title",
+                      "link_url", "full_transcription"))
+    return bool(_CO_RX.search(_sin_acentos(texto)))
 
 
 def _norm_ad(a: dict) -> dict:
@@ -104,7 +137,8 @@ def buscar_ads(query: str = "", *, api_key: str, live: bool | None = None,
         if r.status_code != 200:
             return {"ok": False, "error": f"Foreplay respondió HTTP {r.status_code}", "ads": []}
         body = r.json() or {}
-        ads = [_norm_ad(a) for a in (body.get("data") or [])]
+        # regla de oro: excluir Colombia ANTES de normalizar (usa el texto completo del ad)
+        ads = [_norm_ad(a) for a in (body.get("data") or []) if not _es_colombiano(a)]
         if video_only:
             ads = [a for a in ads if a.get("video")]
         cur = (body.get("metadata") or {}).get("cursor") or ""

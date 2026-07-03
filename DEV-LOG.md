@@ -1523,6 +1523,64 @@ Cambios en tiktok_search.py:
   cuántos videos de ese producto exacto existan en TikTok; productos nicho pueden dar ~20-25.)
   AVISO Juan: toqué tiktok_search.py (analizar_foto, _expandir, buscar, _verificar). No cambié el shape.
 
+### 2026-07-03 · Claude (jackingshop1-cell) · 🎙️💬 Mi producto: VOZ EN OFF + subtítulos seleccionables (pendiente #2)
+- Toggle "🎙️ Voz en off" en Mi producto: guiones POR VERSIÓN con UNA llamada a Gemini
+  (scripts.generate_scripts, reglas de oro garantizadas: sin precio, CTA exacto vía _con_cta) →
+  narración colombiana (voiceover.synthesize_with_timestamps, TTS en paralelo, voz kate/juan_carlos)
+  → mezcla voz clara + música baja (add_voiceover_and_sfx, voz 1.0/música 0.16) → subtítulos palabra
+  x palabra con los 5 estilos elegibles (burn_word_captions) + preview en la UI (patrón capStyle).
+- producto_clips.py: _musica_y_volumen dividida en _generar_musica + _mezclar_musica (mezcla intacta);
+  nueva _voz_y_subtitulos con try/except por versión (si falla una, queda como estaba); perilla interna
+  settings["vo_guiones"] (0=un guion por versión; N=narraciones cicladas para controlar costo ElevenLabs).
+- app.py /api/producto-clips: Forms voz_en_off/voz/caption_style/subtitulos (validados con whitelist).
+- RETROCOMPATIBLE: con voz_en_off=False el flujo es EXACTAMENTE el de antes (música sola).
+- Verificado por 2 agentes: E2E real con 2 videos de bee venom → 8 versiones con voz+subs, frames
+  mirados (hormozi OK), ffprobe voz presente, CTA exacto en los guiones, cero precio. Muestras en
+  ~/Downloads/prueba/MIPRODUCTO_voz_subs_A.mp4 y _C.mp4. Revisor: 28/28 tests con mocks (retrocompat,
+  ciclado con TTS parciales, sin mezcla doble de música, JS con node --check, whitelists del endpoint).
+- Costo de la prueba: ~6 llamadas Gemini flash + 1 música + 2 TTS. En producción: 8 TTS/job por defecto
+  (vo_guiones interno permite bajarlo; no expuesto en UI aún).
+- AVISO Juan: NO toqué orchestrator/assemble/caption_styles/voiceover — solo producto_clips.py, el
+  endpoint /api/producto-clips y la pestaña Mi producto del front.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · ⚡🎲 Cortar clips MÁS RÁPIDO (76.8s→45.3s en prueba real) + versiones DIFERENTES entre sí
+Quejas de Jack: (A) Cortar clips / Mi producto muy lentos; (B) las 8 versiones repetían los mismos clips.
+VELOCIDAD (misma prueba: 3 videos bee venom, gemini on, sin blur/música/VO — 76.8s → 45.3s):
+- `orchestrator.analyze_select`: los videos se analizan EN PARALELO (antes uno por uno) → 18.5s→9.8s.
+- `analyze.analyze_video`: `detect_scene_cuts` (ffmpeg) corre en paralelo con la pasada OpenCV del mismo video.
+- `gemini_rank`: NUEVO `_call_rest_fast` — la llamada de rank va por REST con thinkingBudget=0 (el SDK
+  google-genai 0.8.0 no expone ese parámetro) → 27s→3-7s LA MISMA respuesta; si falla, cae al SDK como antes.
+- `assemble`: `add_voiceover`, `add_voiceover_and_sfx` y `concat_clips` ahora codifican con `venc()`
+  (GPU videotoolbox) en vez de libx264 → voz en off ~0.7s/versión (probado, h264+aac ok).
+- `orchestrator.render_versions`: PLAN PRIMERO — se calcula qué cortes usan las versiones (nueva
+  `assemble.plan_variations`) y los clips sueltos ANTES de tapar textos → el masking (EAST/Gemini/capitán)
+  procesa SOLO esos cortes; además el plan usa los tiempos ORIGINALES (antes se planeaba después del
+  masking, cuando start ya estaba remapeado a 0 y el orden cronológico se perdía).
+- WORKERS con GPU: probé 3 vs 4 vs 5 encodes paralelos videotoolbox → sin diferencia (el hardware
+  serializa sesiones); se queda en 3.
+VARIEDAD (antes: 2 ganchos distintos en 8 versiones, solape medio 55%, había pares 100% idénticos →
+ahora: 8 ganchos ÚNICOS, solape medio 43%, máx 86%):
+- `analyze._split_and_add`: un tramo bueno largo ahora emite hasta 5 ventanas NO solapadas (antes solo
+  la mejor y el resto se botaba) → más material bruto para el pool.
+- `assemble.plan_variations` (extraída de build_variations, misma lógica en pool grande): en la rama de
+  POCOS clips el gancho ROTA entre los mejores por score (antes siempre el máximo → todas abrían igual)
+  y el resto se elige priorizando los clips MENOS usados por versiones anteriores (mínimo solape de
+  conjuntos). `build_variations` acepta `version_orders=` opcional (retrocompatible).
+VERIFICADO: py_compile ok; corrida E2E real antes/después con frames mirados (nitidez/encuadre ok, webm
+≤500KB ok); corrida con blur_captions=True (EAST, sin capitán) ok=True 8 versiones; add_voiceover(_and_sfx)
+probado con audio sintético. Server reiniciado.
+AVISO Juan: toqué analyze.py (_split_and_add multi-ventana + scene cuts paralelos), orchestrator.py
+(analyze_select paralelo + plan-primero en render_versions), assemble.py (plan_variations nueva,
+build_variations con version_orders opcional, venc() en add_voiceover/add_voiceover_and_sfx/concat_clips)
+y gemini_rank.py (REST rápido con fallback). NO toqué gif_export (tus flags VP9 ya estaban), ni las
+firmas públicas: process_job/analyze_select/render_versions/venc/punch_pace intactas. Shape de manifests
+sin cambios. NO commiteado (lo sube Jack cuando lo pruebe).
+[Revisión (2º agente) de lo de arriba — 2 fixes aplicados]: (1) la key de Gemini en _call_rest_fast iba
+en la URL (?key=) → ahora va por header x-goog-api-key (no queda en logs); (2) el muestreo del capitán en
+render_versions usaba los índices DISPERSOS de used_all (podía revisar 0 cortes o TODOS = llamadas a
+Claude de más) → ahora usa la posición secuencial. Tests: pools sintéticos n=1..40 sin versiones vacías
+ni índices inválidos; fallback REST→SDK probado (timeout/500/JSON malo); corrida real $0 con EAST:
+47.4s, 8 versiones ok, remapeo del plan post-masking verificado frame a frame.
 ### 2026-07-03 · Claude (juanesal-lab) · 🔎🎞️ Búsqueda TikTok honesta (✅/⚠️) + gifs por FASE real (Gemini visión)
 Juan: la búsqueda seguía dando productos equivocados y los gifs eran "cortes súper x" sin sentido.
 **Búsqueda TikTok** (`tiktok_search.py` + UI):
@@ -1577,6 +1635,62 @@ RESULTADO con el láser de Juan: antes 1/30 confirmado → ahora **9/9 confirmad
 (GoSpring device, fungus remover, naillight...), 92s. AVISO Jack: toqué tu _verificar (línea de USO) y el
 bloque de verificación de buscar(); tu expansión de queries ES+EN quedó intacta (es la que alimenta esto).
 
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔍 Buscar creativos: TikTok + FOREPLAY a la vez (foto + nombre)
+Pedido de Jack: mandar foto + nombre del producto y recibir los creativos de ese producto en AMBAS
+fuentes para armar los clips.
+- NUEVO backend/pipeline/creative_search.py → `buscar_creativos()`: analiza la foto UNA sola vez
+  (tiktok_search.analizar_foto) y con esos términos busca TikTok y Foreplay EN PARALELO.
+  Foreplay: 2-4 términos (español primero, heurística local sin IA), deduplicado entre términos,
+  Colombia excluida adentro de buscar_ads (no toqué foreplay_search de Juan — solo lo consumo);
+  verificación de MISMO producto sobre thumbnails con el MISMO juez de TikTok (_verificar), tope
+  24 thumbnails; lo no juzgable queda honesto con badge "⚠️ sin verificar".
+- backend/app.py: NUEVO POST /api/creative-search (nombre, count, fp_count, foto). Los endpoints
+  /api/tiktok-search y /api/foreplay-search siguen IGUAL (aditivo).
+- tiktok_search.buscar: nuevo param opcional `analisis=` (recibe el dict de analizar_foto ya calculado
+  para no repetir la llamada). Sin él, todo igual que antes.
+- Frontend: pestaña "🔎 Buscar TikTok" → "🔍 Buscar creativos": campo nombre + resultados en 2 grupos
+  (🎵 TikTok con links/badges como antes; 📚 Foreplay con grilla de cards, ▶️ ver, ⬇️ descargar vía
+  /api/foreplay-video, botón copiar links de video para 📥 Descargar / Mi producto). Guía actualizada.
+- VERIFICADO: py_compile ok; firmas cruzadas contra el tiktok_search post-merge de Juan (ok, inspect);
+  JS 9/9 bloques node --check ok; corrida E2E real en modo barato (sin IA): TikTok 8 links + Foreplay
+  8 ads sin señales colombianas, shape correcto; server reiniciado sirviendo /api/creative-search y la
+  pestaña nueva. (La verificación con foto/Gemini usa el mismo _verificar de siempre.)
+- AVISO Juan: cero cambios en foreplay_search.py; en tiktok_search.py solo el param opcional analisis=.
+  Resolvimos también el merge de tus commits de hoy (Cortar clips PRO + verificación profunda)
+  conservando ambos trabajos (velocidad+variedad nuestro y lo tuyo — todo compila y probado).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🌳 Config para sesiones paralelas (worktrees) + push de lo acumulado
+- `.gitignore`: + `.claude/worktrees/` (los worktrees de Claude Code no ensucian el `git status`).
+- NUEVO `.worktreeinclude` (.env, .env.local): cada worktree nuevo recibe las API keys automáticamente.
+- Sin tocar código. Se sube también lo que estaba local sin push: el merge 126c938 (Cortar clips PRO +
+  búsqueda profunda de Juan ⊕ velocidad+variedad+voz en off nuestro) y Buscar creativos (e044706).
+- AVISO Juan: tus worktrees también quedan ignorados con esto y tu `.env` local se copia igual a tus
+  worktrees; el `.env` sigue SIN subirse a git (cada quien el suyo).
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔍✨ Buscar creativos: preview ▶️ + 🔄 cambiar + 🎯 "más con este ángulo"
+Pedido de Jack sobre la pestaña nueva: (1) preview para reproducir cada creativo ANTES de descargarlo,
+(2) botón para reemplazar uno que no guste por OTRO en su mismo puesto, (3) botón para buscar MÁS
+creativos con el mismo ángulo de venta del que gustó.
+- Los resultados de TikTok ahora son CARDS (grilla fpGrid) con portada, views, badges ✅/⚠️ y botones:
+  ▶️ Ver (reproduce el mp4 directo de tikwm ahí mismo, con fallback "ábrelo en TikTok" si el CDN
+  falla), 📋 copiar link, 🔄 cambiar, 🎯 Más así. Los cards de Foreplay ganaron 🔄 y 🎯 (ya tenían ▶️/⬇️).
+- NUEVO POST /api/creative-more (fuente tiktok|foreplay, nombre, desc, terminos, angulo, excluir, n,
+  foto=basename guardado por creative-search en uploads/tksearch): creative_search.buscar_mas() busca
+  n creativos NUEVOS excluyendo los ya mostrados. 🔄 = n:1 sin angulo (reusa los términos originales,
+  CERO IA extra); 🎯 = n:6 con angulo (1 llamada Gemini flash saca el ángulo del título → términos
+  nuevos). Con foto: verifica MISMO producto con _verificar (tope chico max(12, n*3)); sin foto: sin IA.
+  Sin Colombia en ambos caminos (region CO fuera + _es_colombiano de Juan en Foreplay).
+- Frontend: estado vivo window._tkS (excluidos por fuente para que lo cambiado no vuelva a salir) +
+  tkPaint() re-pinta desde el estado; el 🔄 hace splice en el mismo slot; el 🎯 agrega al final del grupo.
+- /api/creative-search ahora devuelve foto (basename), desc y variants (los términos) para alimentar
+  los botones. _buscar_foreplay ganó param excluir (default None: idéntico a antes).
+- VERIFICADO: py_compile ok; JS 9/9 node --check; funcional real: 🔄 TikTok devolvió video NUEVO
+  respetando excluidos (con play para el preview), 🔄 Foreplay ok, 🎯 con Gemini sacó el ángulo
+  ("casa llena de cucarachas" → "Pest control secret"/"Adiós plagas secreto") y trajo 4 creativos de
+  ese ángulo; server reiniciado sirviendo /api/creative-more; UI verificada con screenshot en Chrome
+  (cards y botones en ambos grupos ok).
+- AVISO Juan: cero cambios en foreplay_search.py ni tiktok_search.py; solo creative_search.py (mío),
+  el endpoint nuevo en app.py y el script de p-buscar en el front.
 ### 2026-07-03 · Claude (juanesal-lab) · 🔎🔥 Búsqueda TikTok ahora TAMBIÉN busca en Foreplay (mismo pool, misma verificación)
 Juan: que la búsqueda de videos use Foreplay además de TikTok. Hecho en `tiktok_search.py`:
 - NUEVO `_foreplay_candidatos(queries, foreplay_key)`: consulta la biblioteca de ads GANADORES de Foreplay

@@ -145,7 +145,7 @@
     <button data-p="p-disruptivo">🎨 Ads imagen</button>
     <button data-p="p-descargar">📥 Descargar</button>
     <button data-p="p-foreplay">🔥 Foreplay</button>
-    <button data-p="p-buscar">🔎 Buscar TikTok</button>
+    <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
@@ -303,21 +303,22 @@
   </script>
   </div><!-- /p-auto -->
 
-  <!-- 🔎 BUSCAR CREATIVOS EN TIKTOK (sección nueva) -->
+  <!-- 🔍 BUSCAR CREATIVOS (TikTok + Foreplay a la vez) -->
   <div class="panel" id="p-buscar" style="display:none">
     <div class="autoHero">
-      <h2>🔎 <span>Buscar en TikTok</span></h2>
-      <p class="lead">Sube una foto de tu producto (o escribe el nombre) y te doy <b>links REALES</b> de
-        creativos de TikTok para que elijas cuáles usar. Luego copias los que quieras y los bajas en la
-        pestaña 📥 Descargar.</p>
+      <h2>🔍 <span>Buscar creativos</span> (TikTok + Foreplay)</h2>
+      <p class="lead">Sube la foto de tu producto y escribe su nombre: te doy los creativos de ese
+        MISMO producto en <b>🎵 TikTok</b> (links reales) y en <b>📚 Foreplay</b> (ads ganadores con
+        video descargable), para que armes tus clips. Los de TikTok los copias y los bajas en
+        📥 Descargar; los de Foreplay se ven y descargan aquí mismo.</p>
       <input type="file" id="tkFoto" accept="image/*" class="hidden">
       <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Foto del producto (opcional)</b>
         <div class="s">o solo escribe el nombre abajo</div></label>
       <div class="autoOpts">
-        <input type="text" id="tkNombre" class="full" placeholder="Nombre / palabras clave (ej. repelente ultrasónico plagas)">
-        <select id="tkCount"><option value="15">15 links</option><option value="20" selected>20 links</option><option value="30">30 links</option></select>
+        <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
+        <select id="tkCount"><option value="15">15 por fuente</option><option value="20" selected>20 por fuente</option><option value="30">30 por fuente</option></select>
       </div>
-      <button class="autoBtn" id="tkGo" onclick="tkRun()">🔎 Buscar creativos</button>
+      <button class="autoBtn" id="tkGo" onclick="tkRun()">🔍 Buscar creativos</button>
       <div class="autoProg hidden" id="tkProg"><div class="autoMsg" id="tkMsg">Buscando…</div></div>
       <div id="tkResult"></div>
     </div>
@@ -325,41 +326,149 @@
       (function(){ const el=document.getElementById('tkFoto');
         el.addEventListener('change',e=>{ const f=e.target.files[0]; window._tkFoto=f;
           document.getElementById('tkFotoName').textContent = f?('📸 '+f.name):'📸 Foto del producto (opcional)'; }); })();
+      function tkEsc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
       async function tkRun(){
         const nombre=document.getElementById('tkNombre').value.trim();
         if(!nombre && !window._tkFoto){ alert('Escribe el nombre o sube una foto'); return; }
         const fd=new FormData();
         if(window._tkFoto) fd.append('foto',window._tkFoto);
-        fd.append('nombre',nombre); fd.append('count',document.getElementById('tkCount').value);
+        const cnt=document.getElementById('tkCount').value;
+        fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
         document.getElementById('tkGo').disabled=true;
         document.getElementById('tkProg').classList.remove('hidden');
-        document.getElementById('tkMsg').textContent='Buscando en TikTok…';
+        document.getElementById('tkMsg').textContent='Buscando en TikTok y Foreplay a la vez… (1-2 min)';
         document.getElementById('tkResult').innerHTML='';
         try{
-          const r=await fetch('/api/tiktok-search',{method:'POST',body:fd}); const j=await r.json();
+          const r=await fetch('/api/creative-search',{method:'POST',body:fd}); const j=await r.json();
+          if(!r.ok) throw (j.detail||'Error');
           document.getElementById('tkGo').disabled=false; tkRender(j);
         }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
       }
       function tkRender(j){
-        const nConf = j.n_confirmados||0;
-        document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '')
-          + (j.verificado ? ` — ✅ ${nConf} confirmados con tu producto` : '');
-        const links=(j.links||[]); let h='';
+        const tk=j.tiktok||{}, fp=j.foreplay||{};
+        // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
+        window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
+                     desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
+                     tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
+                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[]};
+        document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
+        tkPaint();
+      }
+      function tkPaint(){
+        const S=window._tkS; if(!S) return;
+        const links=S.links, ads=S.ads;
+        let h='';
+        // ── grupo 1: TikTok ──────────────────────────────────────────────
+        const conf=links.filter(l=>l.verificado_producto);
+        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${links.length})${S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:''}</h3>`;
         if(!links.length){
-          h='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+j.busqueda+'" target="_blank">'+j.busqueda+'</a></div>';
+          h+='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+tkEsc(S.busq)+'" target="_blank">'+tkEsc(S.busq)+'</a></div>';
         } else {
-          const conf=links.filter(l=>l.verificado_producto), resto=links.filter(l=>!l.verificado_producto);
           const urls=(conf.length?conf:links).map(l=>l.url).join('\n');
           h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||links.length} links${conf.length?' confirmados':''}</button>`;
-          const fila=(l,i,badge)=>`<div class="autoStep">${badge}${l.source==='foreplay'?' <span title="Ad GANADOR encontrado en Foreplay (video descargable directo)" style="color:var(--accent)">🔥</span>':''} <a href="${l.url}" target="_blank" style="color:var(--accent)">${i}. ${l.url.length>75?l.url.slice(0,72)+'…':l.url}</a>${l.title?` <span>· ${l.title.replace(/</g,'')}</span>`:''}</div>`;
-          let n=1;
-          conf.forEach(l=>{ h+=fila(l,n++, '<span title="La IA confirmó que es TU producto (misma forma)">✅</span>'); });
-          if(resto.length && j.verificado){
-            h+=`<div class="pmsg" style="margin:12px 0 6px">⚠️ Estos NO se pudieron confirmar como tu producto (revísalos tú):</div>`;
-          }
-          resto.forEach(l=>{ h+=fila(l,n++, j.verificado?'<span title="No confirmado — puede ser otro producto">⚠️</span>':''); });
+          h+='<div class="fpGrid">';
+          links.forEach((l,i)=>{ h+=tkTkCard(l,i,S.tkVerif); });
+          h+='</div>';
+        }
+        // ── grupo 2: Foreplay ────────────────────────────────────────────
+        const fpConf=ads.filter(a=>a.verificado_producto);
+        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${ads.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
+        if(!S.fpOk && S.fpErr){
+          h+='<div class="autoStep bad">'+tkEsc(S.fpErr)+'</div>';
+        } else if(!ads.length){
+          h+='<div class="autoStep">Sin resultados en Foreplay para este producto.</div>';
+        } else {
+          const dls=(fpConf.length?fpConf:ads).map(a=>a.video).filter(Boolean).join('\n');
+          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${dls.replace(/"/g,'&quot;')}" title="Links directos del video (sirven en 📥 Descargar y Mi producto)">📋 Copiar los ${fpConf.length||ads.length} links de video${fpConf.length?' confirmados':''}</button>`;
+          h+='<div class="fpGrid">';
+          ads.forEach((a,i)=>{ h+=tkFpCard(a,i,S.fpVerif); });
+          h+='</div>';
         }
         document.getElementById('tkResult').innerHTML=h;
+      }
+      function tkVerBadge(ok,verif){
+        if(!verif) return '';
+        return ok
+          ?'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:var(--accent);color:var(--ink)" title="La IA confirmó que es TU producto (misma forma)">✅ tu producto</span>'
+          :'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px" title="No se pudo confirmar — revísalo tú">⚠️ sin verificar</span>';
+      }
+      function tkTkCard(l,i,verif){
+        const views=l.plays?`<span class="fpBadge">▶ ${l.plays>=1e6?(l.plays/1e6).toFixed(1)+'M':l.plays>=1e3?Math.round(l.plays/1e3)+'K':l.plays} views</span>`:'';
+        return `<div class="fpCard" style="cursor:default">
+          <div class="fpThumbWrap">
+            <img class="fpThumb" src="${tkEsc(l.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
+            ${views}${tkVerBadge(l.verificado_producto,verif)}</div>
+          <div class="fpBody"><div class="fpName">${tkEsc(l.title)||'—'}</div>
+            <div class="fpBtns">
+              <button class="fpBtn" onclick="tkTkPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
+              <button class="fpBtn" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅'" data-u="${tkEsc(l.url)}" title="Copiar el link">📋</button>
+              <button class="fpBtn" onclick="tkMore('tiktok',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
+              <button class="fpBtn" onclick="tkMore('tiktok',${i},this,true)" title="Buscar MÁS creativos con este mismo ángulo de venta">🎯 Más así</button>
+            </div>
+            <a class="fpLink" href="${tkEsc(l.url)}" target="_blank">abrir en TikTok ↗</a>
+          </div></div>`;
+      }
+      function tkTkPlay(i,btn){
+        const l=(window._tkS?window._tkS.links:[])[i]; if(!l) return;
+        if(!l.play){ window.open(l.url,'_blank'); return; }
+        const wrap=btn.closest('.fpCard').querySelector('.fpThumbWrap');
+        wrap.innerHTML='<video class="fpThumb" src="'+tkEsc(l.play)+'" referrerpolicy="no-referrer" controls autoplay playsinline '+
+          'onerror="this.outerHTML=\'<div class=&quot;fpDesc&quot; style=&quot;padding:12px&quot;>No se pudo reproducir aquí — <a href=&quot;'+tkEsc(l.url)+'&quot; target=&quot;_blank&quot;>ábrelo en TikTok ↗</a></div>\'"></video>';
+      }
+      function tkFpCard(a,i,verif){
+        const badge=a.dias>=1?`<span class="fpBadge win">🔥 ${tkEsc(a.corriendo)}</span>`
+                             :(a.corriendo?`<span class="fpBadge">${tkEsc(a.corriendo)}</span>`:'');
+        return `<div class="fpCard" style="cursor:default">
+          <div class="fpThumbWrap">
+            <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
+            ${badge}${tkVerBadge(a.verificado_producto,verif)}</div>
+          <div class="fpBody"><div class="fpName">${tkEsc(a.name)||'—'}</div>
+            <div class="fpDesc">${tkEsc((a.description||'').slice(0,120))}</div>
+            <div class="fpBtns">
+              <button class="fpBtn" onclick="tkFpPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
+              <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar el video">⬇️</a>
+              <button class="fpBtn" onclick="tkMore('foreplay',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
+              <button class="fpBtn" onclick="tkMore('foreplay',${i},this,true)" title="Buscar MÁS creativos con este mismo ángulo de venta">🎯 Más así</button>
+            </div>
+            <a class="fpLink" href="${tkEsc(a.foreplay_url)||'#'}" target="_blank">ver en Foreplay ↗</a>
+          </div></div>`;
+      }
+      function tkFpPlay(i,btn){
+        const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video) return;
+        btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML=
+          '<video class="fpThumb" src="/api/foreplay-video?url='+encodeURIComponent(a.video)+'" controls autoplay playsinline></video>';
+      }
+      // 🔄 cambiar (angulo=false: busca OTRO y lo pone en ese puesto) / 🎯 más así (angulo=true:
+      // agrega hasta 6 creativos MÁS con el mismo ángulo de venta del que te gustó)
+      async function tkMore(fuente,idx,btn,angulo){
+        const S=window._tkS; if(!S) return;
+        const grupo=(fuente==='tiktok')?S.links:S.ads;
+        const item=grupo[idx]; if(!item) return;
+        const idDe=x=>(fuente==='tiktok')?x.url:String(x.id||x.video||x.foreplay_url||'');
+        const excl=grupo.map(idDe).concat(fuente==='tiktok'?S.exTk:S.exFp).filter(Boolean);
+        const fd=new FormData();
+        fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
+        fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
+        fd.append('foto',S.foto); fd.append('n',angulo?'6':'1');
+        if(angulo) fd.append('angulo',(item.title||item.name||item.description||'').slice(0,220));
+        const old=btn.textContent; btn.textContent='⏳'; btn.disabled=true;
+        try{
+          const r=await fetch('/api/creative-more',{method:'POST',body:fd}); const j=await r.json();
+          const items=(j.items||[]);
+          if(!items.length){
+            btn.textContent='😕 no hay más'; btn.disabled=false;
+            setTimeout(()=>{btn.textContent=old;},3000); return;
+          }
+          if(angulo){ grupo.push(...items); }
+          else{
+            (fuente==='tiktok'?S.exTk:S.exFp).push(idDe(item));   // el viejo no vuelve a salir
+            grupo.splice(idx,1,items[0]);                          // el nuevo entra en su puesto
+          }
+          tkPaint();
+        }catch(e){
+          btn.textContent='Error'; btn.disabled=false;
+          setTimeout(()=>{btn.textContent=old;},3000);
+        }
       }
     </script>
   </div><!-- /p-buscar -->
@@ -668,6 +777,21 @@
       <label><input type="checkbox" id="prodBlur" checked> Tapar (desenfocar) el texto del video original</label>
       <label><input type="checkbox" id="prodMusica" checked> 🎵 Música automática (la IA elige el género)</label>
       <label><input type="checkbox" id="prodBajarVol" checked> 🔉 Bajar el volumen de los clips</label>
+      <label><input type="checkbox" id="prodVO" onchange="document.getElementById('prodVOOpts').style.display=this.checked?'flex':'none'"> 🎙️ Voz en off (guion IA + voz colombiana + subtítulos)</label>
+    </div>
+    <div id="prodVOOpts" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <select id="prodVoz" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <option value="juan_carlos">Voz: Juan Carlos</option>
+        <option value="kate">Voz: Kate</option>
+      </select>
+      <select id="prodCapStyle" title="Estilo de subtítulos (los que más CTR tienen en TikTok/Meta)" onchange="document.getElementById('prodCapPrev').src='/api/caption-preview?style='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <option value="hormozi">Subtítulos: Hormozi (palabra x palabra, keyword amarilla)</option>
+        <option value="karaoke">Subtítulos: Karaoke (resalta la palabra que suena)</option>
+        <option value="highlight_box">Subtítulos: Caja (palabra en caja de color)</option>
+        <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
+        <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
+      </select>
+      <img id="prodCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven los subtítulos" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
     </div>
 
     <details class="prodAdv">
@@ -755,6 +879,9 @@
         fd.append('blur_captions',document.getElementById('prodBlur').checked);
         fd.append('musica',document.getElementById('prodMusica').checked);
         fd.append('bajar_volumen',document.getElementById('prodBajarVol').checked);
+        fd.append('voz_en_off',document.getElementById('prodVO').checked);
+        fd.append('voz',document.getElementById('prodVoz').value);
+        fd.append('caption_style',document.getElementById('prodCapStyle').value);
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
@@ -773,6 +900,7 @@
       let info=window._prodScout||'';
       if(res.producto_desc) info+=`<div class="prodInfo">🧠 La IA entendió tu producto como: <b>${res.producto_desc}</b></div>`;
       if(typeof res.descargados!=='undefined') info+=`<div class="prodInfo">⬇️ ${res.descargados} video(s) descargado(s)${res.fallidos?` · ${res.fallidos} fallaron`:''}</div>`;
+      if(res.voz_en_off) info+=`<div class="prodInfo">🎙️ Voz en off + subtítulos (estilo <b>${res.caption_style||''}</b>) · ${(res.guiones_vo||[]).length} guion(es)</div>`;
       document.getElementById('prodMeta').innerHTML=info;
       renderResults(res,'productoResults');
     }
@@ -1520,7 +1648,7 @@
       <div class="tip"><span class="em">🎨</span><span><b>Ads imagen</b> — pega un producto y Claude te da 10 conceptos disruptivos; Nano Banana 2 dibuja el ad completo (video nativo, fotorrealista). Tú metes tu producto con "➕ Poner mi producto".</span></div>
       <div class="tip"><span class="em">📥</span><span><b>Descargar</b> — pega links (TikTok, Instagram, YouTube, Facebook…) y baja los videos automáticamente para usarlos como material.</span></div>
       <div class="tip"><span class="em">🔥</span><span><b>Foreplay</b> — busca en +100M ads GANADORES reales (por nicho/idioma/días corriendo), elige los que te gusten y los corta en clips de una.</span></div>
-      <div class="tip"><span class="em">🔎</span><span><b>Buscar TikTok</b> — encuentra videos de TikTok de un producto (por foto/nombre) para usarlos de material.</span></div>
+      <div class="tip"><span class="em">🔍</span><span><b>Buscar creativos</b> — sube la foto + nombre de tu producto y encuentra los creativos de ese MISMO producto en TikTok Y Foreplay (verificados por IA) para armar tus clips.</span></div>
       <div class="tip"><span class="em">✨</span><span><b>Crear creativo</b> — subes creativos ganadores (cualquier idioma) y la IA hace TODO en cadena: doblaje colombiano → traduce el texto en pantalla → música/efectos por fase → subtítulos → 9:16.</span></div>
       <div class="tip"><span class="em">🎯</span><span><b>Clon con mi producto</b> — sube un ganador + foto/clips de TU producto y la IA lo mete en la escena (reemplaza donde queda limpio, corta a una toma tuya donde hay movimiento) + voz/subtítulos.</span></div>
       <div class="tip"><span class="em">🔄</span><span><b>Reemplazar producto</b> — cambia el producto de un video por el tuyo conservando el audio original.</span></div>

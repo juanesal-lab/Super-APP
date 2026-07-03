@@ -50,6 +50,71 @@ ESTILOS = ["bold_outline", "hormozi", "yellow_highlight", "red_highlight", "high
 _STOP = set("de la el que y a en un una los las por con para su tu mi es se lo le al del "
             "o u ni si no me te nos ¿ ? ¡ ! yo".split())
 
+# ── ACENTO DINÁMICO: el color de resalte de las captions CONTRASTA con el color del producto/video ──
+# Paleta curada (colores que se ven PRO en ads; nada de tonos sucios): nombre → RGB
+_PALETA_ACENTO = [
+    ("amarillo", (255, 214, 10)),
+    ("naranja", (255, 138, 0)),
+    ("rojo", (240, 60, 50)),
+    ("fucsia", (255, 45, 170)),
+    ("cian", (0, 220, 255)),
+    ("verde neon", (57, 255, 106)),
+    ("azul", (64, 140, 255)),
+]
+_ACCENT: tuple | None = None    # override activo (None = colores clásicos del estilo)
+
+
+def set_accent(rgb: tuple | None):
+    """Fija (o limpia con None) el color de acento dinámico de TODAS las captions."""
+    global _ACCENT
+    _ACCENT = (tuple(rgb[:3]) + (255,)) if rgb else None
+
+
+def accent_for_video(video_path: str, samples: int = 5) -> tuple | None:
+    """Color de acento que CONTRASTA con el video: saca el color dominante (HSV medio de varios
+    frames, ponderado por saturación) y elige de la paleta el de tono más LEJANO (rueda de color).
+    Si el video es neutro (gris/blanco), devuelve el amarillo clásico. None si no se pudo leer."""
+    try:
+        import cv2
+        import numpy as np
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return None
+        total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        hues, sats = [], []
+        for k in range(samples):
+            if total > 1:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int(total * (k + 0.5) / samples))
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                continue
+            h, w = frame.shape[:2]
+            centro = frame[h // 4: 3 * h // 4, w // 4: 3 * w // 4]     # el producto suele ir al centro
+            hsv = cv2.cvtColor(cv2.resize(centro, (64, 64)), cv2.COLOR_BGR2HSV).reshape(-1, 3).astype(np.float32)
+            m = hsv[:, 1] > 60                                          # solo píxeles con color real
+            if m.sum() < 50:
+                continue
+            # tono dominante ponderado por saturación (promedio circular)
+            ang = hsv[m, 0] / 180.0 * 2 * np.pi
+            wgt = hsv[m, 1]
+            hues.append(np.arctan2((np.sin(ang) * wgt).sum(), (np.cos(ang) * wgt).sum()))
+            sats.append(float(wgt.mean()))
+        cap.release()
+        if not hues:
+            return _PALETA_ACENTO[0][1]      # video neutro → amarillo clásico
+        dom = float(np.arctan2(np.mean([np.sin(h) for h in hues]), np.mean([np.cos(h) for h in hues])))
+
+        def dist_circular(rgb):
+            r, g, b = [c / 255.0 for c in rgb]
+            hsv = cv2.cvtColor(np.uint8([[[b * 255, g * 255, r * 255]]]), cv2.COLOR_BGR2HSV)[0][0]
+            a = hsv[0] / 180.0 * 2 * np.pi
+            d = abs(a - dom) % (2 * np.pi)
+            return min(d, 2 * np.pi - d)
+        # el color de la paleta con el tono MÁS OPUESTO al dominante = máximo contraste
+        return max(_PALETA_ACENTO, key=lambda p: dist_circular(p[1]))[1]
+    except Exception:  # noqa: BLE001
+        return None
+
 
 def _fontpath(bold_x: bool) -> str:
     p = _POPPINS_XBOLD if bold_x else _POPPINS_BOLD
@@ -136,6 +201,8 @@ def render_caption(text: str, W: int, H: int, style: str = "bold_outline") -> Im
     y0 = max(int(H * 0.55), min(y0, H - SAFE - total_h))
 
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
+    if _ACCENT:                      # acento dinámico: contrasta con el color del producto/video
+        yellow = red = _ACCENT
 
     def centered_x(ln_words, f):
         return (W - _line_width(draw, ln_words, f)) // 2
@@ -237,7 +304,7 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     total_h = line_h * len(lines)
     y0 = max(int(H * 0.60), min(int(H * 0.80) - total_h // 2, H - SAFE - total_h))
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
-    accent = red if style == "red_highlight" else yellow
+    accent = _ACCENT or (red if style == "red_highlight" else yellow)
     boxed = style in ("pill", "highlight_box", "karaoke")
     kws = _keywords(text) if style in ("hormozi", "yellow_highlight", "red_highlight") else set()
 

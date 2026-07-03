@@ -62,6 +62,27 @@ class Segment:
         return d
 
 
+def segment_signatures(seg: "Segment", fracs=(0.2, 0.5, 0.8)) -> list:
+    """VARIAS firmas perceptuales (aHash 8x8) por segmento — al inicio, medio y final.
+
+    Con una sola firma (frame medio) dos tomas de la MISMA escena en archivos/tiempos distintos no se
+    detectaban como duplicadas (causa de que los cortes se repitieran entre versiones cuando los
+    creativos del proveedor comparten metraje). Con 3 firmas, basta que UNA coincida para marcarlas."""
+    sigs = []
+    cap = cv2.VideoCapture(seg.video)
+    if not cap.isOpened():
+        return sigs
+    for f in fracs:
+        cap.set(cv2.CAP_PROP_POS_MSEC, (seg.start + (seg.end - seg.start) * f) * 1000.0)
+        ok, frame = cap.read()
+        if ok and frame is not None:
+            g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            g = cv2.resize(g, (8, 8)).astype(np.float32)
+            sigs.append((g > g.mean()).flatten())
+    cap.release()
+    return sigs
+
+
 def segment_signature(seg: "Segment"):
     """Firma perceptual (aHash 8x8) del frame medio, para detectar duplicados visuales."""
     cap = cv2.VideoCapture(seg.video)

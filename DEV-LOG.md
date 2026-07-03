@@ -1542,3 +1542,20 @@ Juan: la búsqueda seguía dando productos equivocados y los gifs eran "cortes s
   conectando boquilla, producto=presentándolo a cámara. WebM 1:1 todos ≤500KB.
 - AVISO Jack: toqué tiktok_search (dual juez + etiquetas; tu expansión de consultas quedó intacta),
   orchestrator (bloque de loose clips) y nuevo phase_classify.py. Las 8 versiones NO se tocaron.
+
+### 2026-07-03 · Claude (juanesal-lab) · ✂️ Cortar clips PRO: cero repetición + edición TikTok + captions que contrastan con el producto
+Juan: los cortes se repetían muchísimo (aun con 30+ creativos), quería edición "súper profesional" y que las
+captions contrastaran con el color del producto. 3 mejoras (validadas con métricas):
+1. **Dedup multi-firma** (`analyze.segment_signatures` NUEVO + `_select_for_target`): antes 1 aHash del frame
+   medio → la MISMA escena en otro archivo/segundo no se detectaba (los creativos de proveedor comparten
+   metraje = raíz de la repetición). Ahora 3 firmas (20/50/80%) y basta 1 coincidencia para descartar.
+2. **Edición pro** (`assemble.order_version`): HOOK (toma más fuerte) → CUERPO (tomas cortas primero = ritmo;
+   greedy que NUNCA pone 2 tomas seguidas del mismo video) → PAYOFF (cierra con el producto en uso).
+   Métricas con pool de 36 segs/12 fuentes: overlap entre versiones 0% (antes ~70%), 3/28 consecutivos
+   mismo video, 6/8 versiones cierran con payoff.
+3. **Captions con contraste dinámico** (`caption_styles`): NUEVO `accent_for_video()` (color dominante HSV
+   ponderado por saturación, frames centrales) + paleta curada de 7 acentos → elige el tono MÁS OPUESTO
+   (rojo→cian, azul→amarillo, rosado→verde neón, verde→fucsia; validado). `set_accent()` global; se calcula
+   1 vez en `render_versions` sobre el primer montaje. Estilos y preview siguen igual si no hay acento.
+- AVISO Jack: toqué `order_version` (tu build_variations — el bucket disjunto tuyo quedó intacto),
+  `_select_for_target` (multi-sig) y caption_styles (acento opt-in, default None → tus 5 estilos idénticos).

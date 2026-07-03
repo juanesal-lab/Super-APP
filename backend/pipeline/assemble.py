@@ -235,13 +235,30 @@ def build_variations(selected: list[Segment], work_dir: str,
     by_use = sorted(range(n), key=lambda i: (selected[i].shows_use, selected[i].score), reverse=True)
 
     def order_version(idxs):
-        """Gancho fuerte primero + resto cronologico (secuencia natural)."""
+        """Estructura de edición PRO estilo TikTok:
+        1) HOOK: la toma más fuerte de una (frena el scroll).
+        2) CUERPO: nunca dos tomas seguidas del MISMO video (se siente editado, no pegado),
+           empezando por las tomas CORTAS (ritmo rápido al inicio, como los ads que retienen).
+        3) PAYOFF: cierra con la mejor toma del producto EN USO (el "remate" antes del CTA)."""
         if not idxs:
             return []
-        best = max(idxs, key=lambda i: selected[i].score)
-        rest = sorted([i for i in idxs if i != best],
-                      key=lambda i: (selected[i].source_index, selected[i].start))
-        return [best] + rest
+        hook = max(idxs, key=lambda i: selected[i].score)
+        rest = [i for i in idxs if i != hook]
+        # payoff: mejor toma con el producto en uso/visible (si existe) reservada para el cierre
+        payoff = None
+        uso = [i for i in rest if selected[i].shows_use or selected[i].product_visible]
+        if uso and len(rest) >= 2:
+            payoff = max(uso, key=lambda i: (selected[i].shows_use, selected[i].score))
+            rest.remove(payoff)
+        # cuerpo: cortas primero (ritmo) y alternando la fuente (greedy anti-repetición)
+        rest.sort(key=lambda i: (selected[i].duration(), -selected[i].score))
+        cuerpo, prev_src, pool = [], selected[hook].source_index, rest[:]
+        while pool:
+            pick = next((i for i in pool if selected[i].source_index != prev_src), pool[0])
+            pool.remove(pick)
+            cuerpo.append(pick)
+            prev_src = selected[pick].source_index
+        return [hook] + cuerpo + ([payoff] if payoff is not None else [])
 
     if n >= NV * 3:
         # POOL GRANDE: cada version usa clips DISJUNTOS (de videos distintos) -> máxima diversidad

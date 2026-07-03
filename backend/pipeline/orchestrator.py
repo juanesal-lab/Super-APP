@@ -5,7 +5,7 @@ import os
 from typing import Callable
 
 from .ffmpeg_utils import probe, run
-from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, sig_distance
+from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, segment_signatures, sig_distance
 from .gemini_rank import rank_with_gemini
 from concurrent.futures import ThreadPoolExecutor
 
@@ -54,10 +54,11 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     chosen_sigs: list = []
     per_source: dict[int, int] = {}
 
-    def is_duplicate(sig) -> bool:
-        if sig is None:
-            return False
-        return any(sig_distance(sig, s) < _DUP_THRESHOLD for s in chosen_sigs if s is not None)
+    def is_duplicate(sigs) -> bool:
+        # duplicado si CUALQUIERA de las firmas del segmento coincide con CUALQUIERA ya elegida
+        # (caza la misma escena aunque esté en otro archivo o en otro segundo del video)
+        return any(sig_distance(a, s) < _DUP_THRESHOLD
+                   for a in sigs for s in chosen_sigs if a is not None and s is not None)
 
     # 1ra pasada: respetando el tope por fuente (asegura variedad de videos)
     # 2da pasada: si falta, relajar el tope por fuente
@@ -69,11 +70,11 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
                 continue
             if not relax and per_source.get(seg.source_index, 0) >= cap_per_source:
                 continue
-            sig = segment_signature(seg)
-            if is_duplicate(sig):
+            sigs = segment_signatures(seg)
+            if is_duplicate(sigs):
                 continue
             chosen.append(seg)
-            chosen_sigs.append(sig)
+            chosen_sigs.extend(sigs)
             per_source[seg.source_index] = per_source.get(seg.source_index, 0) + 1
         if len(chosen) >= pool_size:
             break
@@ -335,6 +336,14 @@ def render_versions(
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,
                              target_seconds=target_seconds)
     versions = built["versions"]
+
+    # ACENTO DINÁMICO de captions: el color de resalte CONTRASTA con el color dominante del
+    # producto/video (se calcula 1 vez sobre el primer montaje). Si falla → colores clásicos.
+    try:
+        from . import caption_styles as _cs
+        _cs.set_accent(_cs.accent_for_video(versions[0]["path"]) if versions else None)
+    except Exception:  # noqa: BLE001
+        pass
 
     # Gancho: el del usuario o uno generado con IA
     final_hook = hook_text.strip()

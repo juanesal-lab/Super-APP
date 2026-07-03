@@ -111,6 +111,32 @@ def _parse_array(text: str) -> list[dict] | None:
         return None
 
 
+def _call_rest_fast(api_key: str, prompt: str, sheet: bytes) -> str | None:
+    """Llamada REST directa con thinkingBudget=0 (sin 'pensamiento'): la MISMA respuesta
+    en ~3s en vez de ~25s. El SDK instalado (google-genai 0.8.0) no expone ese parametro,
+    por eso va por REST. Si algo falla devuelve None y el caller usa el SDK (camino viejo)."""
+    import base64
+    import urllib.request
+    body = {
+        "contents": [{"parts": [
+            {"text": prompt},
+            {"inline_data": {"mime_type": "image/jpeg",
+                             "data": base64.b64encode(sheet).decode()}},
+        ]}],
+        "generationConfig": {"thinkingConfig": {"thinkingBudget": 0}},
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{_MODEL}:generateContent"
+    # La key va por HEADER (no en la URL) para que no quede en logs/proxies ni en mensajes de error.
+    req = urllib.request.Request(url, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json",
+                                          "x-goog-api-key": api_key})
+    try:
+        resp = json.loads(urllib.request.urlopen(req, timeout=75).read())
+        return resp["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def rank_with_gemini(segments: list[Segment], api_key: str | None = None,
                      product_desc: str = "", max_candidates: int = _MAX_CANDIDATES
                      ) -> tuple[list[Segment], bool]:
@@ -119,29 +145,31 @@ def rank_with_gemini(segments: list[Segment], api_key: str | None = None,
     if not api_key:
         return segments, False
 
-    try:
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=api_key)
-    except Exception:
-        return segments, False
-
     candidates = sorted(segments, key=lambda s: s.local_score, reverse=True)[:max_candidates]
     sheet, ordered = _contact_sheet(candidates)
     if sheet is None:
         return segments, False
 
-    try:
-        resp = client.models.generate_content(
-            model=_MODEL,
-            contents=[
-                _prompt(product_desc, len(ordered)),
-                types.Part.from_bytes(data=sheet, mime_type="image/jpeg"),
-            ],
-        )
-        data = _parse_array(resp.text or "")
-    except Exception:
-        return segments, False
+    # 1) Camino RAPIDO: REST sin thinking (~3s). 2) Fallback: SDK como siempre (~25s).
+    data = None
+    text = _call_rest_fast(api_key, _prompt(product_desc, len(ordered)), sheet)
+    if text:
+        data = _parse_array(text)
+    if not data:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=api_key)
+            resp = client.models.generate_content(
+                model=_MODEL,
+                contents=[
+                    _prompt(product_desc, len(ordered)),
+                    types.Part.from_bytes(data=sheet, mime_type="image/jpeg"),
+                ],
+            )
+            data = _parse_array(resp.text or "")
+        except Exception:
+            return segments, False
 
     if not data:
         return segments, False

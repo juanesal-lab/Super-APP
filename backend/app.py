@@ -469,6 +469,29 @@ async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
                   foreplay_key=_load_foreplay_key())     # + ads ganadores de Foreplay al mismo pool
 
 
+# ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
+
+@app.post("/api/creative-search")
+async def creative_search(nombre: str = Form(""), count: int = Form(20),
+                          fp_count: int = Form(20), foto: UploadFile = File(None)):
+    """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
+    /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo."""
+    from pipeline.creative_search import buscar_creativos
+    img_path = None
+    if foto is not None and foto.filename:
+        d = os.path.join(UPLOAD_DIR, "tksearch")
+        os.makedirs(d, exist_ok=True)
+        img_path = os.path.join(d, os.path.basename(foto.filename))
+        with open(img_path, "wb") as o:
+            shutil.copyfileobj(foto.file, o)
+    if not (nombre.strip() or img_path):
+        raise HTTPException(400, "Dame el nombre del producto o una foto")
+    return buscar_creativos(image_path=img_path, nombre=nombre.strip(),
+                            gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
+                            anthropic_key=_load_anthropic_key(),
+                            count=int(count), fp_count=int(fp_count))
+
+
 # ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----
 
 def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, settings: dict):
@@ -990,6 +1013,10 @@ async def producto_clips(
     text_mode: str = Form("tapar"),
     musica: bool = Form(True),
     bajar_volumen: bool = Form(True),
+    voz_en_off: bool = Form(False),
+    voz: str = Form("juan_carlos"),
+    caption_style: str = Form("hormozi"),
+    subtitulos: bool = Form(True),
 ):
     """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
     links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
@@ -1014,6 +1041,12 @@ async def producto_clips(
         "use_gemini": True,
         "musica": bool(musica),
         "bajar_volumen": bool(bajar_volumen),
+        "voz_en_off": bool(voz_en_off),
+        "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
+        "caption_style": caption_style if caption_style in (
+            "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
+            else "hormozi",
+        "subtitulos": bool(subtitulos),
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}

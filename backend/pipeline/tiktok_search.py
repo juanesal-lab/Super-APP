@@ -381,17 +381,21 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
 
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
            count: int = 20, anthropic_key: str | None = None,
-           foreplay_key: str | None = None) -> dict:
+           foreplay_key: str | None = None,
+           analisis: dict | None = None) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
-    Si hay `foreplay_key`, también busca en la biblioteca de ads GANADORES de Foreplay (misma verificación)."""
+    Si hay `foreplay_key`, también busca en la biblioteca de ads GANADORES de Foreplay (misma verificación).
+    `analisis` (opcional): el dict de analizar_foto YA calculado (lo pasa creative_search para que la
+    búsqueda combinada TikTok+Foreplay analice la foto UNA sola vez). Sin él, se calcula aquí (igual
+    que siempre)."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
     queries = _expandir(nombre, [])
     if image_path and os.path.exists(image_path):
-        info = analizar_foto(image_path, nombre, api_key)
+        info = analisis or analizar_foto(image_path, nombre, api_key)
         ref_desc = info["desc"]
         queries = info.get("variants") or [info["keywords"]]
         try:

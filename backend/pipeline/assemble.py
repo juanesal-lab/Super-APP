@@ -165,7 +165,7 @@ def concat_clips(clip_paths: list[str], out_path: str, work_dir: str) -> str:
             f.write(f"file '{os.path.abspath(p)}'\n")
     cmd = [
         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file,
-        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "128k",
         out_path,
@@ -216,23 +216,21 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
     return out_path
 
 
-def build_variations(selected: list[Segment], work_dir: str,
-                     dims: tuple[int, int], enhance: bool = False,
-                     fx: bool = False, target_seconds: float = 15.0) -> dict:
-    """Crea clips normalizados y arma varias versiones (montajes) del video final.
+def plan_variations(selected: list[Segment], target_seconds: float = 15.0
+                    ) -> list[tuple[str, list[int]]]:
+    """Decide QUÉ clips (indices de `selected`) usa cada versión, SIN renderizar nada.
 
-    Devuelve dict con: clips[], versions[] (cada una {name, path, segments}).
-    """
-    os.makedirs(work_dir, exist_ok=True)
+    Separado de build_variations para poder saber ANTES qué cortes se usan de verdad
+    (así el tapado de textos procesa solo esos). Devuelve [(nombre, [indices]), ...]."""
     n = len(selected)
     NV = 8
     names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express",
              "G_mixta", "H_alterna"]
     cpv = max(4, min(10, round(target_seconds / 2.2)))   # clips por version
+    if n == 0:
+        return []
 
     by_score = sorted(range(n), key=lambda i: selected[i].score, reverse=True)
-    by_time = sorted(range(n), key=lambda i: (selected[i].source_index, selected[i].start))
-    by_use = sorted(range(n), key=lambda i: (selected[i].shows_use, selected[i].score), reverse=True)
 
     def order_version(idxs):
         """Estructura de edición PRO estilo TikTok:
@@ -267,18 +265,38 @@ def build_variations(selected: list[Segment], work_dir: str,
             buckets[rank % NV].append(i)
         version_orders = [(names[vi], order_version(buckets[vi][:cpv])) for vi in range(NV)]
     else:
-        # POCOS CLIPS: cada versión toma una VENTANA DISTINTA (rotada) de un orden distinto, para que
-        # NO se repitan las mismas 4-5 tomas entre versiones (dentro de lo posible con pocos clips).
-        alt = ([i for k, i in enumerate(by_score) if k % 2 == 0]
-               + [i for k, i in enumerate(by_score) if k % 2 == 1])
-        bases = [by_score, by_time, by_use, list(reversed(by_time)), alt, list(reversed(by_score))]
-        step = max(1, n // NV)          # cada versión arranca en un punto distinto del ranking
+        # POCOS CLIPS: (1) el GANCHO (primer clip) ROTA entre los mejores por score -> cada versión
+        # abre distinto; (2) el resto se elige priorizando los clips MENOS USADOS por las versiones
+        # anteriores -> los CONJUNTOS se solapan lo mínimo posible con un pool chico.
+        k_hooks = min(NV, n)
+        usage = {i: 0 for i in range(n)}
         version_orders = []
         for vi in range(NV):
-            base = bases[vi % len(bases)]
-            off = (vi * step) % n
-            rot = base[off:] + base[:off]        # rotación -> ventana de clips distinta por versión
-            version_orders.append((names[vi], order_version(rot[:cpv])))
+            hook = by_score[vi % k_hooks]
+            pool = [i for i in range(n) if i != hook]
+            pool.sort(key=lambda i: (usage[i], -selected[i].score,
+                                     selected[i].source_index, selected[i].start))
+            take = pool[:max(0, cpv - 1)]
+            rest = sorted(take, key=lambda i: (selected[i].source_index, selected[i].start))
+            order = [hook] + rest
+            for i in order:
+                usage[i] += 1
+            version_orders.append((names[vi], order))
+    return version_orders
+
+
+def build_variations(selected: list[Segment], work_dir: str,
+                     dims: tuple[int, int], enhance: bool = False,
+                     fx: bool = False, target_seconds: float = 15.0,
+                     version_orders: list[tuple[str, list[int]]] | None = None) -> dict:
+    """Crea clips normalizados y arma varias versiones (montajes) del video final.
+
+    `version_orders` (opcional) permite pasar un plan ya calculado con plan_variations
+    (los indices refieren a `selected`). Devuelve dict con: clips[], versions[].
+    """
+    os.makedirs(work_dir, exist_ok=True)
+    if version_orders is None:
+        version_orders = plan_variations(selected, target_seconds=target_seconds)
 
     # Renderizar SOLO los clips que de verdad se usan (no todo el pool) -> más rápido
     used_idx = sorted({i for _, order in version_orders for i in order})
@@ -318,7 +336,7 @@ def add_voiceover(video_path: str, vo_path: str, out_path: str) -> str:
     run([
         "ffmpeg", "-y", "-stream_loop", "-1", "-i", video_path, "-i", vo_path,
         "-map", "0:v:0", "-map", "1:a:0", "-shortest",
-        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "192k",
         out_path,
@@ -538,7 +556,7 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
         "ffmpeg", "-y", *inputs,
         "-filter_complex", ";".join(fc),
         "-map", "0:v:0", "-map", "[a]", "-shortest",
-        "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+        *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "192k",
         out_path,

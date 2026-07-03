@@ -19,6 +19,7 @@ from .downloader import download_urls
 from .ffmpeg_utils import run, probe
 from .hook_gen import fetch_page_text
 from .orchestrator import process_job
+from .scripts import generate_scripts
 from . import voiceover
 
 _MODEL = "gemini-2.5-flash"
@@ -59,22 +60,24 @@ def _tiene_audio(path: str) -> bool:
         return False
 
 
-def _musica_y_volumen(versions: list[dict], work_dir: str, *, eleven_key: str | None,
-                      desc: str, genero: str, bajar_volumen: bool,
-                      report) -> None:
-    """Genera 1 pista de música del género elegido y la mezcla en cada versión (bajando el volumen
-    de los clips). Modifica versions[i]['path'] en el sitio. Si falla la música, deja las versiones igual."""
-    if not eleven_key or not versions:
-        return
+def _generar_musica(work_dir: str, *, eleven_key: str | None, genero: str,
+                    report) -> str | None:
+    """Genera 1 pista de música del género elegido (ElevenLabs Music). None si falla o no hay key."""
+    if not eleven_key:
+        return None
     music_path = os.path.join(work_dir, "musica.mp3")
     try:
         report(f"Poniendo música ({genero})...", 90)
         voiceover.music(eleven_key, _GENEROS.get(genero, _GENEROS["energico"]), music_path,
                         length_ms=30000)
     except Exception:  # noqa: BLE001
-        return
-    if not os.path.exists(music_path):
-        return
+        return None
+    return music_path if os.path.exists(music_path) else None
+
+
+def _mezclar_musica(versions: list[dict], music_path: str, *, bajar_volumen: bool) -> None:
+    """Mezcla la música en cada versión (bajando el volumen de los clips). Modifica
+    versions[i]['path'] en el sitio. Si una versión falla, se deja igual (sin música)."""
     clip_vol = "0.12" if bajar_volumen else "0.55"
     for v in versions:
         p = v.get("path")
@@ -99,6 +102,74 @@ def _musica_y_volumen(versions: list[dict], work_dir: str, *, eleven_key: str | 
             v["path"] = out
         except Exception:  # noqa: BLE001
             continue
+
+
+def _voz_y_subtitulos(versions: list[dict], work_dir: str, *, eleven_key: str | None,
+                      gemini_key: str | None, desc: str, page_text: str,
+                      target_seconds: float, voz: str, caption_style: str,
+                      subtitulos: bool, music_path: str | None, n_guiones: int,
+                      report) -> list[str] | None:
+    """Voz en off por versión: guiones con Gemini (1 llamada, respeta las reglas de oro:
+    sin precio + CTA exacto) → narración colombiana (ElevenLabs, con tiempos por palabra) →
+    mezcla voz clara + música baja (add_voiceover_and_sfx) → subtítulos palabra x palabra
+    (burn_word_captions, estilo elegible). Con menos guiones que versiones, las narraciones
+    se reutilizan cicladas (n_guiones limita cuántas se generan → controla el costo).
+
+    Devuelve la lista de guiones usados, o None si no se pudo (el caller cae a música sola)."""
+    if not (eleven_key and versions):
+        return None
+    n = len(versions) if not n_guiones else max(1, min(int(n_guiones), len(versions)))
+    report("Escribiendo los guiones de la voz en off...", 91)
+    guiones = generate_scripts(gemini_key, desc, page_text, target_seconds, n=n)
+    if not guiones:
+        return None
+
+    from concurrent.futures import ThreadPoolExecutor
+    report(f"Narrando {len(guiones)} guion(es) con la voz colombiana...", 93)
+
+    def _tts(item):
+        i, g = item
+        mp3 = os.path.join(work_dir, f"vo_{i}.mp3")
+        try:
+            words = voiceover.synthesize_with_timestamps(eleven_key, g["texto"], voz, mp3)
+            return (mp3, words, g["texto"])
+        except Exception:  # noqa: BLE001
+            return None
+
+    with ThreadPoolExecutor(max_workers=min(4, len(guiones))) as ex:
+        narraciones = [r for r in ex.map(_tts, list(enumerate(guiones))) if r]
+    if not narraciones:
+        return None
+
+    from .assemble import add_voiceover_and_sfx
+    from .caption_styles import burn_word_captions
+    usados: list[str] = []
+    for i, v in enumerate(versions):
+        p = v.get("path")
+        if not p or not os.path.exists(p):
+            continue
+        mp3, words, texto = narraciones[i % len(narraciones)]
+        report(f"Voz en off y subtítulos ({i + 1}/{len(versions)})...", min(94 + i, 99))
+        base = p[:-4] if p.endswith(".mp4") else p
+        try:
+            out_vo = base + "_vo.mp4"
+            add_voiceover_and_sfx(p, mp3, out_vo, music_path=music_path)
+            v["path"] = out_vo
+            v["voiceover"] = True
+        except Exception:  # noqa: BLE001
+            continue                      # esta versión queda como estaba (sin voz)
+        if subtitulos and words:
+            try:
+                prev = v["path"]
+                np = burn_word_captions(prev, words, work_dir, base + "_vocap.mp4",
+                                        style=caption_style)
+                v["path"] = np
+                v["captions"] = (np != prev)
+            except Exception:  # noqa: BLE001
+                v["captions"] = False
+        v["guion"] = texto
+        usados.append(texto)
+    return usados or None
 
 
 def describir_producto(product_url: str, image_path: str | None, gemini_key: str | None,
@@ -202,14 +273,41 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         progress=lambda m, p: report(m, 32 + p * 0.66),
     )
 
-    # 4 · Música automática (la IA elige el género por el producto) + bajar volumen de los clips
-    if isinstance(result, dict) and result.get("ok") and result.get("versions") \
-            and settings.get("musica", True):
-        genero = _elegir_genero(desc, gemini_key)
-        _musica_y_volumen(result["versions"], os.path.join(work_dir, "out"),
-                          eleven_key=eleven_key, desc=desc, genero=genero,
-                          bajar_volumen=bool(settings.get("bajar_volumen", True)), report=report)
-        result["genero_musica"] = genero
+    # 4 · Música automática (la IA elige el género por el producto) + voz en off opcional
+    #     (guion por versión + narración colombiana + subtítulos) o solo bajar volumen de los clips.
+    if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+        out_dir = os.path.join(work_dir, "out")
+        music_path = None
+        if settings.get("musica", True):
+            genero = _elegir_genero(desc, gemini_key)
+            music_path = _generar_musica(out_dir, eleven_key=eleven_key, genero=genero,
+                                         report=report)
+            result["genero_musica"] = genero
+        guiones = None
+        if settings.get("voz_en_off"):
+            page_text = ""
+            if (product_url or "").strip():
+                try:
+                    page_text = fetch_page_text(product_url.strip(), max_chars=2500)
+                except Exception:  # noqa: BLE001
+                    page_text = ""
+            guiones = _voz_y_subtitulos(
+                result["versions"], out_dir, eleven_key=eleven_key, gemini_key=gemini_key,
+                desc=desc, page_text=page_text,
+                target_seconds=float(settings.get("target_seconds", 15.0)),
+                voz=settings.get("voz", "juan_carlos"),
+                caption_style=settings.get("caption_style", "hormozi"),
+                subtitulos=bool(settings.get("subtitulos", True)),
+                music_path=music_path, n_guiones=int(settings.get("vo_guiones", 0) or 0),
+                report=report)
+            if guiones:
+                result["voz_en_off"] = True
+                result["guiones_vo"] = guiones
+                result["caption_style"] = settings.get("caption_style", "hormozi")
+        if not guiones and music_path:
+            # Sin voz en off (o si falló): EXACTAMENTE el comportamiento de antes (música sola)
+            _mezclar_musica(result["versions"], music_path,
+                            bajar_volumen=bool(settings.get("bajar_volumen", True)))
 
     if isinstance(result, dict):
         result["producto_desc"] = desc

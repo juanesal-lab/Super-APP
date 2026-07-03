@@ -22,3 +22,6 @@ incoming/
 # === Sistema ===
 .DS_Store
 Thumbs.db
+
+# === Claude Code (worktrees de sesiones paralelas) ===
+.claude/worktrees/

@@ -1522,3 +1522,23 @@ Cambios en tiktok_search.py:
 - Probado real (foto del frasco bee venom, count=30): 11 → 21 verificados. (El techo real depende de
   cuántos videos de ese producto exacto existan en TikTok; productos nicho pueden dar ~20-25.)
   AVISO Juan: toqué tiktok_search.py (analizar_foto, _expandir, buscar, _verificar). No cambié el shape.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🎙️💬 Mi producto: VOZ EN OFF + subtítulos seleccionables (pendiente #2)
+- Toggle "🎙️ Voz en off" en Mi producto: guiones POR VERSIÓN con UNA llamada a Gemini
+  (scripts.generate_scripts, reglas de oro garantizadas: sin precio, CTA exacto vía _con_cta) →
+  narración colombiana (voiceover.synthesize_with_timestamps, TTS en paralelo, voz kate/juan_carlos)
+  → mezcla voz clara + música baja (add_voiceover_and_sfx, voz 1.0/música 0.16) → subtítulos palabra
+  x palabra con los 5 estilos elegibles (burn_word_captions) + preview en la UI (patrón capStyle).
+- producto_clips.py: _musica_y_volumen dividida en _generar_musica + _mezclar_musica (mezcla intacta);
+  nueva _voz_y_subtitulos con try/except por versión (si falla una, queda como estaba); perilla interna
+  settings["vo_guiones"] (0=un guion por versión; N=narraciones cicladas para controlar costo ElevenLabs).
+- app.py /api/producto-clips: Forms voz_en_off/voz/caption_style/subtitulos (validados con whitelist).
+- RETROCOMPATIBLE: con voz_en_off=False el flujo es EXACTAMENTE el de antes (música sola).
+- Verificado por 2 agentes: E2E real con 2 videos de bee venom → 8 versiones con voz+subs, frames
+  mirados (hormozi OK), ffprobe voz presente, CTA exacto en los guiones, cero precio. Muestras en
+  ~/Downloads/prueba/MIPRODUCTO_voz_subs_A.mp4 y _C.mp4. Revisor: 28/28 tests con mocks (retrocompat,
+  ciclado con TTS parciales, sin mezcla doble de música, JS con node --check, whitelists del endpoint).
+- Costo de la prueba: ~6 llamadas Gemini flash + 1 música + 2 TTS. En producción: 8 TTS/job por defecto
+  (vo_guiones interno permite bajarlo; no expuesto en UI aún).
+- AVISO Juan: NO toqué orchestrator/assemble/caption_styles/voiceover — solo producto_clips.py, el
+  endpoint /api/producto-clips y la pestaña Mi producto del front.

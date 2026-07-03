@@ -659,6 +659,21 @@
       <label><input type="checkbox" id="prodBlur" checked> Tapar (desenfocar) el texto del video original</label>
       <label><input type="checkbox" id="prodMusica" checked> 🎵 Música automática (la IA elige el género)</label>
       <label><input type="checkbox" id="prodBajarVol" checked> 🔉 Bajar el volumen de los clips</label>
+      <label><input type="checkbox" id="prodVO" onchange="document.getElementById('prodVOOpts').style.display=this.checked?'flex':'none'"> 🎙️ Voz en off (guion IA + voz colombiana + subtítulos)</label>
+    </div>
+    <div id="prodVOOpts" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <select id="prodVoz" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <option value="juan_carlos">Voz: Juan Carlos</option>
+        <option value="kate">Voz: Kate</option>
+      </select>
+      <select id="prodCapStyle" title="Estilo de subtítulos (los que más CTR tienen en TikTok/Meta)" onchange="document.getElementById('prodCapPrev').src='/api/caption-preview?style='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <option value="hormozi">Subtítulos: Hormozi (palabra x palabra, keyword amarilla)</option>
+        <option value="karaoke">Subtítulos: Karaoke (resalta la palabra que suena)</option>
+        <option value="highlight_box">Subtítulos: Caja (palabra en caja de color)</option>
+        <option value="bold_outline">Subtítulos: Bold (blanco con borde grueso)</option>
+        <option value="yellow_highlight">Subtítulos: Amarillo (claves resaltadas)</option>
+      </select>
+      <img id="prodCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven los subtítulos" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
     </div>
 
     <details class="prodAdv">
@@ -746,6 +761,9 @@
         fd.append('blur_captions',document.getElementById('prodBlur').checked);
         fd.append('musica',document.getElementById('prodMusica').checked);
         fd.append('bajar_volumen',document.getElementById('prodBajarVol').checked);
+        fd.append('voz_en_off',document.getElementById('prodVO').checked);
+        fd.append('voz',document.getElementById('prodVoz').value);
+        fd.append('caption_style',document.getElementById('prodCapStyle').value);
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
@@ -764,6 +782,7 @@
       let info=window._prodScout||'';
       if(res.producto_desc) info+=`<div class="prodInfo">🧠 La IA entendió tu producto como: <b>${res.producto_desc}</b></div>`;
       if(typeof res.descargados!=='undefined') info+=`<div class="prodInfo">⬇️ ${res.descargados} video(s) descargado(s)${res.fallidos?` · ${res.fallidos} fallaron`:''}</div>`;
+      if(res.voz_en_off) info+=`<div class="prodInfo">🎙️ Voz en off + subtítulos (estilo <b>${res.caption_style||''}</b>) · ${(res.guiones_vo||[]).length} guion(es)</div>`;
       document.getElementById('prodMeta').innerHTML=info;
       renderResults(res,'productoResults');
     }

@@ -951,6 +951,10 @@ async def producto_clips(
     text_mode: str = Form("tapar"),
     musica: bool = Form(True),
     bajar_volumen: bool = Form(True),
+    voz_en_off: bool = Form(False),
+    voz: str = Form("juan_carlos"),
+    caption_style: str = Form("hormozi"),
+    subtitulos: bool = Form(True),
 ):
     """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
     links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
@@ -975,6 +979,12 @@ async def producto_clips(
         "use_gemini": True,
         "musica": bool(musica),
         "bajar_volumen": bool(bajar_volumen),
+        "voz_en_off": bool(voz_en_off),
+        "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
+        "caption_style": caption_style if caption_style in (
+            "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
+            else "hormozi",
+        "subtitulos": bool(subtitulos),
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}

@@ -16,6 +16,7 @@
   }
   *{box-sizing:border-box}
   ::selection{background:rgba(212,175,55,.35);color:#fff}
+  html,body{overscroll-behavior-x:none}  /* dos dedos a la izquierda YA NO devuelve la página */
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     background:var(--bg);color:var(--txt);line-height:1.55;-webkit-font-smoothing:antialiased;
     background-image:
@@ -2711,6 +2712,78 @@ async function dubPoll(id){
       <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=doblado_'+res.target_lang">Descargar</button></div>
     </div>`;
 }
+</script>
+
+<script>
+// ── 🧠 NO PERDER NADA: gesto atrás controlado + restaurar pestaña/resultados/trabajos ──
+(function(){
+  const g=(k,v)=>{ try{ sessionStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
+  const l=(k)=>{ try{ const v=sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return null; } };
+  const borrar=(k)=>{ try{ sessionStorage.removeItem(k); }catch(e){} };
+
+  // homeEnter con memoria + historial del navegador (atrás = volver al garaje, no salirse)
+  const homeEnterOrig=window.homeEnter;
+  window.homeEnter=function(tabId, sinHistorial){
+    g('cm_tab', tabId);
+    if(!sinHistorial){ try{ history.pushState({tab:tabId}, ''); }catch(e){} }
+    return homeEnterOrig(tabId);
+  };
+  document.getElementById('tabs').addEventListener('click', e=>{
+    const b=e.target.closest('button[data-p]'); if(b) g('cm_tab', b.dataset.p);
+  }, true);
+  addEventListener('popstate', e=>{
+    const wrap=document.querySelector('.wrap'), home=document.getElementById('home');
+    if(e.state && e.state.tab){                     // adelante → volver a la pestaña
+      if(home && home.style.display!=='none'){ window.homeEnter(e.state.tab, true); }
+      else{ const b=document.querySelector(`#tabs button[data-p="${e.state.tab}"]`); if(b) b.click(); g('cm_tab', e.state.tab); }
+    }else if(wrap && wrap.style.display!=='none'){  // atrás desde una pestaña → garaje (sin salir)
+      borrar('cm_tab');
+      if(typeof homeBack==='function') homeBack();
+    }
+  });
+
+  // Foreplay: guardar resultados tras cada render y restaurarlos al volver
+  if(typeof fpRender==='function'){
+    const fpRenderOrig=fpRender;
+    fpRender=function(){
+      const r=fpRenderOrig.apply(this, arguments);
+      try{ g('cm_fp', {ads:_fpAds, modo:_fpModo, cursor:_fpCursor, conf:_fpConf, crudo:_fpCrudo,
+                       q:(document.getElementById('fpQuery')||{}).value||''}); }catch(e){}
+      return r;
+    };
+  }
+
+  // Trabajos en curso: recordar el job de cada poll para re-engancharlo tras un reload
+  for(const nombre of ['fpProductoPoll','fpPoll','vhPoll','clonePoll','autoPoll','prodPoll','swapPoll','dubPoll']){
+    const orig=window[nombre];
+    if(typeof orig!=='function') continue;
+    window[nombre]=function(id){ if(id) g('cm_job_'+nombre, id); return orig.apply(this, arguments); };
+  }
+
+  // ── Restaurar al cargar ──
+  addEventListener('DOMContentLoaded', ()=>{ setTimeout(async ()=>{
+    try{
+      const tab=l('cm_tab');
+      if(tab && document.querySelector(`#tabs button[data-p="${tab}"]`)) window.homeEnter(tab, true);
+      const fp=l('cm_fp');
+      if(fp && Array.isArray(fp.ads) && fp.ads.length && typeof fpRender==='function'){
+        _fpAds=fp.ads; _fpModo=fp.modo||'buscar'; _fpCursor=fp.cursor||'';
+        _fpConf=fp.conf||0; _fpCrudo=fp.crudo||0;
+        const q=document.getElementById('fpQuery'); if(q && fp.q) q.value=fp.q;
+        fpRender();
+      }
+      for(const nombre of ['fpProductoPoll','fpPoll','vhPoll','clonePoll','autoPoll','prodPoll','swapPoll','dubPoll']){
+        const id=l('cm_job_'+nombre);
+        if(!id || typeof window[nombre]!=='function') continue;
+        try{
+          const r=await fetch('/api/status/'+id);
+          if(r.ok){ window[nombre](id); }              // sigue vivo o terminado → re-enganchar
+          else borrar('cm_job_'+nombre);               // el server ya no lo conoce → limpiar
+        }catch(e){}
+      }
+    }catch(e){}
+  }, 300); });
+})();
 </script>
 </body>
 </html>

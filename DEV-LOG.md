@@ -2187,3 +2187,23 @@ página por defecto (acepta 100); (2) las búsquedas LARGAS matan ("toallas de t
   1 Gemini foto + ~16 créditos Foreplay + ≤60 flash. Screenshots verificados. JS 13/13.
 - AVISO Juan: en tu foreplay_search.py solo los 2 params aditivos; _es_colombiano sigue filtrando
   adentro (regla de oro). La pestaña vieja quedó reemplazada (fpSearch/fpRender nuevos, resto igual).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🧠 La app ya NO pierde el trabajo con el gesto atrás / recargas
+Queja de Jack: dos dedos a la izquierda sin querer → el navegador se devuelve, y al volver la app
+arranca desde cero (portada) y se pierde lo que había. Fix en frontend/index.html (3 capas, aditivo):
+1. `html,body{overscroll-behavior-x:none}` → el gesto de swipe-atrás de Chrome queda BLOQUEADO
+   dentro de la app (raíz del accidente).
+2. Historial interno: homeEnter hace pushState → el botón atrás vuelve AL GARAJE (dentro de la app)
+   en vez de salirse; adelante regresa a la pestaña. popstate manejado.
+3. Memoria de sesión (sessionStorage, por pestaña del navegador): pestaña activa (cm_tab),
+   resultados de Foreplay completos (cm_fp: ads+modo+cursor+query, se guarda en cada fpRender) y
+   TRABAJOS EN CURSO (cm_job_*: los poll fpProductoPoll/fpPoll/vhPoll/clonePoll/autoPoll/prodPoll/
+   swapPoll/dubPoll quedan envueltos para recordar su job_id) → al recargar se re-enganchan contra
+   /api/status (si el server ya no conoce el job, se limpia la clave). Todo con try/catch — si algo
+   falta, la app carga normal.
+- PROBADO en vivo: buscar "faja" (47 ads) → reload completo → cae directo en Foreplay con la query
+  y los 47 ads restaurados; history.back() → garaje sin salir del sitio; overscrollBehaviorX="none"
+  por computed style. JS 14/14 node --check.
+- AVISO Juan: solo index.html — un <style> de 1 línea y un <script> nuevo al final que ENVUELVE
+  (no reemplaza) homeEnter/fpRender/los polls. Si agregas una pestaña con job propio, suma su poll
+  a la lista de nombres y queda con memoria gratis.

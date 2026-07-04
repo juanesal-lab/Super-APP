@@ -677,6 +677,14 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
 
+    # HONESTIDAD (plan 30/30): si no se llegó al count con confirmados, decirlo CLARO, con las
+    # búsquedas que se probaron, y pedir datos para ampliar (nunca inflar con no-confirmados).
+    mensaje = ""
+    if verificado and n_conf < count:
+        mensaje = (f"Encontré {n_conf} confirmados con estas búsquedas: "
+                   f"[{', '.join(queries[:6])}]. "
+                   "Dame la marca, un hashtag o el país para ampliar.")
+
     # B-ROLL de apoyo (escenas adaptadas al ángulo, para un video más dopamínico) — manual:
     # se muestran aparte y el usuario elige cuáles usar.
     broll = []
@@ -686,7 +694,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         except Exception:  # noqa: BLE001
             broll = []
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
-            "n_confirmados": n_conf, "broll": broll,
+            "n_confirmados": n_conf, "broll": broll, "mensaje_busqueda": mensaje,
             "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}"}
 
 

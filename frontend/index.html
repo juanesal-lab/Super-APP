@@ -628,7 +628,8 @@
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
-                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[])};
+                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[]),
+                     tkMens:tk.mensaje_busqueda||''};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
         tkPaint();
       }
@@ -648,6 +649,8 @@
           links.forEach((l,i)=>{ h+=tkTkCard(l,i,S.tkVerif); });
           h+='</div>';
         }
+        // mensaje HONESTO cuando los confirmados no llegan al count pedido (con las búsquedas probadas)
+        if(S.tkMens){ h+='<div class="autoStep" style="margin-top:8px">💬 '+tkEsc(S.tkMens)+'</div>'; }
         // ── grupo 2: Foreplay ────────────────────────────────────────────
         const fpConf=ads.filter(a=>a.verificado_producto);
         h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${ads.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;

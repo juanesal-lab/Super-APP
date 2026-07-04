@@ -408,7 +408,7 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
             "el producto en la portada, o hay CUALQUIER duda → match=false. Sé ESTRICTO pero justo (es UGC: "
             "puede estar en la mano, en ángulo o con otra luz).")
         from anthropic import Anthropic
-        client = Anthropic(api_key=anthropic_key)
+        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=300,
             tools=[_CLAUDE_TOOL], tool_choice={"type": "tool", "name": "juzgar"},

@@ -34,13 +34,16 @@ def _client(api_key):
 
 
 def analizar_foto(image_path: str, nombre: str, api_key: str,
-                  image_paths: list[str] | None = None) -> dict:
+                  image_paths: list[str] | None = None,
+                  landing_text: str = "") -> dict:
     """Gemini: descripción precisa (producto + FORMA) + VARIAS búsquedas (amplía) + desc. Fallback: nombre.
 
-    `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → UNA sola
-    llamada a Gemini con todas las imágenes = ficha más completa. Firma vieja intacta."""
+    `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
+    FRAMES sacados de un video suyo) → UNA sola llamada a Gemini con todas = ficha más completa.
+    `landing_text` (opcional): texto de la página de venta del producto → contexto para el nombre
+    EXACTO, beneficios y sinónimos (mejores términos de búsqueda). Firma vieja intacta."""
     paths = [p for p in (image_paths or [image_path])
-             if p and os.path.exists(p)][:3]
+             if p and os.path.exists(p)][:4]
     if not (api_key and paths):
         return {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
     try:
@@ -51,9 +54,15 @@ def analizar_foto(image_path: str, nombre: str, api_key: str,
                 datas.append(f.read())
         intro = ("Haz un ANÁLISIS VISUAL PROFUNDO de la foto de este producto de dropshipping — como un perito: "
                  if len(datas) == 1 else
-                 f"Haz un ANÁLISIS VISUAL PROFUNDO de las {len(datas)} fotos de este producto de dropshipping "
-                 "(son el MISMO producto desde distintos ángulos: frente/lado/empaque — combina TODO lo que "
-                 "veas en ellas en una sola ficha) — como un perito: ")
+                 f"Haz un ANÁLISIS VISUAL PROFUNDO de las {len(datas)} imágenes de este producto de dropshipping "
+                 "(son el MISMO producto: fotos desde distintos ángulos y/o frames de un video suyo — combina "
+                 "TODO lo que veas en ellas en una sola ficha) — como un perito: ")
+        landing_block = ""
+        if (landing_text or "").strip():
+            landing_block = (
+                "INFO DE SU PÁGINA DE VENTA (úsala para el nombre EXACTO, beneficios y sinónimos en "
+                "keywords/variants/desc; OJO: si la página describe OTRO producto distinto al de las "
+                f"imágenes, ignórala por completo y quédate con lo que VES): \"{landing_text.strip()[:2500]}\". ")
         prompt = (
             intro +
             "(1) qué ES exactamente y su CATEGORÍA (crema, gel, cápsulas, spray, aparato/dispositivo, collar…); "
@@ -64,7 +73,7 @@ def analizar_foto(image_path: str, nombre: str, api_key: str,
             "(6) CÓMO SE USA (dónde va puesto, qué parte del cuerpo toca); "
             "(7) NO CONFUNDIR CON: 1-3 productos PARECIDOS pero DISTINTOS con los que un buscador se "
             "confundiría (ej. lámpara UV de secar esmalte, masajeador, otro aparato similar). "
-            f"El usuario lo llama: \"{nombre}\". Devuelve SOLO un JSON:\n"
+            f"El usuario lo llama: \"{nombre}\". " + landing_block + "Devuelve SOLO un JSON:\n"
             '{"keywords":"2-4 palabras CORTAS en español: tipo de producto + para qué sirve (ej. '
             '\'laser hongos uñas\', no solo \'laser\')",'
             '"variants":["7-9 búsquedas CORTAS y VARIADAS (2-4 palabras cada una) para encontrar el MÁXIMO '
@@ -628,7 +637,8 @@ def _verificar_claude(cand: dict, ref_bytes, ref_desc: str, anthropic_key: str) 
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
            count: int = 20, anthropic_key: str | None = None,
            analisis: dict | None = None, foreplay_key: str | None = None,
-           image_paths: list[str] | None = None, explorar_cuentas: bool = True) -> dict:
+           image_paths: list[str] | None = None, explorar_cuentas: bool = True,
+           landing_text: str = "") -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -636,18 +646,22 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     `analisis` (opcional): el dict de analizar_foto YA calculado (lo pasa creative_search para que la
     búsqueda combinada TikTok+Foreplay analice la foto UNA sola vez). Sin él, se calcula aquí (igual
     que siempre).
-    `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → ficha más
-    completa; los jueces usan las 2 primeras como referencia. Sin él, todo sigue con `image_path`.
+    `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
+    FRAMES de un video suyo — fotos primero) → ficha más completa; los jueces usan las 2 primeras
+    como referencia. Sin él, todo sigue con `image_path`.
     `explorar_cuentas`: si tras verificar faltan videos para el count, explora las CUENTAS de los
     confirmados (máx 3, tikwm user/posts) — los vendedores suben el mismo producto muchas veces —
-    y suma los que el juez de portada confirme (solo portada: tope de costo)."""
+    y suma los que el juez de portada confirme (solo portada: tope de costo).
+    `landing_text` (opcional): texto de la página de venta → mejor ficha y términos (cero llamadas
+    extra: va dentro de la misma llamada de analizar_foto)."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
     queries = _expandir(nombre, [])
-    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:3]
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:4]
     if paths:
-        info = analisis or analizar_foto(paths[0], nombre, api_key, image_paths=paths)
+        info = analisis or analizar_foto(paths[0], nombre, api_key, image_paths=paths,
+                                         landing_text=landing_text)
         ref_desc = info["desc"]
         queries = info.get("variants") or [info["keywords"]]
         refs: list[bytes] = []

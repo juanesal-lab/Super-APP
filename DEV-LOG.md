@@ -2344,3 +2344,20 @@ excluida siempre, sin precio, topes (Claude top-20, profundo ≤12, cuentas solo
 AVISO Juan: _verificar/_verificar_claude/_verificar_video ahora aceptan ref_bytes como bytes O
 lista (normalizan con _refs; tus llamadas con bytes sueltos siguen idénticas). app.py ganó el
 helper _guardar_fotos_busqueda para ambos endpoints de búsqueda. No toqué offer_banner/auto_studio.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ✅ Variar hook PROBADO con las IAs reales (2/2) + 🔴 Gemini SIN CRÉDITOS
+- **Para Juan:** probé EN VIVO tu capa de video de hook_variator (la del 07-03) — primera corrida
+  con las APIs de verdad (antes solo estaba probada con mocks). /api/variar-hook con un ganador real
+  del repelente ultrasónico (17s, texto quemado en TODO el video = el caso difícil), modo "solo hook",
+  n=2, voz juan_carlos. **Resultado: 2/2 videos OK en ~45s.** Verificado FRAME A FRAME: texto viejo
+  del proveedor tapado en el hook, subtítulos nuevos palabra x palabra (hormozi, keyword amarilla),
+  cuerpo intacto (su texto en español se conserva, como debe ser), voz presente (max -5.6 dB),
+  duraciones sanas (18.0s / 17.9s). Hooks colombianos, 2 ángulos distintos, sin precio. 🎉
+- **🔴 HALLAZGO IMPORTANTE: la key de GEMINI está SIN CRÉDITOS** (429 RESOURCE_EXHAUSTED,
+  "prepayment credits are depleted"). Por eso `analyze_narrative` degradó en silencio y el `arco`
+  cayó a la descripción del producto (degradación prevista en tu código — el flujo NO se rompió).
+  Consecuencia mientras Jack recarga en https://ai.studio/projects: todo lo Gemini (narrativa,
+  analizar_foto, traducir texto, gemini_rank, guiones) está fallando/degradando. Los flujos con
+  Claude + ElevenLabs siguen normales.
+- CERO cambios de código en esta tarea (fue prueba + verificación). Los videos quedaron en
+  work/bf80c273cf46/var_0*/final.mp4 por si quieren verlos.

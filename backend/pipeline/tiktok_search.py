@@ -249,6 +249,124 @@ def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | Non
         return None
 
 
+def _broll_brief_claude(nombre: str, angulo: str, ref_desc: str, anthropic_key: str) -> dict | None:
+    """CEREBRO (Claude): piensa el PUNTO DE DOLOR del ángulo de venta y las búsquedas de B-ROLL.
+    Devuelve {"punto_dolor": str, "queries": [str]} o None si no pudo (→ fallback Gemini/estático)."""
+    if not anthropic_key:
+        return None
+    try:
+        from anthropic import Anthropic
+        tool = {
+            "name": "brief_broll",
+            "description": "Brief de B-roll para un anuncio de dropshipping.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "punto_dolor": {"type": "string",
+                                    "description": "El punto de dolor del ángulo, en 1 frase VISUAL (qué escena lo muestra)"},
+                    "queries": {"type": "array", "items": {"type": "string"},
+                                "description": "6-8 búsquedas cortas (2-4 palabras) para TikTok: ~5 del DOLOR en acción, ~2 del resultado/alivio, ~1 de la situación de uso. Español o inglés, lo que dé más resultados."},
+                },
+                "required": ["punto_dolor", "queries"],
+            },
+        }
+        prompt = (
+            f"Producto: \"{nombre}\". Ficha: \"{(ref_desc or '')[:400]}\". "
+            + (f"Ángulo de venta / punto de dolor que quiere el vendedor: \"{angulo}\". " if angulo.strip() else "")
+            + "Necesito B-ROLL para un anuncio de dropshipping: escenas que NO muestran el producto pero "
+            "APOYAN su ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la "
+            "necesidad, la emoción cruda), y un poco del después/alivio. "
+            "Ej. almohadillas para incontinencia → dolor: 'mujer desesperada corriendo al baño', "
+            "'sábanas mojadas vergüenza', 'mujer llorando frustrada baño'; resultado: 'mujer durmiendo "
+            "tranquila', 'abuela feliz nietos'. Piensa QUÉ ESCENA le duele al comprador de ESTE producto "
+            "con ESTE ángulo y dame las búsquedas.")
+        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
+        resp = client.messages.create(
+            model=_CLAUDE, max_tokens=600,
+            tools=[tool], tool_choice={"type": "tool", "name": "brief_broll"},
+            messages=[{"role": "user", "content": prompt}])
+        for b in resp.content:
+            if getattr(b, "type", None) == "tool_use" and b.name == "brief_broll":
+                qs = [str(q).strip() for q in (b.input.get("queries") or []) if str(q).strip()]
+                if qs:
+                    return {"punto_dolor": str(b.input.get("punto_dolor") or ""), "queries": qs[:8]}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _juzgar_broll_claude(cands: list[dict], nombre: str, punto_dolor: str,
+                         anthropic_key: str) -> dict[int, str] | None:
+    """JUEZ (Claude visión, 1 sola llamada): mira las portadas y dice cuáles SÍ son escena de apoyo
+    y de qué fase. Devuelve {indice: fase} (fase canónica: problema/resultado/funcionamiento);
+    los índices que no aparecen se DESCARTAN. None = fallo técnico (→ no filtrar)."""
+    import base64
+    if not (anthropic_key and cands):
+        return None
+    try:
+        from anthropic import Anthropic
+        covers = []
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(lambda c: requests.get(c["cover"], headers=_UA, timeout=15).content, c): i
+                    for i, c in enumerate(cands) if c.get("cover")}
+            for f in as_completed(futs):
+                try:
+                    b = f.result()
+                    if b:
+                        covers.append((futs[f], b))
+                except Exception:  # noqa: BLE001
+                    continue
+        covers.sort()
+        if not covers:
+            return None
+        tool = {
+            "name": "juzgar_broll",
+            "description": "Clasifica cada portada como escena de apoyo (o la descarta).",
+            "input_schema": {
+                "type": "object",
+                "properties": {"escenas": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"i": {"type": "integer"},
+                                   "fase": {"type": "string", "enum": ["dolor", "resultado", "uso", "no"]}},
+                    "required": ["i", "fase"]}}},
+                "required": ["escenas"],
+            },
+        }
+        prompt = (
+            f"Busco B-ROLL para un anuncio de \"{nombre}\". El punto de dolor del ángulo: "
+            f"\"{punto_dolor or 'la necesidad que resuelve el producto'}\". Te paso {len(covers)} portadas "
+            "de TikTok numeradas. Para CADA una dime su fase:\n"
+            "- dolor: se VE el punto de dolor en acción (persona sufriendo/frustrada/la situación molesta)\n"
+            "- resultado: el después — alivio, tranquilidad, problema resuelto\n"
+            "- uso: la situación de uso (sin que el producto protagonice)\n"
+            "- no: NO sirve (otra cosa, meme random, texto gigante, gente bailando sin relación)\n"
+            "Sé DURO con 'no': b-roll que no cuadre con el ángulo daña el anuncio. Responde TODAS.")
+        content: list = [{"type": "text", "text": prompt}]
+        for k, (_, b) in enumerate(covers):
+            content.append({"type": "text", "text": f"PORTADA {k}:"})
+            content.append({"type": "image", "source": {"type": "base64", "media_type": _media_type(b),
+                                                        "data": base64.b64encode(b).decode()}})
+        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
+        resp = client.messages.create(
+            model=_CLAUDE, max_tokens=1500,
+            tools=[tool], tool_choice={"type": "tool", "name": "juzgar_broll"},
+            messages=[{"role": "user", "content": content}])
+        canon = {"dolor": "problema", "resultado": "resultado", "uso": "funcionamiento"}
+        out: dict[int, str] = {}
+        for b in resp.content:
+            if getattr(b, "type", None) == "tool_use" and b.name == "juzgar_broll":
+                for e in (b.input.get("escenas") or []):
+                    try:
+                        k, fase = int(e.get("i")), str(e.get("fase", "")).strip().lower()
+                    except (TypeError, ValueError):
+                        continue
+                    if fase in canon and 0 <= k < len(covers):
+                        out[covers[k][0]] = canon[fase]
+        return out
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
     """Gemini inventa búsquedas de B-ROLL (escenas de APOYO, no del producto) adaptadas al ÁNGULO del
     producto: para skincare → 'antes y después rostro', 'piel lisa primer plano'; para un gadget →
@@ -272,10 +390,16 @@ def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
     return []
 
 
-def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10) -> list[dict]:
-    """Busca N escenas de B-ROLL/stock en TikTok adaptadas al ángulo del producto (apoyo visual,
-    'dopamínico'). Sin verificación visual (es apoyo, el usuario elige manualmente)."""
-    queries = _queries_broll(ref_desc, nombre, api_key) or [f"{nombre} antes y después", "satisfying asmr"]
+def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
+                 angulo: str = "", anthropic_key: str | None = None) -> list[dict]:
+    """Busca N escenas de B-ROLL en TikTok amarradas al ÁNGULO/PUNTO DE DOLOR del producto.
+    Con `anthropic_key`: Claude piensa las búsquedas desde el punto de dolor Y juzga las portadas
+    (descarta lo que no cuadra; etiqueta cada una con `fase`: problema/resultado/funcionamiento).
+    Sin ella: comportamiento viejo (Gemini/estático, sin juez)."""
+    brief = _broll_brief_claude(nombre, angulo, ref_desc, anthropic_key) if anthropic_key else None
+    queries = ((brief or {}).get("queries")
+               or _queries_broll(ref_desc, nombre, api_key)
+               or [f"{nombre} antes y después", "satisfying asmr"])
     cands: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
         for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
@@ -284,16 +408,28 @@ def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10) -> list[
     lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
     # más views primero (b-roll viral = más dopamínico) y variedad de autores
     lst.sort(key=lambda c: c.get("plays", 0), reverse=True)
-    out, autores = [], set()
+    pre, autores = [], set()
     for c in lst:
         autor = c["url"].split("@")[1].split("/")[0] if "@" in c["url"] else c["url"]
         if autor in autores:
             continue
         autores.add(autor)
+        pre.append(c)
+        if len(pre) >= (24 if anthropic_key else n):   # con juez: pool más grande para que filtre
+            break
+    fases = _juzgar_broll_claude(pre, nombre, (brief or {}).get("punto_dolor", angulo),
+                                 anthropic_key) if anthropic_key else None
+    out = []
+    for i, c in enumerate(pre):
+        if fases is not None and i not in fases:      # el juez lo descartó
+            continue
         out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
-                    "plays": c.get("plays", 0), "tipo": "broll"})
+                    "plays": c.get("plays", 0), "tipo": "broll",
+                    "fase": (fases or {}).get(i, "problema")})
         if len(out) >= n:
             break
+    # el DOLOR primero (es lo que pidió el ángulo); dentro de cada fase ya vienen por views
+    out.sort(key=lambda x: 0 if x["fase"] == "problema" else 1)
     return out
 
 
@@ -688,9 +824,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     # B-ROLL de apoyo (escenas adaptadas al ángulo, para un video más dopamínico) — manual:
     # se muestran aparte y el usuario elige cuáles usar.
     broll = []
-    if api_key:
+    if api_key or anthropic_key:
         try:
-            broll = buscar_broll(ref_desc, nombre or kw, api_key, n=10)
+            broll = buscar_broll(ref_desc, nombre or kw, api_key, n=10,
+                                 anthropic_key=anthropic_key)
         except Exception:  # noqa: BLE001
             broll = []
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,

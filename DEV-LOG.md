@@ -2381,3 +2381,33 @@ Autopsia $0 del "¿por qué tarda 20 min?" usando los mtimes de work/ (el pendie
 - AVISO Juan: solo toqué `auto_studio._verticalize` (la rama del fondo desenfocado; la rama "ya es
   9:16" quedó igual). Lo usan Crear creativo y Clonar ganador. Cortar clips NO pasa por ahí (su
   hotspot es el masking, dato de arriba).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🎭 B-ROLL por PUNTO DE DOLOR (Claude piensa, busca, juzga y lo pone en su momento)
+Idea de Jack: el B-roll no es relleno — es LA ESCENA DEL DOLOR del ángulo (almohadillas
+incontinencia → "mujer desesperada porque se orinó dormida"). Antes: links manuales que caían
+en cualquier momento del montaje (el analizador los puntúa por producto, y sin producto quedaban
+mal rankeados). Ahora, 3 piezas:
+1. **Cerebro+juez Claude en `tiktok_search.py` (mi módulo):** `_broll_brief_claude` (piensa el
+   punto de dolor y 6-8 búsquedas desde el ángulo) y `_juzgar_broll_claude` (1 llamada con visión:
+   mira ~24 portadas, descarta lo que no cuadra y etiqueta fase dolor/resultado/uso).
+   `buscar_broll(..., angulo=, anthropic_key=)` los usa — params NUEVOS OPCIONALES: sin
+   anthropic_key se comporta como antes (Gemini/estático). El grupo B-roll de 🔍 Buscar creativos
+   ya se beneficia (le paso anthropic_key en `buscar`).
+2. **Fase FORZADA en el montaje:** los B-roll viajan marcados (`broll_paths` = "ruta::fase" en
+   /api/process y /api/scripts → settings["broll_fases"]) y en `orchestrator.render_versions`
+   (param nuevo opcional `broll_fases`) sus clips SALTAN la clasificación visual y quedan en SU
+   fase (default "problema") → guion_match los pone en el momento del DOLOR. Clave hoy: Gemini
+   sin créditos = phase_classify muerto; esto no lo necesita.
+3. **UI Cortar clips:** input "🎯 Ángulo / punto de dolor" + botón "🎭 Buscar B-roll con IA
+   (Claude)" (endpoint nuevo POST /api/broll-dolor) que llena el cajón de links con las escenas
+   juzgadas; al bajarlas quedan etiquetadas 🎭 con su fase (brollFaseMap url→fase).
+PROBADO REAL: brief con el ejemplo de Jack → "mujer mayor sabanas mojadas", "abuela avergonzada
+cama humeda"… → 8/8 escenas de DOLOR clavadas al ángulo ("Pensé que era solo cansancio…", "muchas
+mujeres pasan esta etapa en silencio") en 12s (~$0.05). Y E2E $0 de la fase forzada: job real de
+Cortar clips con 2 videos de almohadillas + 1 fuente marcada B-roll → los 3 clips de esa fuente
+salieron `_problema` y NINGUNO se coló en otra fase (verificado con grid de frames, a ojo);
+8 versiones OK. py_compile 3 archivos + JS 14/14 + screenshot de la UI.
+AVISO Juan: en TU terreno solo `orchestrator.py` (param opcional broll_fases en render_versions/
+process_job + 6 líneas de override tras fases_por_idx — sin broll_fases NADA cambia). app.py:
+Form broll_paths en process/scripts + _parse_broll + endpoint /api/broll-dolor + fetch-links ahora
+devuelve también `url` (aditivo). Costo por búsqueda IA: ~$0.05 (2 llamadas Claude).

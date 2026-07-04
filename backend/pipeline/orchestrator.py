@@ -194,6 +194,7 @@ def render_versions(
     n_sources: int = 0,
     target_seconds: float = 15.0,
     max_clip_seconds: float = 3.0,
+    broll_fases: dict | None = None,   # {ruta fuente B-roll: fase forzada (problema/resultado/...)}
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos."""
@@ -250,6 +251,17 @@ def render_versions(
     if not fases_pool:
         fases_pool = [_fase_heur(selected[i]) for i in pool_idx]
     fases_por_idx = dict(zip(pool_idx, fases_pool))
+
+    # B-ROLL con intención: los clips que vienen de fuentes marcadas como B-roll usan la fase que
+    # el usuario/Claude les dio (dolor/resultado/uso) en vez de la clasificación visual — así la
+    # escena de DOLOR cae en el momento del dolor del guion, no donde sea (idea de Jack).
+    if broll_fases:
+        _bmap = {os.path.abspath(p): f for p, f in broll_fases.items()}
+        for _i in pool_idx:
+            _f = _bmap.get(os.path.abspath(getattr(selected[_i], "video", "") or ""))
+            if _f in phase_classify.FASES:
+                fases_por_idx[_i] = _f
+        fases_pool = [fases_por_idx[i] for i in pool_idx]
 
     version_orders = plan_variations(selected, target_seconds=plan_seconds)
 
@@ -570,6 +582,7 @@ def process_job(
     caption_style: str = "hormozi",
     caption_size: str = "mediano",
     gemini_key: str | None = None,
+    broll_fases: dict | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Pipeline de una pasada: analiza y renderiza. Si `version_vos` viene (voz por versión ya
@@ -589,4 +602,5 @@ def process_job(
         captions=captions, caption_style=caption_style, caption_size=caption_size,
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
-        target_seconds=target_seconds, max_clip_seconds=max_clip_seconds, progress=progress)
+        target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
+        broll_fases=broll_fases, progress=progress)

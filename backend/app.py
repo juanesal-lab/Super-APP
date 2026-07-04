@@ -195,6 +195,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             text_mode=settings.get("text_mode", "tapar"),
             caption_pos=settings.get("caption_pos", "abajo"),
             gemini_key=_load_env_key(),
+            broll_fases=settings.get("broll_fases"),
             progress=progress,
         )
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
@@ -311,10 +312,24 @@ def _safe_link_paths(link_paths: list[str]) -> list[str]:
     return out
 
 
+def _parse_broll(broll_paths: list[str]) -> tuple[list[str], dict]:
+    """Decodifica los B-roll del front ("ruta" o "ruta::fase") → (rutas seguras, {ruta: fase}).
+    La fase por defecto es "problema" (el B-roll clásico de Jack = la escena del DOLOR)."""
+    rutas, fases = [], {}
+    for item in broll_paths or []:
+        p, _, f = item.partition("::")
+        safe = _safe_link_paths([p])
+        if safe:
+            rutas.append(safe[0])
+            fases[safe[0]] = (f.strip().lower() or "problema")
+    return rutas, fases
+
+
 @app.post("/api/process")
 def process(
     files: list[UploadFile] = File(None),
     link_paths: list[str] = Form([]),
+    broll_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
     max_clip: float = Form(2.5),
     use_gemini: bool = Form(True),
@@ -342,6 +357,8 @@ def process(
             shutil.copyfileobj(f.file, out)
         paths.append(dest)
     paths += _safe_link_paths(link_paths)      # videos bajados de TikTok (pegados como links)
+    broll_rutas, broll_fases = _parse_broll(broll_paths)   # B-roll marcados (entran al pool con fase)
+    paths += broll_rutas
     if not paths:
         raise HTTPException(400, "Sube al menos un video o baja unos de TikTok")
 
@@ -366,6 +383,7 @@ def process(
         "banner_oferta": bool(banner_oferta),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
+        "broll_fases": broll_fases,
     }
     threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
@@ -384,11 +402,28 @@ def fetch_links(links: str = Form("")):
     out_dir = os.path.join(UPLOAD_DIR, job_id)
     os.makedirs(out_dir, exist_ok=True)
     dl = download_urls(urls, out_dir)
-    vids = [{"path": d["path"], "name": d.get("filename") or os.path.basename(d["path"])}
+    vids = [{"path": d["path"], "name": d.get("filename") or os.path.basename(d["path"]),
+             "url": d.get("url", "")}
             for d in dl if d.get("ok") and d.get("path")]
     if not vids:
         return {"videos": [], "error": "No se pudo bajar ningún video (revisa los links)"}
     return {"videos": vids}
+
+
+@app.post("/api/broll-dolor")
+def broll_dolor(producto: str = Form(...), angulo: str = Form(""), n: int = Form(8)):
+    """🎭 Busca B-ROLL amarrado al ÁNGULO/PUNTO DE DOLOR: Claude piensa las escenas que duelen
+    (ej. incontinencia → 'mujer desesperada baño'), busca en TikTok (sin Colombia) y Claude juzga
+    las portadas. Devuelve links etiquetados por fase para pegar en el cajón de B-roll."""
+    if not producto.strip():
+        raise HTTPException(400, "Describe el producto")
+    from pipeline.tiktok_search import buscar_broll
+    res = buscar_broll(producto.strip(), producto.strip(), _load_env_key(),
+                       n=max(2, min(16, n)), angulo=angulo.strip(),
+                       anthropic_key=_load_anthropic_key())
+    if not res:
+        return {"links": [], "error": "No encontré escenas para ese ángulo — afina el punto de dolor"}
+    return {"links": res}
 
 
 def _gc_jobs(keep: int = 80):
@@ -716,6 +751,7 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
 def scripts(
     files: list[UploadFile] = File(None),
     link_paths: list[str] = Form([]),
+    broll_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
     max_clip: float = Form(2.5),
     use_gemini: bool = Form(True),
@@ -739,6 +775,8 @@ def scripts(
 ):
     job_id, paths = _save_uploads(files or [])
     paths += _safe_link_paths(link_paths)      # videos bajados de TikTok
+    broll_rutas, broll_fases = _parse_broll(broll_paths)
+    paths += broll_rutas
     if not paths:
         raise HTTPException(400, "Sube al menos un video o baja unos de TikTok")
     # Anuncio de referencia (opcional) para clonar su estructura narrativa
@@ -765,6 +803,7 @@ def scripts(
         "oferta_2x1": bool(oferta_2x1),
         "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
+        "broll_fases": broll_fases,
     }
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
@@ -827,7 +866,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
-            progress=progress)
+            broll_fases=s.get("broll_fases"), progress=progress)
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
         job["result"] = manifest

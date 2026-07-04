@@ -1134,9 +1134,12 @@
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
 
-      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL (opcional): links de tomas de apoyo — contexto, dolor, ambiente. Se bajan y se suman como material extra.</label>
+      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL (opcional): tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. Pega links o deja que la IA las busque.</label>
+      <input id="tkBrollAngulo" placeholder="🎯 Ángulo / punto de dolor (ej. mujer desesperada porque se orinó dormida) — opcional, ayuda MUCHO"
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
       <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
+      <button class="btn sec" id="goBrollIA" style="margin-top:10px;width:auto" onclick="buscarBrollIA()">🎭 Buscar B-roll con IA (Claude)</button>
       <button class="btn sec" id="goBroll" style="margin-top:10px;width:auto" onclick="bajarLinks('tkBrollLinks','goBroll')">📥 Bajar B-roll</button>
     </div>
   </div>
@@ -2412,7 +2415,8 @@ function renderFiles(){
   });
   linkVids.forEach((v,i)=>{
     const d = document.createElement("div"); d.className="file";
-    d.innerHTML = `📥 <span>${v.name}</span> <span style="color:var(--muted)">de TikTok</span><span class="x" data-l="${i}">×</span>`;
+    const tag = v.broll ? `🎭 B-roll (${v.fase==="resultado"?"resultado":v.fase==="funcionamiento"?"uso":"dolor"})` : "de TikTok";
+    d.innerHTML = `📥 <span>${v.name}</span> <span style="color:var(--muted)">${tag}</span><span class="x" data-l="${i}">×</span>`;
     el.appendChild(d);
   });
   el.querySelectorAll(".x[data-f]").forEach(x=>x.onclick=()=>{files.splice(+x.dataset.f,1);renderFiles();});
@@ -2437,7 +2441,10 @@ refInput.onchange = e=>{
 function buildForm(){
   const fd = new FormData();
   files.forEach(f=>fd.append("files", f));
-  linkVids.forEach(v=>fd.append("link_paths", v.path));   // videos ya bajados de TikTok
+  linkVids.forEach(v=>{
+    if(v.broll) fd.append("broll_paths", v.path + "::" + (v.fase || "problema"));  // B-roll con su fase
+    else fd.append("link_paths", v.path);                 // videos ya bajados de TikTok
+  });
   if(refFile && useVO.checked) fd.append("reference_ad", refFile);
   fd.append("target_seconds", dur.value);
   fd.append("max_clip", document.getElementById("maxClip").value);
@@ -2473,6 +2480,31 @@ document.getElementById("go").onclick = async ()=>{
   poll(j.job_id);
 };
 
+// 🎭 B-roll con IA: Claude piensa el punto de dolor, busca en TikTok, juzga portadas y
+// llena el cajón de links (con su fase guardada para el montaje).
+let brollFaseMap = {};   // url → fase (problema/resultado/funcionamiento), del juez de Claude
+async function buscarBrollIA(){
+  const producto = document.getElementById("productDesc").value.trim();
+  if(!producto){ alert("Primero escribe qué es tu producto (en Ajustes, abajo)"); return; }
+  const btn = document.getElementById("goBrollIA");
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = "🧠 Claude buscando escenas de dolor…";
+  try{
+    const fd = new FormData();
+    fd.append("producto", producto);
+    fd.append("angulo", document.getElementById("tkBrollAngulo").value.trim());
+    fd.append("n", "8");
+    const r = await fetch("/api/broll-dolor",{method:"POST",body:fd});
+    const j = await r.json();
+    const links = j.links || [];
+    if(!links.length){ alert(j.error || "No encontré escenas — afina el ángulo/punto de dolor"); btn.textContent = orig; return; }
+    links.forEach(l=>{ brollFaseMap[l.url] = l.fase || "problema"; });
+    const ta = document.getElementById("tkBrollLinks");
+    ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + links.map(l=>l.url).join("\n");
+    btn.textContent = `✅ ${links.length} escenas — dale 📥 Bajar B-roll`;
+  }catch(e){ btn.textContent = orig; alert("Error: "+e); }
+  finally{ setTimeout(()=>{ btn.disabled=false; if(btn.textContent.startsWith("✅")) btn.textContent=orig; }, 6000); }
+}
+
 // Solo BAJA los videos de TikTok y los agrega a la lista de arriba (NO los corta).
 // Luego el usuario configura los ajustes y le da "Generar clips" (flujo normal).
 async function bajarLinks(srcId, btnId){
@@ -2480,12 +2512,14 @@ async function bajarLinks(srcId, btnId){
   if(!links){ alert("Pega al menos un link de TikTok"); return; }
   const btn = document.getElementById(btnId||"goLinks");
   const orig = btn.textContent; btn.disabled = true; btn.textContent = "📥 Bajando…";
+  const esBroll = (srcId === "tkBrollLinks");
   try{
     const fd = new FormData(); fd.append("links", links);
     const r = await fetch("/api/fetch-links",{method:"POST",body:fd});
     const j = await r.json();
     const vids = j.videos || [];
-    vids.forEach(v=>{ if(v.path) linkVids.push({path:v.path, name:v.name||"video"}); });
+    vids.forEach(v=>{ if(v.path) linkVids.push({path:v.path, name:v.name||"video",
+      broll: esBroll, fase: esBroll ? (brollFaseMap[v.url] || "problema") : undefined}); });
     if(vids.length){
       document.getElementById(srcId||"tkClipLinks").value = "";
       renderFiles();

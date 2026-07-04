@@ -428,6 +428,8 @@ def render_versions(
 
     # Voz en off: una sola para todas, o UNA DISTINTA por version (version_vos)
     def _cut_times(v):
+        if v.get("cut_times"):          # tiempos REALES post-dissolve (los deja build_variations)
+            return list(v["cut_times"])
         cuts, acc = [], 0.0
         for sg in v["segments"][:-1]:
             acc += float(sg.get("duration", 0))

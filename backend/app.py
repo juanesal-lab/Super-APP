@@ -144,9 +144,11 @@ def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, 
         except Exception:  # noqa: BLE001
             music_path = None
     for v in versions:
-        cuts, acc = [], 0.0
-        for sg in (v.get("segments") or [])[:-1]:
-            acc += float(sg.get("duration", 0)); cuts.append(acc)
+        cuts = list(v.get("cut_times") or [])   # tiempos REALES post-dissolve (build_variations)
+        if not cuts:
+            acc = 0.0
+            for sg in (v.get("segments") or [])[:-1]:
+                acc += float(sg.get("duration", 0)); cuts.append(acc)
         try:
             out = v["path"][:-4] + "_mx.mp4"
             v["path"] = add_music_sfx(v["path"], out, music_path=music_path, sfx_paths=sfx, cut_times=cuts)

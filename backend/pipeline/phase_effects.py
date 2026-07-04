@@ -30,10 +30,12 @@ _ETIQUETAS = ["HOOK", "DOLOR", "SOLUCIÓN", "PRUEBA", "DESEO/RESULTADO", "CTA"]
 _PHASE_CFG: dict[str, dict] = {
     "HOOK": {
         "efecto": {"zoom": "in_fuerte", "intensidad": "alta"},
-        "sfx_prefer": "riser",
+        # Medido en ads ganadores reales: el hot-start es swoosh/shimmer SUTIL con el primer
+        # texto (música ya andando + voz a 0.25s). CERO risers — ningún ad de referencia los usa.
+        "sfx_prefer": "swoosh",
         "musica": {"estilo": "enganchante, energía media-alta, que frene el scroll", "energia": 0.7},
-        "por_que": "HOOK: entra con impacto (whoosh + zoom de entrada) y música enganchante "
-                   "para frenar el scroll en los primeros segundos.",
+        "por_que": "HOOK: swoosh sutil con el primer texto y música enganchante ya andando "
+                   "para frenar el scroll en los primeros segundos (hot-start, sin riser).",
     },
     "DOLOR": {
         "efecto": {"zoom": "ninguno", "intensidad": "baja"},
@@ -43,10 +45,12 @@ _PHASE_CFG: dict[str, dict] = {
     },
     "SOLUCIÓN": {
         "efecto": {"zoom": "punch_in", "intensidad": "alta"},
-        "sfx_prefer": "boom",
+        # Medido: el nombre/aparición del producto lleva CHIME/SPARKLE protagonista (+9-12dB
+        # sobre la mezcla) — brillo positivo, no un boom de trailer.
+        "sfx_prefer": "sparkle",
         "musica": {"estilo": "que sube, esperanzadora (llega el producto)", "energia": 0.75},
-        "por_que": "SOLUCIÓN: momento del producto → impacto (golpe + punch-in) y música que sube "
-                   "para marcar que aparece la solución.",
+        "por_que": "SOLUCIÓN: momento del producto → chime/brillo PROTAGONISTA (el acento del "
+                   "video) + punch-in para marcar que aparece la solución.",
     },
     "PRUEBA": {
         "efecto": {"zoom": "in_suave", "intensidad": "media"},

@@ -141,8 +141,9 @@ def _voz_y_subtitulos(versions: list[dict], work_dir: str, *, eleven_key: str | 
     if not narraciones:
         return None
 
-    from .assemble import add_voiceover_and_sfx
+    from .assemble import add_voiceover_and_sfx, list_sfx
     from .caption_styles import burn_word_captions
+    sfx = list_sfx()
     usados: list[str] = []
     for i, v in enumerate(versions):
         p = v.get("path")
@@ -153,7 +154,10 @@ def _voz_y_subtitulos(versions: list[dict], work_dir: str, *, eleven_key: str | 
         base = p[:-4] if p.endswith(".mp4") else p
         try:
             out_vo = base + "_vo.mp4"
-            add_voiceover_and_sfx(p, mp3, out_vo, music_path=music_path)
+            # mezcla PRO: música ducked + SFX sutiles en los cortes reales del montaje
+            add_voiceover_and_sfx(p, mp3, out_vo, sfx_paths=sfx,
+                                  cut_times=list(v.get("cut_times") or []),
+                                  music_path=music_path)
             v["path"] = out_vo
             v["voiceover"] = True
         except Exception:  # noqa: BLE001

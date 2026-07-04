@@ -2031,3 +2031,41 @@ de turno y la tipografía con la vibra de cada marca. Las secciones de adentro q
 - AVISO Juan: NO toqué tus hCards/hSteps/homeEnter ni el resto del home — solo el escenario (#hStage),
   el <script> del 3D (reemplazado) y tintes a var() en tu CSS del home. Si quieres cambiar los carros
   o los colores: array GARAJE en el script "EL GARAJE DE JACK" + assets/garage/.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎬 EDICIÓN PRO: motor de mezcla y montaje reescrito con reglas de 4 ads ganadores reales
+Queja de Juan: "la edición (SFX, cortes) queda amateur; el contenido está bien". Puse 2 agentes a
+analizar 4 referencias pro suyas (~/Downloads file 71-74; el 75 era duplicado): uno frame a frame
+(cortes/optical flow/Gemini video) y otro la banda sonora (ebur128/RMS/onsets/Gemini). Reglas
+completas en **`assets/edicion-pro-reglas.md`** (leerla antes de tocar edición). Implementación:
+- NUEVO `pipeline/pro_mix.py`: plan_sfx (presupuesto 1/1.8s, ~50% de cortes, whoosh 150ms ANTES
+  del corte, jerarquía sutil −14dB / medio −9dB / protagonista −2dB, brillo protagonista en el
+  momento del producto, hot-start pop, nada en DOLOR, jitter ±1.5dB, nunca 2x el mismo sample) +
+  filtros_mezcla (música aloop + fade-out 1.5s + DUCKING sidechaincompress 4:1 con la voz de
+  llave) + cadena_final (amix + loudnorm I=-18:TP=-1.5:LRA=8). FIX: sin música no se hace asplit
+  de la llave (quedaba colgado el pad → error de filtergraph).
+- `assemble.py`: add_voiceover_and_sfx y add_music_sfx REESCRITAS sobre pro_mix (antes: SFX 0.8
+  en CADA corte + música plana 0.16 sin ducking ni fades). `-ar 48000` obligatorio post-loudnorm.
+  Nuevo param `phases` (rangos DOLOR sin SFX + momento del producto).
+- MONTAJE: concat_clips_xfade ya NO rota slideleft/wipeup/circleopen (PowerPoint) → DISSOLVE de
+  5 frames (0.17s) en todo + corte casi-duro (0.034s) 1 de cada ~5 y en la entrada del payoff;
+  devuelve los CUT_TIMES REALES post-overlap vía cut_times_out. build_variations: curva de ritmo
+  por slot (ancla ≤1.6s → ráfaga ≤0.9s → crucero ≤1.7s → CTA ≤2.2s con planos que se calman),
+  movimiento por plano (hook in_fuerte, payoff punch 18%/s con fx, cuerpo Ken Burns 2%/s
+  alternando 2in:1out — NADA estático), dedup de renders por (clip, tope, motion), y SIEMPRE
+  dissolve (antes solo con fx). plan_variations acumula con tope 1.7s para seguir cubriendo la voz.
+  _motion_chain: zoompan estateless por 'on' (OJO: crop NO anima w/h — se evalúan una vez; me pasó).
+- Propagación (regla 2): orchestrator y app._agregar_musica_sfx usan los cut_times reales del
+  montaje; producto_clips ahora pasa sfx+cut_times (antes solo música); auto_studio._add_music_sfx
+  reescrito con pro_mix (SOLUCIÓN=protagonista, HOOK/CTA=medio, resto sutil; prompt de música
+  a ElevenLabs pide cama plana SIN drops); phase_effects: HOOK riser→swoosh sutil (cero risers en
+  los 4 ads), SOLUCIÓN boom→sparkle/chime protagonista.
+- Verificado E2E con clips sintéticos: master −18.0 LUFS exacto en ambas rutas, duración = voz,
+  curva de ritmo en cut_times (1.51/0.74/0.79/1.6/1.53/2.03/2.1), dissolve real (frame intermedio
+  = mezcla de colores), jerarquía de movimiento medida (punch 4.69 > fuerte 2.53 > suave 1.29 >
+  out 1.09 > estático 0.12), ruta sin música y ruta auto_studio OK. py_compile todo OK.
+- NO implementado a propósito: repetir el "clip ancla" 2-3 veces (los pros lo hacen, pero choca
+  con la regla dura de Juan de no repetir clips) — pendiente decisión de Juan.
+- AVISO Jack: toqué assemble.py (montaje+mezcla), pro_mix.py (nuevo), auto_studio._add_music_sfx,
+  phase_effects (_PHASE_CFG), producto_clips (_voz_y_subtitulos), orchestrator (_cut_times),
+  app.py (_agregar_musica_sfx). Firmas retro-compatibles (params nuevos opcionales). Las versiones
+  ahora traen "cut_times" en el dict. Reiniciar server para probar.

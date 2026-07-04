@@ -70,43 +70,65 @@ def _sfx_files() -> list[str]:
 
 def _add_music_sfx(inp: str, plan: dict, eleven_key: str | None, product_desc: str,
                    work_dir: str, out: str) -> str:
-    """Añade música de fondo (baja, bajo la voz) + SFX en el inicio de cada fase."""
+    """MEZCLA PRO (pro_mix): música UNA cama plana bajo la voz con ducking + fade-out final,
+    SFX del plan por fase con jerarquía de volumen (SOLUCIÓN = protagonista fuerte, el resto
+    sutiles; whoosh arranca 150ms antes). Master −18 LUFS. El audio base (voz) ya viene en inp."""
+    from .pro_mix import (SFX_DB_MEDIO, SFX_DB_PROTA, SFX_DB_SUTIL, WHOOSH_PRE_MS,
+                          cadena_final, filtros_mezcla)
     dur = _dur(inp)
     phases = plan.get("phases", [])
-    inputs, fc, labels = ["-i", inp], [], ["[0:a]"] if _has_audio(inp) else []
-    if not labels:
+    if not _has_audio(inp):
         return inp  # sin audio base no mezclamos
+
+    inputs, fc = ["-i", inp], ["[0:a]volume=1.0[vo]"]
     idx = 1
 
-    # música: estilo de la fase de mayor energía; ElevenLabs Music (puede fallar por permisos)
+    # música: UNA cama upbeat plana (las referencias reales NO usan drops ni cambios de sección);
+    # el estilo lo da la fase de mayor energía. ElevenLabs Music (puede fallar por permisos).
+    music_index = None
     if eleven_key and phases:
         top = max(phases, key=lambda p: p.get("musica", {}).get("energia", 0))
         estilo = top.get("musica", {}).get("estilo", "música de anuncio, energética")
         mf = os.path.join(work_dir, "music.mp3")
         try:
-            voiceover.music(eleven_key, f"{estilo}. Para un anuncio de {product_desc or 'producto'}.",
+            voiceover.music(eleven_key, f"{estilo}, ritmo constante ~120 BPM, SIN drops ni cambios "
+                            f"de sección, cama instrumental pareja. Para un anuncio de "
+                            f"{product_desc or 'producto'}.",
                             mf, length_ms=int(max(10000, min(60000, dur * 1000))))
             inputs += ["-i", mf]
-            fc.append(f"[{idx}:a]aloop=loop=-1:size=2000000000,volume=0.12[mus]")
-            labels.append("[mus]"); idx += 1
+            music_index = idx; idx += 1
         except Exception:
             pass
 
-    # SFX en el inicio de cada fase
+    # SFX del plan por fase → eventos con jerarquía de volumen y pre-roll pro
+    eventos = []
     for ph in phases:
         sfx = ph.get("sfx")
-        if not sfx or not os.path.exists(sfx):
+        t = float(ph.get("inicio_s", 0))
+        if not sfx or not os.path.exists(sfx) or t >= max(0.0, dur - 0.5):
             continue
-        ms = int(float(ph.get("inicio_s", 0)) * 1000)
-        inputs += ["-i", sfx]
-        fc.append(f"[{idx}:a]adelay={ms}|{ms},volume=0.7[s{idx}]")
-        labels.append(f"[s{idx}]"); idx += 1
+        etq = str(ph.get("etiqueta", "")).upper()
+        nombre = os.path.basename(sfx).lower()
+        es_whoosh = any(k in nombre for k in ("whoosh", "swoosh"))
+        if "SOLUC" in etq:
+            db = SFX_DB_PROTA          # el momento del producto: el acento del video
+        elif etq in ("HOOK", "CTA"):
+            db = SFX_DB_MEDIO
+        else:
+            db = SFX_DB_SUTIL          # PRUEBA/DESEO: se siente, no se oye
+        eventos.append({"t": max(0.2, t), "path": sfx, "db": db,
+                        "pre_ms": WHOOSH_PRE_MS if es_whoosh else 0})
 
-    if len(labels) < 2:      # solo la voz base -> nada que mezclar
+    if music_index is None and not eventos:
         return inp
-    fc.append("".join(labels) + f"amix=inputs={len(labels)}:normalize=0:duration=first[a]")
+    extra, fc2, mix = filtros_mezcla(vo_label="[vo]", clip_label=None, music_index=music_index,
+                                     sfx_eventos=eventos, input_offset=idx, dur_total=dur,
+                                     con_voz=True)
+    inputs += extra
+    fc += fc2
+    fc.append(cadena_final(mix))
     run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(fc),
-         "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac",
+         "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2",
          "-t", f"{dur:.3f}", "-movflags", "+faststart", out])
     return out
 

@@ -66,9 +66,38 @@ def dims_for(aspect: str) -> tuple[int, int]:
     return ASPECTS.get(aspect, ASPECTS[DEFAULT_ASPECT])
 
 
-def _fill_filter(dims: tuple[int, int], enhance: bool = False, fx: bool = False) -> str:
+# Movimiento por plano (medido en 4 ads ganadores reales): NADA queda 100% estático.
+# (tasa de zoom por segundo, tope de escala, dirección). El punch (15-23%/s) es el acento
+# del plano del producto; el resto es Ken Burns sutil 1.5-3%/s alternando in/out.
+_MOTION = {
+    "in_suave": (0.020, 1.30, "in"),
+    "in_fuerte": (0.060, 1.30, "in"),
+    "punch": (0.180, 1.22, "in"),
+    "out": (0.025, 1.06, "out"),
+}
+
+
+def _motion_chain(motion: str | None, dims: tuple[int, int]) -> str:
+    """Ken Burns/punch con zoompan ESTATELESS (zoom en función del nº de frame 'on', no del
+    estado previo). OJO: crop NO sirve aquí — sus w/h se evalúan UNA vez, no animan."""
+    if not motion or motion not in _MOTION:
+        return ""
+    w, h = dims
+    r, cap, kind = _MOTION[motion]
+    rf = r / FPS                                     # tasa por frame
+    if kind == "in":
+        z = f"min(1+{rf:.6f}*on\\,{cap})"
+    else:
+        z = f"max({cap}-{rf:.6f}*on\\,1.0)"
+    return (f",zoompan=z='{z}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            f":s={w}x{h}:fps={FPS}")
+
+
+def _fill_filter(dims: tuple[int, int], enhance: bool = False, fx: bool = False,
+                 motion: str | None = None) -> str:
     """Escala para CUBRIR el encuadre y recorta al centro (look nativo de Reels).
-    enhance=True agrega limpieza+nitidez+color. fx=True agrega un punch-in zoom."""
+    enhance=True agrega limpieza+nitidez+color. motion agrega Ken Burns/punch por plano
+    (fx=True sin motion explícito equivale al Ken Burns suave de antes)."""
     w, h = dims
     chain = (
         f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -76,11 +105,9 @@ def _fill_filter(dims: tuple[int, int], enhance: bool = False, fx: bool = False)
     )
     if enhance:
         chain += "," + ENHANCE_CHAIN
-    if fx:
-        chain += (
-            f",zoompan=z='min(zoom+0.0012,1.12)':d=1:"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={FPS}"
-        )
+    if motion is None and fx:
+        motion = "in_suave"
+    chain += _motion_chain(motion, dims)
     return chain
 
 
@@ -105,14 +132,18 @@ def render_clip(seg: Segment, out_path: str, dims: tuple[int, int],
 
 
 def _normalized_clip(seg: Segment, out_path: str, dims: tuple[int, int],
-                     enhance: bool = False, fx: bool = False) -> str:
+                     enhance: bool = False, fx: bool = False,
+                     motion: str | None = None, max_dur: float | None = None) -> str:
     """Clip normalizado SIEMPRE con pista de audio (silencio si la fuente no tiene),
-    para que el concat no falle al mezclar clips con y sin audio."""
+    para que el concat no falle al mezclar clips con y sin audio.
+    max_dur recorta el plano al tope de su slot (curva de ritmo pro: ningún plano >2.2s)."""
     dur = max(0.1, seg.end - seg.start)
+    if max_dur:
+        dur = min(dur, max_dur)
     cmd_real = [
         "ffmpeg", "-y",
         "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{dur:.3f}",
-        "-vf", _fill_filter(dims, enhance, fx),
+        "-vf", _fill_filter(dims, enhance, fx, motion),
         *venc(), "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
         "-map", "0:v:0", "-map", "0:a:0?",
@@ -122,7 +153,7 @@ def _normalized_clip(seg: Segment, out_path: str, dims: tuple[int, int],
         "ffmpeg", "-y",
         "-ss", f"{seg.start:.3f}", "-i", seg.video, "-t", f"{dur:.3f}",
         "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-        "-vf", _fill_filter(dims, enhance, fx),
+        "-vf", _fill_filter(dims, enhance, fx, motion),
         "-map", "0:v:0", "-map", "1:a:0", "-shortest",
         *venc(), "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
@@ -178,12 +209,20 @@ def concat_clips(clip_paths: list[str], out_path: str, work_dir: str) -> str:
     return out_path
 
 
-_TRANSITIONS = ["fade", "slideleft", "wipeup", "circleopen", "slideup"]
+# Medido en 4 ads ganadores reales: el 70-85% de las transiciones son DISSOLVES de 4-6 frames
+# (0.13-0.20s) — el pegamento que unifica clips de cámaras/luces distintas — y solo 1 de cada
+# ~5 es corte (casi) duro, reservado al plano de impacto. CERO slides/wipes/circles (PowerPoint).
+_XFADE_D = 0.17          # dissolve estándar (5 frames a 30fps)
+_XFADE_D_HARD = 0.034    # "corte duro" (1 frame de mezcla: evita el salto entre fuentes)
 
 
 def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
-                       d: float = 0.3) -> str:
-    """Une clips con TRANSICIONES (xfade en video + acrossfade en audio)."""
+                       d: float = _XFADE_D,
+                       cut_times_out: list[float] | None = None) -> str:
+    """Une clips estilo ads ganadores: dissolve corto por defecto + corte duro selectivo
+    (1 de cada ~5 y en la entrada del último plano = el payoff/impacto).
+    Si `cut_times_out` es una lista, deja ahí los tiempos reales de cada transición
+    (para alinear los SFX con el corte de verdad, no con la suma teórica)."""
     if len(clip_paths) <= 1:
         return concat_clips(clip_paths, out_path, work_dir)
 
@@ -192,6 +231,9 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
     clip_paths = [_ensure_audio(p, work_dir) for p in clip_paths]
     durs = [max(0.4, probe(p).duration) for p in clip_paths]
 
+    n_b = len(clip_paths) - 1
+    hard = {n_b - 1} | {i for i in range(n_b) if i % 5 == 2}   # payoff + 1 de cada ~5
+
     inputs = []
     for p in clip_paths:
         inputs += ["-i", p]
@@ -199,13 +241,15 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
     vlast, alast = "[0:v]", "[0:a]"
     acc = durs[0]
     for i in range(1, len(clip_paths)):
-        tr = _TRANSITIONS[(i - 1) % len(_TRANSITIONS)]
-        off = max(0.1, acc - d)
+        dd = _XFADE_D_HARD if (i - 1) in hard else d
+        off = max(0.1, acc - dd)
+        if cut_times_out is not None:
+            cut_times_out.append(round(off + dd / 2, 3))
         vtag, atag = f"[vx{i}]", f"[ax{i}]"
-        fc.append(f"{vlast}[{i}:v]xfade=transition={tr}:duration={d}:offset={off:.3f}{vtag}")
-        fc.append(f"{alast}[{i}:a]acrossfade=d={d}{atag}")
+        fc.append(f"{vlast}[{i}:v]xfade=transition=fade:duration={dd}:offset={off:.3f}{vtag}")
+        fc.append(f"{alast}[{i}:a]acrossfade=d={dd}{atag}")
         vlast, alast = vtag, atag
-        acc = acc + durs[i] - d
+        acc = acc + durs[i] - dd
     run([
         "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(fc),
         "-map", vlast, "-map", alast,
@@ -275,21 +319,21 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
             for i in buckets[vi]:                      # primero lo del bucket propio (disjunto)
                 if i in usados:
                     continue
-                sel.append(i); usados.add(i); dur += selected[i].duration()
+                sel.append(i); usados.add(i); dur += min(selected[i].duration(), 1.7)
                 if dur >= need:
                     break
             if dur < need:                             # si no alcanza, completa con clips NO usados
                 for i in by_score:
                     if i in usados:
                         continue
-                    sel.append(i); usados.add(i); dur += selected[i].duration()
+                    sel.append(i); usados.add(i); dur += min(selected[i].duration(), 1.7)
                     if dur >= need:
                         break
             if dur < need:                             # pool AGOTADO: se permite reusar clips de OTRAS
                 for i in by_score:                     # versiones — NUNCA dentro de la misma versión
                     if i in sel:
                         continue
-                    sel.append(i); dur += selected[i].duration()
+                    sel.append(i); dur += min(selected[i].duration(), 1.7)
                     if dur >= need:
                         break
             version_orders.append((names[vi], order_version(sel)))
@@ -305,11 +349,11 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
             pool = [i for i in range(n) if i != hook]
             pool.sort(key=lambda i: (usage[i], -selected[i].score,
                                      selected[i].source_index, selected[i].start))
-            take, dur = [], selected[hook].duration()
+            take, dur = [], min(selected[hook].duration(), 1.6)
             for i in pool:                             # por DURACIÓN, no por número fijo
                 if dur >= need:
                     break
-                take.append(i); dur += selected[i].duration()
+                take.append(i); dur += min(selected[i].duration(), 1.7)
             rest = sorted(take, key=lambda i: (selected[i].source_index, selected[i].start))
             order = [hook] + rest
             for i in order:
@@ -331,33 +375,58 @@ def build_variations(selected: list[Segment], work_dir: str,
     if version_orders is None:
         version_orders = plan_variations(selected, target_seconds=target_seconds)
 
-    # Renderizar SOLO los clips que de verdad se usan (no todo el pool) -> más rápido
-    used_idx = sorted({i for _, order in version_orders for i in order})
-    norm_paths: dict[int, str] = {}
+    # CURVA DE RITMO PRO (medida en 4 ads ganadores): ancla ≤1.6s → ráfaga 0.9s → crucero ≤1.7s
+    # → cierre/CTA calmado ≤2.2s. Movimiento por plano: hook fuerte, payoff punch (con fx),
+    # cuerpo Ken Burns alternado 2-3 in : 1 out (por índice → estable entre versiones).
+    def _slot_plan(order: list[int]) -> list[tuple[int, float, str]]:
+        n = len(order)
+        plan = []
+        ciclo = ("in_suave", "in_suave", "out")
+        for slot, i in enumerate(order):
+            if slot == 0:
+                cap, motion = 1.6, ("in_fuerte" if fx else "in_suave")
+            elif slot <= 2 and n >= 6:
+                cap, motion = 0.9, ciclo[i % 3]        # ráfaga del hook (planos cortos)
+            elif slot == n - 1:
+                cap, motion = 2.2, ("punch" if fx else "in_suave")   # payoff = acento
+            elif slot >= n - 3:
+                cap, motion = 2.2, ciclo[i % 3]        # CTA calmado: que la oferta se lea
+            else:
+                cap, motion = 1.7, ciclo[i % 3]
+            plan.append((i, cap, motion))
+        return plan
 
-    def _mk(i):
-        p = os.path.join(work_dir, f"clip_{i:02d}.mp4")
-        _normalized_clip(selected[i], p, dims, enhance, fx)
-        return i, p
+    # Renderizar SOLO las combinaciones (clip, tope, movimiento) que de verdad se usan;
+    # el dict dedup evita renderizar dos veces la misma combinación entre versiones.
+    slot_plans = {name: _slot_plan(order) for name, order in version_orders}
+    combos = sorted({c for plan in slot_plans.values() for c in plan})
+    norm_paths: dict[tuple, str] = {}
+
+    def _mk(combo):
+        i, cap, motion = combo
+        p = os.path.join(work_dir, f"clip_{i:02d}_{int(cap * 10):02d}_{motion}.mp4")
+        _normalized_clip(selected[i], p, dims, enhance, fx, motion=motion, max_dur=cap)
+        return combo, p
 
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        for i, p in ex.map(_mk, used_idx):
-            norm_paths[i] = p
+        for combo, p in ex.map(_mk, combos):
+            norm_paths[combo] = p
 
     out_versions = []
     for name, order in version_orders:
-        clip_list = [norm_paths[i] for i in order if i in norm_paths]
+        clip_list = [norm_paths[c] for c in slot_plans[name] if c in norm_paths]
         if not clip_list:
             continue
         out_path = os.path.join(work_dir, f"version_{name}.mp4")
-        if fx:
-            concat_clips_xfade(clip_list, out_path, work_dir)
-        else:
-            concat_clips(clip_list, out_path, work_dir)
+        # SIEMPRE dissolve corto (el pegamento pro del mashup) — antes solo con fx, y con
+        # transiciones tipo PowerPoint que se veían amateur.
+        cuts: list[float] = []
+        concat_clips_xfade(clip_list, out_path, work_dir, cut_times_out=cuts)
         out_versions.append({
             "name": name,
             "path": out_path,
             "segments": [selected[i].to_dict() for i in order],
+            "cut_times": cuts,      # tiempos REALES de transición (para alinear los SFX)
         })
 
     return {"clips": list(norm_paths.values()), "versions": out_versions}
@@ -494,40 +563,45 @@ def _has_audio_stream(path: str) -> bool:
 
 
 def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
-                  sfx_paths: list[str] | None = None, cut_times: list[float] | None = None) -> str:
-    """MÚSICA de fondo (baja) + SFX en cada corte, CONSERVANDO el audio del clip (para Cortar clips
-    sin voz en off). Varía el SFX por corte (rota la librería). Devuelve la ruta o el original si no aplica."""
+                  sfx_paths: list[str] | None = None, cut_times: list[float] | None = None,
+                  phases: list[dict] | None = None) -> str:
+    """MEZCLA PRO sin voz en off (Cortar clips): el audio del clip manda, la música se agacha
+    debajo de él (ducking) con fade-out final, y los SFX van SUTILES solo en ~50% de los cortes
+    (whoosh 150ms antes del corte). Master −18 LUFS. Devuelve la ruta o el original si no aplica."""
+    from .pro_mix import plan_sfx, filtros_mezcla, cadena_final
     sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
-    cut_times = [t for t in (cut_times or []) if t > 0.2][:10]
     has_music = bool(music_path and os.path.exists(music_path))
-    has_sfx = bool(sfx_paths and cut_times)
-    if not has_music and not has_sfx:
+    if not has_music and not sfx_paths:
         return video_path
     from .ffmpeg_utils import probe
     try:
         vdur = probe(video_path).duration
     except Exception:  # noqa: BLE001
         return video_path
+    eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vdur, sfx_paths, phases=phases)
+    if not has_music and not eventos:
+        return video_path
     inputs = ["-i", video_path]
-    fc, mix, idx = [], [], 1
+    fc, idx = [], 1
+    clip_label = None
     if _has_audio_stream(video_path):
-        fc.append("[0:a]volume=1.0[clip]"); mix.append("[clip]")
+        fc.append("[0:a]volume=1.0[clip]")
+        clip_label = "[clip]"
+    music_index = None
     if has_music:
-        inputs += ["-stream_loop", "-1", "-i", music_path]
-        fc.append(f"[{idx}:a]volume=0.20[mus]"); mix.append("[mus]"); idx += 1
-    if has_sfx:
-        import random as _rnd
-        seq = sfx_paths[:]; _rnd.shuffle(seq)   # variar los SFX (no siempre el mismo)
-        for k, t in enumerate(cut_times):
-            inputs += ["-i", seq[k % len(seq)]]
-            ms = int(t * 1000)
-            fc.append(f"[{idx}:a]adelay={ms}|{ms},volume=0.85[sf{k}]"); mix.append(f"[sf{k}]"); idx += 1
+        inputs += ["-i", music_path]
+        music_index = idx; idx += 1
+    extra, fc2, mix = filtros_mezcla(vo_label=None, clip_label=clip_label, music_index=music_index,
+                                     sfx_eventos=eventos, input_offset=idx, dur_total=vdur,
+                                     con_voz=False)
     if not mix:
         return video_path
-    fc.append("".join(mix) + f"amix=inputs={len(mix)}:normalize=0,dynaudnorm=f=200[a]")
+    inputs += extra
+    fc += fc2
+    fc.append(cadena_final(mix))
     run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(fc), "-map", "0:v:0", "-map", "[a]",
-         "-t", f"{vdur:.2f}", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-         out_path])
+         "-t", f"{vdur:.2f}", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+         "-ac", "2", "-movflags", "+faststart", out_path])
     return out_path
 
 
@@ -564,53 +638,36 @@ def punch_pace(video_path: str, out_path: str, target_max: float = 22.0,
 def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
                           sfx_paths: list[str] | None = None,
                           cut_times: list[float] | None = None,
-                          music_path: str | None = None) -> str:
-    """Voz en off + efectos REALES en transiciones (alternados) + musica de fondo."""
-    cut_times = [t for t in (cut_times or []) if t > 0.2][:8]
+                          music_path: str | None = None,
+                          phases: list[dict] | None = None) -> str:
+    """Voz en off + MEZCLA PRO (pro_mix, reglas de 4 ads ganadores reales):
+    música 13dB bajo la voz + ducking al hablar + fade-out final; SFX SUTILES solo en ~50% de
+    los cortes (whoosh 150ms ANTES del corte) + 1 'brillo' protagonista en el momento del
+    producto; master −18 LUFS. Antes: whoosh a 0.8 en CADA corte + música plana (sonaba amateur)."""
+    from .pro_mix import plan_sfx, filtros_mezcla, cadena_final, _dur_audio
     sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
-    has_sfx = bool(sfx_paths and cut_times)
     has_music = bool(music_path and os.path.exists(music_path))
-    if not has_sfx and not has_music:
+    vo_dur_s = _dur_audio(vo_path)
+    eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vo_dur_s or 20.0,
+                       sfx_paths, phases=phases)
+    if not eventos and not has_music:
         return add_voiceover(video_path, vo_path, out_path)
 
     # SIN loop de video: si la voz es más larga, se sostiene el último frame (tpad clone).
     # (El loop repetía TODO el montaje desde el inicio → cortes duplicados. Queja de Juan.)
     inputs = ["-i", video_path, "-i", vo_path]
     fc = ["[0:v]tpad=stop_mode=clone:stop_duration=60[v]", "[1:a]volume=1.0[vo]"]
-    mix_labels = ["[vo]"]
     idx = 2
-
-    if has_sfx:
-        # asignar un efecto a cada transición: BARAJADOS por render (variedad — queja de Juan:
-        # "no siempre el mismo efecto"), y nunca el mismo dos veces seguidas.
-        import random as _rnd
-        seq = sfx_paths[:]
-        _rnd.shuffle(seq)
-        assign = [seq[i % len(seq)] for i in range(len(cut_times))]
-        in_index = {}
-        for p in assign:
-            if p not in in_index:
-                inputs += ["-i", p]
-                in_index[p] = idx
-                idx += 1
-        from collections import Counter
-        counts = Counter(assign)
-        for p, ii in in_index.items():
-            fc.append(f"[{ii}:a]asplit={counts[p]}" + "".join(f"[s{ii}_{k}]" for k in range(counts[p])))
-        ptr = {p: 0 for p in in_index}
-        for i, (t, p) in enumerate(zip(cut_times, assign)):
-            ii = in_index[p]; k = ptr[p]; ptr[p] += 1
-            ms = int(t * 1000)
-            fc.append(f"[s{ii}_{k}]adelay={ms}|{ms},volume=0.8[w{i}]")
-            mix_labels.append(f"[w{i}]")
-
+    music_index = None
     if has_music:
         inputs += ["-i", music_path]
-        m_idx = idx; idx += 1
-        fc.append(f"[{m_idx}:a]aloop=loop=-1:size=2000000000,volume=0.16[mus]")
-        mix_labels.append("[mus]")
-
-    fc.append("".join(mix_labels) + f"amix=inputs={len(mix_labels)}:normalize=0:duration=first[a]")
+        music_index = idx; idx += 1
+    extra, fc2, mix = filtros_mezcla(vo_label="[vo]", clip_label=None, music_index=music_index,
+                                     sfx_eventos=eventos, input_offset=idx,
+                                     dur_total=vo_dur_s or 20.0, con_voz=True)
+    inputs += extra
+    fc += fc2
+    fc.append(cadena_final(mix))
     vo_dur = _dur_flag(vo_path)   # corte EXACTO al final de la voz
     run([
         "ffmpeg", "-y", *inputs,
@@ -618,7 +675,8 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
         "-map", "[v]", "-map", "[a]", "-shortest", *vo_dur,
         *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-        "-c:a", "aac", "-b:a", "192k",
+        # -ar 48000 OBLIGATORIO: loudnorm sube el sample rate interno a 192k si no se fija
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
         out_path,
     ])
     return out_path

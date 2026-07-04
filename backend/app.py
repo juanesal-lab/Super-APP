@@ -30,7 +30,7 @@ from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
 from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
                                         generar_ad_fullprompt, _integrar_producto_ia,
-                                        editar_imagen_ia)
+                                        editar_imagen_ia, _error_amigable, _IMG_MODEL_DRAFT)
 from pipeline import foreplay_search as fp
 from pipeline.hook_variator import variar_hook
 from pipeline.creative_variator import generar_variaciones
@@ -129,6 +129,19 @@ def _load_shopify() -> tuple[str | None, str | None, str | None]:
             _load_key("SHOPIFY_THEME_ID"))
 
 
+def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress) -> None:
+    """Cortar clips: pill 'ENVÍO GRATIS · PAGAS AL RECIBIR' + 'OFERTA 2X1' arriba (como la foto
+    de Jack). La IA elige la altura para no tapar caras/producto (offer_banner.safe_top_y)."""
+    from pipeline.offer_banner import add_offer_banner
+    progress("🏷️ Poniendo el banner de oferta (2x1 · envío gratis)...", 97)
+    for v in versions:
+        try:
+            out = v["path"][:-4] + "_of.mp4"
+            v["path"] = add_offer_banner(v["path"], out, work_dir, gemini_key=_load_env_key())
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
     """Cortar clips: música de fondo (baja) + SFX variados en los cortes, conservando el audio del clip."""
     from pipeline.assemble import add_music_sfx
@@ -188,6 +201,8 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
                 and settings.get("musica", True):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
                                 settings.get("product_desc", ""), progress)
+        if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
+            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -297,7 +312,7 @@ def _safe_link_paths(link_paths: list[str]) -> list[str]:
 
 
 @app.post("/api/process")
-async def process(
+def process(
     files: list[UploadFile] = File(None),
     link_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
@@ -314,6 +329,7 @@ async def process(
     blur_captions: bool = Form(False),
     text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
+    banner_oferta: bool = Form(False),
 ):
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
@@ -347,6 +363,7 @@ async def process(
         "enhance": bool(enhance),
         "effects": bool(effects),
         "blur_captions": bool(blur_captions),
+        "banner_oferta": bool(banner_oferta),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
     }
@@ -357,7 +374,7 @@ async def process(
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
 
 @app.post("/api/fetch-links")
-async def fetch_links(links: str = Form("")):
+def fetch_links(links: str = Form("")):
     """Baja videos de TikTok al servidor y devuelve sus rutas (para cortarlos luego con /api/process,
     después de que el usuario configure los ajustes). NO corta nada aquí."""
     urls = [u for u in links.split() if u.startswith("http")]
@@ -441,7 +458,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
 
 
 @app.post("/api/auto")
-async def auto(
+def auto(
     files: list[UploadFile] = File(...),
     product_desc: str = Form(""),
     voz: str = Form("juan_carlos"),
@@ -473,53 +490,66 @@ async def auto(
 
 # ---- BUSCAR CREATIVOS EN TIKTOK (foto + nombre -> links reales) ----
 
-@app.post("/api/tiktok-search")
-async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
-                        foto: UploadFile = File(None)):
-    from pipeline.tiktok_search import buscar
-    img_path = None
-    if foto is not None and foto.filename:
-        d = os.path.join(UPLOAD_DIR, "tksearch")
+def _guardar_fotos_busqueda(foto, fotos) -> list[str]:
+    """Guarda las fotos de búsqueda (campo viejo `foto` + campo nuevo `fotos`, máx 3) y devuelve rutas."""
+    d = os.path.join(UPLOAD_DIR, "tksearch")
+    paths: list[str] = []
+    for up in ([foto] if foto is not None else []) + list(fotos or []):
+        if up is None or not up.filename:
+            continue
         os.makedirs(d, exist_ok=True)
-        img_path = os.path.join(d, os.path.basename(foto.filename))
-        with open(img_path, "wb") as o:
-            shutil.copyfileobj(foto.file, o)
-    if not (nombre.strip() or img_path):
+        p = os.path.join(d, os.path.basename(up.filename))
+        with open(p, "wb") as o:
+            shutil.copyfileobj(up.file, o)
+        if p not in paths:
+            paths.append(p)
+        if len(paths) >= 3:
+            break
+    return paths
+
+
+@app.post("/api/tiktok-search")
+def tiktok_search(nombre: str = Form(""), count: int = Form(20),
+                        foto: UploadFile = File(None),
+                        fotos: list[UploadFile] = File([])):
+    """`foto` (una, campo viejo) sigue igual; `fotos` acepta hasta 3 del MISMO producto (multi-foto)."""
+    from pipeline.tiktok_search import buscar
+    img_paths = _guardar_fotos_busqueda(foto, fotos)
+    if not (nombre.strip() or img_paths):
         raise HTTPException(400, "Dame el nombre del producto o una foto")
-    return buscar(image_path=img_path, nombre=nombre.strip(),
+    return buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
                   api_key=_load_env_key(), count=int(count),
                   anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
-                  foreplay_key=_load_foreplay_key())     # + ads ganadores de Foreplay al mismo pool
+                  foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
+                  image_paths=img_paths or None)         # multi-foto: ficha + jueces con más ángulos
 
 
 # ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
 
 @app.post("/api/creative-search")
-async def creative_search(nombre: str = Form(""), count: int = Form(20),
-                          fp_count: int = Form(20), foto: UploadFile = File(None)):
+def creative_search(nombre: str = Form(""), count: int = Form(20),
+                          fp_count: int = Form(20), foto: UploadFile = File(None),
+                          fotos: list[UploadFile] = File([])):
     """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
-    /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo."""
+    /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo.
+    `fotos` acepta hasta 3 del MISMO producto (frente/lado/empaque) → ficha y jueces más precisos."""
     from pipeline.creative_search import buscar_creativos
-    img_path = None
-    if foto is not None and foto.filename:
-        d = os.path.join(UPLOAD_DIR, "tksearch")
-        os.makedirs(d, exist_ok=True)
-        img_path = os.path.join(d, os.path.basename(foto.filename))
-        with open(img_path, "wb") as o:
-            shutil.copyfileobj(foto.file, o)
+    img_paths = _guardar_fotos_busqueda(foto, fotos)
+    img_path = img_paths[0] if img_paths else None
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto o una foto")
     r = buscar_creativos(image_path=img_path, nombre=nombre.strip(),
                          gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
                          anthropic_key=_load_anthropic_key(),
-                         count=int(count), fp_count=int(fp_count))
+                         count=int(count), fp_count=int(fp_count),
+                         image_paths=img_paths or None)
     # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
     r["foto"] = os.path.basename(img_path) if img_path else ""
     return r
 
 
 @app.post("/api/creative-more")
-async def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
+def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
                         desc: str = Form(""), terminos: str = Form(""), angulo: str = Form(""),
                         excluir: str = Form(""), n: int = Form(1), foto: str = Form("")):
     """n creativos NUEVOS para una fuente: 🔄 cambiar (n=1, sin angulo) o 🎯 más con ese ángulo
@@ -572,7 +602,7 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
 
 
 @app.post("/api/clone")
-async def clone(
+def clone(
     winner: UploadFile = File(...),
     photos: list[UploadFile] = File([]),
     videos: list[UploadFile] = File([]),
@@ -683,7 +713,7 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
 
 
 @app.post("/api/scripts")
-async def scripts(
+def scripts(
     files: list[UploadFile] = File(None),
     link_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
@@ -897,7 +927,7 @@ def _run_swap_job(job_id: str, old_path: str, new_paths: list[str],
 
 
 @app.post("/api/swap")
-async def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(...),
+def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(...),
                product_desc: str = Form(""), new_desc: str = Form("")):
     if not old or not new_files:
         raise HTTPException(400, "Sube el video viejo y al menos un video del producto nuevo")
@@ -967,7 +997,7 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
 
 
 @app.post("/api/dub")
-async def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
+def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
               source_lang: str = Form("auto"), oferta_2x1: bool = Form(False),
               product_desc: str = Form(""), video_url: str = Form("")):
     job_id = uuid.uuid4().hex[:12]
@@ -1019,7 +1049,7 @@ def _run_download_job(job_id: str, urls: list[str]):
 
 
 @app.post("/api/download-videos")
-async def download_videos(urls: str = Form(...)):
+def download_videos(urls: str = Form(...)):
     """Baja videos desde una lista de links (uno por línea) con yt-dlp."""
     links = [u.strip() for u in urls.replace(",", "\n").splitlines() if u.strip()]
     if not links:
@@ -1043,6 +1073,7 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
     try:
         result = producto_a_clips(
             winner_urls, os.path.join(WORK_DIR, job_id),
+            archivos_locales=settings.get("archivos_locales") or [],
             product_url=product_url, image_path=image_path,
             product_desc=product_desc, settings=settings,
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(), progress=progress,
@@ -1057,7 +1088,7 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
 
 
 @app.post("/api/producto-clips")
-async def producto_clips(
+def producto_clips(
     winner_urls: str = Form(...),
     product_url: str = Form(""),
     product_desc: str = Form(""),
@@ -1075,11 +1106,13 @@ async def producto_clips(
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
     vo_guiones: int = Form(0),
+    winner_files: list[UploadFile] = File([]),
 ):
-    """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
+    """Semi-auto: links de ganadores Y/O videos locales + tu producto → clips en una pasada."""
     links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
-    if not links:
-        raise HTTPException(400, "Pega al menos un link de un creativo ganador")
+    locales: list[str] = []
+    if not links and not any(f and f.filename for f in (winner_files or [])):
+        raise HTTPException(400, "Pega al menos un link o elige videos de tu computador")
 
     job_id = uuid.uuid4().hex[:12]
     image_path = None
@@ -1089,6 +1122,13 @@ async def producto_clips(
         image_path = os.path.join(up, "producto_" + os.path.basename(product_image.filename))
         with open(image_path, "wb") as f:
             shutil.copyfileobj(product_image.file, f)
+    for wf in (winner_files or []):
+        if wf and wf.filename:
+            d = os.path.join(UPLOAD_DIR, job_id); os.makedirs(d, exist_ok=True)
+            p = os.path.join(d, "gan_" + os.path.basename(wf.filename))
+            with open(p, "wb") as f:
+                shutil.copyfileobj(wf.file, f)
+            locales.append(p)
 
     settings = {
         "aspect": aspect,
@@ -1109,6 +1149,7 @@ async def producto_clips(
         # Control de costo de ElevenLabs: cuántas narraciones distintas (0 = una por versión).
         # El selector manda 8 (una por video) → equivale al comportamiento por defecto.
         "vo_guiones": vo_guiones if vo_guiones in (2, 4) else 0,
+        "archivos_locales": locales,
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
@@ -1209,7 +1250,7 @@ def _run_foreplay_producto_job(job_id: str, image_path: str | None, nombre: str,
 
 
 @app.post("/api/foreplay-producto")
-async def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(False),
+def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(False),
                                 foto: UploadFile | None = File(None)):
     """📸 Producto exacto: foto y/o nombre → TODOS los creativos de ESE producto en Foreplay
     (todos los términos, páginas grandes, juez visual). Job en background con progreso."""
@@ -1418,7 +1459,7 @@ def last_project():
 
 
 @app.post("/api/disruptive-angles")
-async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
+def disruptive_angles(producto: str = Form(""), link: str = Form(""),
                             ofertas: str = Form(""), precio: str = Form(""),
                             product_image: UploadFile | None = File(None)):
     """Paso 1: analiza producto/link → 6 conceptos disruptivos para que el usuario elija."""
@@ -1474,7 +1515,7 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
 
 
 @app.post("/api/disruptive-images")
-async def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
+def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
     """Paso 2: genera las imágenes (escena + texto compuesto) de los conceptos ELEGIDOS."""
     import json as _json
     ctx = JOBS.get(ctx_id)
@@ -1532,16 +1573,31 @@ def disruptive_hd(job_id: str = Form(...), index: int = Form(...)):
     if index < 0 or index >= len(variantes):
         raise HTTPException(400, "Índice fuera de rango")
     v = variantes[index]
-    out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    try:
-        img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
-                                    product_image_path=job.get("_image_path"),
-                                    integrar_producto=bool(job.get("_image_path")), hd=True)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(500, f"No se pudo renderizar en HD: {e}")
-    if not img:
-        raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
+    # Si la imagen YA existe (con el producto puesto y/o ajustes), HD la REFINA TAL CUAL —
+    # misma escena, mismo producto, mismos ajustes — con el modelo PRO. Antes se re-dibujaba
+    # desde el prompt: salía OTRA escena y si la 2ª pasada del producto fallaba, lo perdía.
+    if v.get("imagen") and os.path.exists(v["imagen"]):
+        errs: list = []
+        img = editar_imagen_ia(v["imagen"], (
+            "Recrea esta MISMA imagen absolutamente idéntica pero en máxima calidad HD "
+            "fotorrealista: más nitidez, mejor iluminación y texturas. NO cambies NADA del "
+            "contenido: misma composición, mismo producto, mismos textos en español letra por "
+            "letra, mismos colores. Entrégala en formato CUADRADO 1:1 exacto (si no lo es, "
+            "extiende el fondo con coherencia — sin deformar nada)."), _load_env_key(), errors=errs)
+        if not img:
+            raise HTTPException(502, "HD no salió (tu imagen quedó intacta): "
+                                + (_error_amigable(errs[0]) if errs else "reintenta en un momento"))
+    else:
+        out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        try:
+            img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
+                                        product_image_path=job.get("_image_path"),
+                                        integrar_producto=bool(job.get("_image_path")), hd=True)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(500, f"No se pudo renderizar en HD: {e}")
+        if not img:
+            raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
     v["hd"] = True
     _persist_disruptive(job_id)
@@ -1564,7 +1620,9 @@ def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
     if not (prod and os.path.exists(prod)):
         raise HTTPException(400, "No subiste foto del producto en el paso 1")
     try:
-        res = _integrar_producto_ia(v["imagen"], prod, _load_env_key())
+        # modelo BARATO para poner el producto (el PRO se reserva para el botón HD y a veces
+        # está sin cuota — con el barato el botón funciona siempre y cuesta ~3x menos)
+        res = _integrar_producto_ia(v["imagen"], prod, _load_env_key(), model=_IMG_MODEL_DRAFT)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo poner el producto: {e}")
     if not res:   # bloqueo/cuota/sin imagen → el ad quedó intacto; avisa de verdad

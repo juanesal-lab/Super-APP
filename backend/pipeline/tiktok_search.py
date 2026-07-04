@@ -33,16 +33,29 @@ def _client(api_key):
     return genai.Client(api_key=api_key)
 
 
-def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
-    """Gemini: descripción precisa (producto + FORMA) + VARIAS búsquedas (amplía) + desc. Fallback: nombre."""
-    if not (api_key and image_path and os.path.exists(image_path)):
+def analizar_foto(image_path: str, nombre: str, api_key: str,
+                  image_paths: list[str] | None = None) -> dict:
+    """Gemini: descripción precisa (producto + FORMA) + VARIAS búsquedas (amplía) + desc. Fallback: nombre.
+
+    `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → UNA sola
+    llamada a Gemini con todas las imágenes = ficha más completa. Firma vieja intacta."""
+    paths = [p for p in (image_paths or [image_path])
+             if p and os.path.exists(p)][:3]
+    if not (api_key and paths):
         return {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
     try:
         from google.genai import types
-        with open(image_path, "rb") as f:
-            data = f.read()
+        datas = []
+        for p in paths:
+            with open(p, "rb") as f:
+                datas.append(f.read())
+        intro = ("Haz un ANÁLISIS VISUAL PROFUNDO de la foto de este producto de dropshipping — como un perito: "
+                 if len(datas) == 1 else
+                 f"Haz un ANÁLISIS VISUAL PROFUNDO de las {len(datas)} fotos de este producto de dropshipping "
+                 "(son el MISMO producto desde distintos ángulos: frente/lado/empaque — combina TODO lo que "
+                 "veas en ellas en una sola ficha) — como un perito: ")
         prompt = (
-            "Haz un ANÁLISIS VISUAL PROFUNDO de la foto de este producto de dropshipping — como un perito: "
+            intro +
             "(1) qué ES exactamente y su CATEGORÍA (crema, gel, cápsulas, spray, aparato/dispositivo, collar…); "
             "(2) FORMA física exacta (cuadrado, rectangular, redondo, tipo pinza/clamshell, lápiz, pistola, de "
             "mano…) y tamaño aproximado (de bolsillo, de mesa…); (3) COLORES por parte (cuerpo, tapa, botones, "
@@ -63,8 +76,8 @@ def analizar_foto(image_path: str, nombre: str, api_key: str) -> dict:
             '"desc":"FICHA VISUAL compacta (máx 5 líneas) con TODO el análisis: CATEGORÍA | FORMA y tamaño | '
             'COLORES por parte | MARCA/texto visible | RASGOS distintivos | USO | NO CONFUNDIR CON: ... '
             '(esta ficha la usan los jueces visuales para confirmar videos, sé preciso)"}')
-        resp = _client(api_key).models.generate_content(
-            model=_MODEL, contents=[prompt, types.Part.from_bytes(data=data, mime_type="image/jpeg")])
+        contents = [prompt] + [types.Part.from_bytes(data=d, mime_type="image/jpeg") for d in datas]
+        resp = _client(api_key).models.generate_content(model=_MODEL, contents=contents)
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
         if m:
             d = json.loads(m.group(0))
@@ -138,13 +151,55 @@ def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
     return out[:count]
 
 
+def _posts_cuenta(unique_id: str, count: int = 30) -> list[dict]:
+    """Videos recientes de UNA cuenta (tikwm api/user/posts) normalizados IGUAL que buscar_tiktok.
+
+    Palanca de volumen del plan 30/30: los vendedores suben el MISMO producto 10-30 veces →
+    explorar la cuenta de un video confirmado destapa el resto de sus creativos."""
+    out: list[dict] = []
+    if not (unique_id or "").strip():
+        return out
+    try:
+        r = requests.get("https://tikwm.com/api/user/posts",
+                         params={"unique_id": unique_id, "count": count},
+                         headers=_UA, timeout=25)
+        data = (r.json() or {}).get("data") or {}
+        for v in data.get("videos") or []:
+            au = (v.get("author") or {}).get("unique_id", "") or unique_id
+            vid = v.get("video_id", "")
+            if au and vid:
+                out.append({
+                    "url": f"https://www.tiktok.com/@{au}/video/{vid}",
+                    "title": (v.get("title") or "").strip()[:120],
+                    "cover": v.get("cover") or "",
+                    "play": v.get("play") or "",
+                    "plays": int(v.get("play_count") or 0),
+                    "likes": int(v.get("digg_count") or 0),
+                    "region": (v.get("region") or "").upper(),
+                    "dur": int(v.get("duration") or 0),
+                })
+    except Exception:  # noqa: BLE001
+        pass
+    return out[:count]
+
+
 _OVERLAY_SCORE = {"nada": 2, "poco": 1, "mucho": 0}
 
 
-def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dict | None:
-    """¿El video es SÍ O SÍ el mismo producto (tipo Y forma)? + muestra el producto + español + SIN texto sobrepuesto."""
+def _refs(ref_bytes) -> list[bytes]:
+    """Normaliza la referencia: bytes sueltos O lista de bytes (multi-foto) → lista (máx 2).
+    Los jueces usan MÁXIMO las 2 primeras fotos (tope de costo); todo caller viejo sigue igual."""
+    if isinstance(ref_bytes, (list, tuple)):
+        return [b for b in ref_bytes if b][:2]
+    return [ref_bytes] if ref_bytes else []
+
+
+def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | None:
+    """¿El video es SÍ O SÍ el mismo producto (tipo Y forma)? + muestra el producto + español + SIN texto sobrepuesto.
+    `ref_bytes`: bytes de la foto de referencia, o LISTA de bytes (multi-foto: usa máx las 2 primeras)."""
     cover = cand.get("cover")
-    if not cover:
+    refs = _refs(ref_bytes)
+    if not (cover and refs):
         return None
     try:
         from google.genai import types
@@ -153,12 +208,15 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
             return None
         cand["_cover_bytes"] = cimg   # cache: el 2º juez (Claude) la reusa sin re-descargar
         titulo = (cand.get("title") or "")[:120]
+        etiq = ("Foto 1 = el producto de REFERENCIA que quiero" if len(refs) == 1 else
+                f"Las primeras {len(refs)} fotos = el MISMO producto de REFERENCIA que quiero, "
+                "desde distintos ángulos")
         prompt = (
-            f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
-            f"Foto 2 = portada de un video de TikTok (título: \"{titulo}\"). "
-            "match=true si la Foto 2 muestra el MISMO PRODUCTO en lo que IMPORTA: la MISMA CATEGORÍA/FORMATO "
+            f"{etiq} (descripción: \"{ref_desc}\"). "
+            f"La ÚLTIMA foto = portada de un video de TikTok (título: \"{titulo}\"). "
+            "match=true si la PORTADA muestra el MISMO PRODUCTO en lo que IMPORTA: la MISMA CATEGORÍA/FORMATO "
             "(crema=crema, gel=gel, cápsulas=cápsulas, aparato=aparato) Y el MISMO PROPÓSITO/beneficio que la "
-            "Foto 1 (ej. crema de veneno de abeja para lunares/verrugas). NO exijas la misma MARCA/etiqueta/"
+            "REFERENCIA (ej. crema de veneno de abeja para lunares/verrugas). NO exijas la misma MARCA/etiqueta/"
             "envase: OTRO vendedor con el MISMO producto (misma categoría + mismo propósito) SÍ cuenta "
             "(match=true) — así encontramos más creativos del mismo producto. "
             "match=false si es OTRA categoría/formato (crema vs pastillas/spray/bótox/inyección), otro "
@@ -177,11 +235,9 @@ def _verificar(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dic
             "o \"mucho\" (subtítulos/títulos grandes que tapan el video). "
             "Responde SOLO JSON: "
             '{"match":true/false,"muestra_producto":true/false,"es":true/false,"texto_overlay":"nada"/"poco"/"mucho"}')
-        resp = _client(api_key).models.generate_content(
-            model=_MODEL,
-            contents=[prompt,
-                      types.Part.from_bytes(data=ref_bytes, mime_type="image/jpeg"),
-                      types.Part.from_bytes(data=cimg, mime_type="image/jpeg")])
+        contents = [prompt] + [types.Part.from_bytes(data=b, mime_type="image/jpeg") for b in refs]
+        contents.append(types.Part.from_bytes(data=cimg, mime_type="image/jpeg"))
+        resp = _client(api_key).models.generate_content(model=_MODEL, contents=contents)
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
         if not m:
             return None
@@ -282,16 +338,19 @@ def _foreplay_candidatos(queries: list[str], foreplay_key: str | None, max_q: in
     return out
 
 
-def _verificar_video(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) -> dict | None:
+def _verificar_video(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | None:
     """VERIFICACIÓN PROFUNDA: baja el video (mp4 de tikwm) y mira 3 frames de ADENTRO.
 
     Muchos videos del producto no lo muestran en la PORTADA (sale el pie, el antes/después, la cara)
     → el juez de portada los rechazaba aunque el video SÍ era del producto. Aquí se juzga el contenido.
+    Con multi-foto usa SOLO la 1ª referencia (los frames ya son varios: tope de costo).
     Devuelve el mismo dict que _verificar, o None si no se pudo."""
     import tempfile
     play = cand.get("play")
-    if not (play and api_key):
+    refs = _refs(ref_bytes)
+    if not (play and api_key and refs):
         return None
+    ref_uno = refs[0]
     tmp = None
     try:
         import cv2
@@ -337,7 +396,7 @@ def _verificar_video(cand: dict, ref_bytes: bytes, ref_desc: str, api_key: str) 
             "false. Si en ningún frame se ve el producto o hay duda → false. "
             'Responde SOLO JSON: {"match":true/false,"muestra_producto":true/false,"es":true/false,'
             '"texto_overlay":"nada"/"poco"/"mucho"}')
-        contents = [prompt, types.Part.from_bytes(data=ref_bytes, mime_type="image/jpeg")]
+        contents = [prompt, types.Part.from_bytes(data=ref_uno, mime_type="image/jpeg")]
         for fb in frames:
             contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
         resp = _client(api_key).models.generate_content(model=_MODEL, contents=contents)
@@ -383,22 +442,27 @@ def _media_type(b: bytes) -> str:
     return "image/jpeg"
 
 
-def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key: str) -> bool | None:
+def _verificar_claude(cand: dict, ref_bytes, ref_desc: str, anthropic_key: str) -> bool | None:
     """SEGUNDO JUEZ (Claude Opus con visión): ¿la portada es el MISMO producto (tipo + forma física)?
-    True=sí, False=no, None=no pudo opinar (fallo técnico → no se descarta por eso)."""
+    True=sí, False=no, None=no pudo opinar (fallo técnico → no se descarta por eso).
+    `ref_bytes`: bytes o LISTA de bytes (multi-foto: usa máx las 2 primeras como referencia)."""
     import base64
     cover = cand.get("cover")
-    if not (cover and anthropic_key and ref_bytes):
+    refs = _refs(ref_bytes)
+    if not (cover and anthropic_key and refs):
         return None
     try:
         cimg = cand.get("_cover_bytes") or requests.get(cover, headers=_UA, timeout=15).content
         if not cimg:
             return None
         titulo = (cand.get("title") or "")[:120]
+        etiq = ("Foto 1 = el producto de REFERENCIA que quiero" if len(refs) == 1 else
+                f"Las primeras {len(refs)} fotos = el MISMO producto de REFERENCIA que quiero, "
+                "desde distintos ángulos")
         prompt = (
-            f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
-            f"Foto 2 = portada de un video de TikTok (título: \"{titulo}\"). "
-            "Compara FÍSICAMENTE los dos. ¿La Foto 2 muestra CLARAMENTE el MISMO producto que la Foto 1 — "
+            f"{etiq} (descripción: \"{ref_desc}\"). "
+            f"La ÚLTIMA foto = portada de un video de TikTok (título: \"{titulo}\"). "
+            "Compara FÍSICAMENTE. ¿La PORTADA muestra CLARAMENTE el MISMO producto que la REFERENCIA — "
             "mismo tipo de objeto y la MISMA forma/formato físico (un aparato cuadrado ≠ rectangular ≠ tipo "
             "lápiz/pistola; una crema ≠ pastillas ≠ spray)? NO exijas la misma marca/etiqueta: otro vendedor "
             "con el MISMO producto sí cuenta. OJO con aparatos parecidos de OTRO USO: usa el título para "
@@ -409,16 +473,14 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
             "puede estar en la mano, en ángulo o con otra luz).")
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
+        content = [{"type": "text", "text": prompt}]
+        for b in refs + [cimg]:
+            content.append({"type": "image", "source": {"type": "base64", "media_type": _media_type(b),
+                                                        "data": base64.b64encode(b).decode()}})
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=300,
             tools=[_CLAUDE_TOOL], tool_choice={"type": "tool", "name": "juzgar"},
-            messages=[{"role": "user", "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image", "source": {"type": "base64", "media_type": _media_type(ref_bytes),
-                                             "data": base64.b64encode(ref_bytes).decode()}},
-                {"type": "image", "source": {"type": "base64", "media_type": _media_type(cimg),
-                                             "data": base64.b64encode(cimg).decode()}},
-            ]}])
+            messages=[{"role": "user", "content": content}])
         for b in resp.content:
             if getattr(b, "type", None) == "tool_use" and b.name == "juzgar":
                 return bool(b.input.get("match"))
@@ -429,27 +491,37 @@ def _verificar_claude(cand: dict, ref_bytes: bytes, ref_desc: str, anthropic_key
 
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
            count: int = 20, anthropic_key: str | None = None,
-           analisis: dict | None = None, foreplay_key: str | None = None) -> dict:
+           analisis: dict | None = None, foreplay_key: str | None = None,
+           image_paths: list[str] | None = None, explorar_cuentas: bool = True) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
     Si hay `foreplay_key`, también busca en la biblioteca de ads GANADORES de Foreplay (misma verificación).
     `analisis` (opcional): el dict de analizar_foto YA calculado (lo pasa creative_search para que la
     búsqueda combinada TikTok+Foreplay analice la foto UNA sola vez). Sin él, se calcula aquí (igual
-    que siempre)."""
+    que siempre).
+    `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → ficha más
+    completa; los jueces usan las 2 primeras como referencia. Sin él, todo sigue con `image_path`.
+    `explorar_cuentas`: si tras verificar faltan videos para el count, explora las CUENTAS de los
+    confirmados (máx 3, tikwm user/posts) — los vendedores suben el mismo producto muchas veces —
+    y suma los que el juez de portada confirme (solo portada: tope de costo)."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
     queries = _expandir(nombre, [])
-    if image_path and os.path.exists(image_path):
-        info = analisis or analizar_foto(image_path, nombre, api_key)
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:3]
+    if paths:
+        info = analisis or analizar_foto(paths[0], nombre, api_key, image_paths=paths)
         ref_desc = info["desc"]
         queries = info.get("variants") or [info["keywords"]]
-        try:
-            with open(image_path, "rb") as f:
-                ref_bytes = f.read()
-        except Exception:  # noqa: BLE001
-            ref_bytes = None
+        refs: list[bytes] = []
+        for p in paths[:2]:            # jueces: máximo 2 fotos de referencia (tope de costo)
+            try:
+                with open(p, "rb") as f:
+                    refs.append(f.read())
+            except Exception:  # noqa: BLE001
+                pass
+        ref_bytes = refs or None       # lista: _verificar/_verificar_claude la aceptan tal cual
     queries = [q for q in queries if q][:10] or [(nombre or "").strip()]
     kw = queries[0]
 
@@ -543,6 +615,47 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     (rechazados if r is False else confirmados).append(c)
             matches = sorted(confirmados + deep, key=lambda c: c.get("_rank", ()), reverse=True) + resto
 
+        # CUENTAS VENDEDORAS (plan 30/30): si aún faltan videos para el count, explora las cuentas
+        # de los CONFIRMADOS (los vendedores suben el MISMO producto 10-30 veces). Máx 3 cuentas,
+        # dedup contra TODO lo ya visto, sin Colombia, y cada candidato se juzga SOLO por portada
+        # (sin verificación profunda ni Claude: tope de costo).
+        if explorar_cuentas and matches and len(matches) < count:
+            vistos_urls = {c["url"] for c in cand_list} | {c["url"] for c in matches}
+            cuentas: list[str] = []
+            for c in matches:
+                u = c.get("url", "")
+                if "/@" in u:
+                    uid = u.split("/@", 1)[1].split("/", 1)[0]
+                    if uid and uid not in cuentas:
+                        cuentas.append(uid)
+                if len(cuentas) >= 3:
+                    break
+            extra_cands: list[dict] = []
+            if cuentas:
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    for res in ex.map(lambda u: _posts_cuenta(u, count=30), cuentas):
+                        for c in res:
+                            if (c["url"] not in vistos_urls and c.get("region") != "CO"
+                                    and 4 <= c.get("dur", 0) <= 120):
+                                vistos_urls.add(c["url"])
+                                extra_cands.append(c)
+            extra_cands = extra_cands[:max(60, count * 4)]   # mismo tope que el pool principal
+            if extra_cands:
+                de_cuentas: list[dict] = []
+                with ThreadPoolExecutor(max_workers=10) as ex:
+                    futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c
+                            for c in extra_cands}
+                    for fut in as_completed(futs):
+                        v = fut.result()
+                        if v and v.get("match"):
+                            c = futs[fut]
+                            c["_cuenta"] = True
+                            c["_rank"] = (v.get("muestra", False), v.get("overlay", 1),
+                                          v.get("es", False), c.get("plays", 0))
+                            de_cuentas.append(c)
+                de_cuentas.sort(key=lambda c: c.get("_rank", ()), reverse=True)
+                matches.extend(de_cuentas)        # después de los ya confirmados (doble juez primero)
+
         for c in matches:
             c["verificado_producto"] = True       # pasó la verificación visual (uno o ambos jueces)
         links = matches[:count]
@@ -560,8 +673,17 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     for c in links:
         c.pop("_rank", None)
         c.pop("_deep", None)
+        c.pop("_cuenta", None)
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
+
+    # HONESTIDAD (plan 30/30): si no se llegó al count con confirmados, decirlo CLARO, con las
+    # búsquedas que se probaron, y pedir datos para ampliar (nunca inflar con no-confirmados).
+    mensaje = ""
+    if verificado and n_conf < count:
+        mensaje = (f"Encontré {n_conf} confirmados con estas búsquedas: "
+                   f"[{', '.join(queries[:6])}]. "
+                   "Dame la marca, un hashtag o el país para ampliar.")
 
     # B-ROLL de apoyo (escenas adaptadas al ángulo, para un video más dopamínico) — manual:
     # se muestran aparte y el usuario elige cuáles usar.
@@ -572,7 +694,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         except Exception:  # noqa: BLE001
             broll = []
     return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
-            "n_confirmados": n_conf, "broll": broll,
+            "n_confirmados": n_conf, "broll": broll, "mensaje_busqueda": mensaje,
             "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}"}
 
 

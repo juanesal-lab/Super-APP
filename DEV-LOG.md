@@ -2230,6 +2230,121 @@ Probado (10 fuentes × 6 segmentos, 4 versiones con guiones iguales): ganchos de
 DISTINTAS, solapamiento entre versiones 0-2 clips de ~10 (antes casi 100%), cada versión usa
 7-9 fuentes. py_compile OK. AVISO Jack: orchestrator pasa los params nuevos; nada más cambió.
 
+### 2026-07-04 · Claude (jackingshop1-cell) · 🚀 Fix RAÍZ de la lentitud: 15 endpoints congelaban TODA la app
+Jack: "se me demora mucho la app en darme cosas, mucho". Causa: 15 handlers declarados `async def`
+SIN ningún await adentro — corren EN el event loop de uvicorn, así que mientras uno trabaja
+(disruptive-angles ~2 min de Claude inline, creative-search ~1-2 min, uploads grandes de clone/swap)
+TODO el server queda congelado: miniaturas, /api/status de otros jobs, todas las pestañas.
+FIX: `async def` → `def` en los 15 (process, fetch_links, auto, tiktok_search, creative_search,
+creative_more, clone, scripts, swap, dub, download_videos, producto_clips, foreplay_producto_api,
+disruptive_angles, disruptive_images) → FastAPI los corre en su threadpool (~40 hilos) y el loop
+queda libre. PROBADO: con una búsqueda TikTok corriendo, el home respondió en 0.04s (antes esperaba).
+AVISO Juan: regla de la casa a partir de hoy — handler SIN await = `def` a secas; `async def` solo
+si de verdad hace await. Cero cambios de lógica/firmas, solo la palabra async.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🖼️ Ads imagen: HD ya NO pierde el producto + TODO 1:1 SIEMPRE
+Quejas de Jack: (1) "✨ HD quita el producto" → tocaba re-pagar la integración; (2) "todas las
+imágenes deben ser 1:1 cuadradas SIEMPRE".
+- CAUSA de (1): /api/disruptive-hd RE-DIBUJABA desde el prompt (otra escena) y re-intentaba la 2ª
+  pasada del producto; además el modelo PRO (gemini-3-pro-image-preview) está SIN CUOTA (429
+  RESOURCE_EXHAUSTED medido hoy) → la integración moría en silencio y el ad quedaba limpio.
+  FIX: si la imagen YA existe, HD la REFINA TAL CUAL con editar_imagen_ia (misma escena, mismo
+  producto, mismos ajustes de ✏️); si falla, la imagen queda INTACTA y el error sale amigable
+  (_error_amigable — ahora editar_imagen_ia reporta errors= en vez de tragarse el 429). El botón
+  "➕ Poner mi producto" ahora usa el modelo BARATO (draft) — funciona aunque el PRO esté sin cuota
+  y cuesta ~3x menos; el PRO queda solo para HD.
+- FIX de (2): prompts pasados de "4:5 vertical" a "1:1 SQUARE" (base sale 1024×1024 ✓) + como los
+  EDITS de Nano Banana a veces ignoran el aspecto (medido: devolvía 832×1248), nueva _a_cuadrado():
+  re-encuadre LOCAL determinista a 1:1 con fondo difuminado estilo IG ($0, nunca recorta producto/
+  texto) aplicado tras generar/integrar/editar. Los ads viejos 4:5 quedan cuadrados al próximo edit/HD.
+- PROBADO real (~$0.12 en draft): base 1024×1024 ✓ → producto integrado con draft ✓ (2 unidades,
+  ondas, sombra) → edit no-cuadrado re-encuadrado a 1248×1248 ✓ mirado con ojos. El refine HD queda
+  pendiente de que la cuota PRO reinicie (mañana) — con cuota agotada el botón ahora DICE el motivo.
+- AVISO Juan: en tu disruptive_images.py — _CIERRE/prompt a 1:1, editar_imagen_ia con errors=
+  opcional, _a_cuadrado nueva aplicada en 3 puntos; en app.py tu /api/disruptive-hd refina la actual
+  y disruptive_add_product usa _IMG_MODEL_DRAFT. Tu flujo de lote borrador+HD sigue igual.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🧊 Fix clips CONGELADOS + 📁 Mi producto acepta videos locales
+(1) Jack: "los creativos se quedan congelados" (file (45).mp4: 6 tramos pegados de ~1s, medidos con
+diff de frames). CAUSA: en guion_match.plan_montaje, con el pool agotado (cada clip se usa 1 vez) las
+frases restantes quedaban SIN video → el tpad sostenía el último frame en cada hueco. FIX: pool
+agotado → se REPITE el clip menos usado (prefiriendo otra fuente) en vez de congelar. OJO Juan: tu
+regla "jamás repetir clip en la versión" se relaja SOLO como último recurso vs congelarse — con pool
+suficiente nada cambia. Probado $0: pool de 3 clips vs guion de 24s → antes huecos, ahora 24.0/24.0s
+cubiertos.
+(2) "déjame seleccionar de Descargas": Mi producto ahora tiene 📁 selector de videos locales junto a
+los links (combinables). producto_a_clips(+archivos_locales=), endpoint winner_files: File([]),
+validación acepta solo-archivos (salta el scout). 
+(3) PENDIENTE: Jack reporta ~20 min por corrida de Cortar clips — falta PERFILAR una corrida con
+este build (los congelados de hoy también alargaban: huecos → más regeneraciones?). Próxima sesión:
+cronometrar por etapa con los mtimes del work dir.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🎞️ Cortar clips: slot de B-ROLL por links
+Pedido de Jack: un espacio aparte en Cortar clips para pegar links de escenas de APOYO (contexto/
+dolor/ambiente). Nuevo textarea "🎞️ Escenas B-ROLL" + botón que reusa bajarLinks()/api/fetch-links
+(generalizada con srcId/btnId) — los b-roll se bajan y entran como material extra al pool (el
+analizador los puntúa y el guion los usa donde calcen). Solo frontend.
+PENDIENTE anotado (plantilla de búsqueda de Jack): cuando la búsqueda TikTok no confirme NADA,
+decir QUÉ búsquedas probó y pedir marca/hashtag/país (punto 5 de su plantilla; el resto — ficha
+profunda, multi-búsquedas ES+EN, verificación obligatoria, sin relleno mezclado — ya está).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 📋 PLAN "búsqueda 30/30" (pedido de Jack, para la próxima sesión)
+Meta real: precisión 100% (cero falsos confirmados) + encontrar TODOS los que existan + honestidad
+cuando haya menos de los pedidos. Palancas, en orden:
+1. RASTREAR CUENTAS VENDEDORAS: al confirmar videos, explorar la cuenta (tikwm api/user/posts) —
+   los vendedores suben el MISMO producto 10-30 veces → es LA palanca de volumen exacto.
+2. Modo EXIGENTE: verificación profunda (frames por dentro) a TODO lo que se muestre, no solo top-12.
+3. Toggle "solo confirmados" + mensaje honesto con las búsquedas probadas y pedir marca/hashtag/país
+   cuando no llegue al count (punto 5 de la plantilla de Jack).
+4. Multi-foto de referencia (frente/lado/empaque) para el juez.
+(Contexto: hoy 9/9 láser, 21 bee venom, 27 repelente — el techo actual es supply + cuentas sin explorar.)
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🏷️ Cortar clips: toggle "Oferta 2x1 · envío gratis" (banner arriba)
+Jack pidió elegir la oferta en Cortar clips y que salga el banner de su foto (pill roja "ENVÍO
+GRATIS - PAGAS AL RECIBIR" + "OFERTA 2X1"). Se REUSA offer_banner.add_offer_banner (el de Crear
+creativo, diseño calcado de su referencia; safe_top_y con Gemini para no tapar caras/producto):
+- app.py: Form banner_oferta en /api/process + _agregar_banner_oferta() aplicada a las 8 versiones
+  tras la música en _run_job. UI: checkbox junto a "🟦 Textos del proveedor".
+- Regla de oro intacta: oferta SIN cifras de precio.
+AVISO Juan: cero cambios en offer_banner/auto_studio; solo el hook en _run_job + Form + checkbox.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ⏸️ Plan "búsqueda 30/30": sesión cortada ANTES de implementar (sigue pendiente)
+Jack pidió cerrar YA. La sesión alcanzó solo la lectura de contexto (DEV-LOG, tiktok_search.py,
+creative_search.py, endpoints y pestaña 🔍 Buscar creativos) — CERO cambios de código, nada a medias,
+nada que revertir. El plan 30/30 completo (multi-foto ≤3 en /api/tiktok-search y /api/creative-search,
+cuentas vendedoras vía tikwm api/user/posts de los confirmados, toggle "solo confirmados" + mensaje
+honesto, modo exigente) queda TAL CUAL en la entrada 📋 del 2026-07-04 para la próxima sesión.
+Verificado antes de cerrar: py_compile ok (app.py, tiktok_search.py, creative_search.py) y
+node --check 14/14 bloques de index.html — el repo queda sano e idéntico a origin/main.
+AVISO Juan: no toqué nada tuyo ni nada en general; esta entrada es solo la traza del corte.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🔍 Búsqueda 30/30: multi-foto + cuentas vendedoras + mensaje honesto (implementado)
+Las 3 piezas del plan 📋, todas con params NUEVOS OPCIONALES (firmas viejas intactas):
+1. MULTI-FOTO (≤3): /api/tiktok-search y /api/creative-search aceptan `fotos` (campo viejo `foto`
+   sigue igual). analizar_foto(image_paths=...) → UNA llamada Gemini con todas las fotos = ficha más
+   completa; jueces (_verificar y Claude) usan máx las 2 primeras como referencia (_refs normaliza:
+   bytes o lista — creative_search/_buscar_foreplay pasan la lista tal cual). UI: input multiple,
+   etiqueta "📸 N fotos". El profundo (_verificar_video) sigue con 1 sola ref (tope de costo).
+2. CUENTAS VENDEDORAS (buscar(..., explorar_cuentas=True)): si tras verificar faltan videos para el
+   count, toma los @usuario de los confirmados (máx 3), baja tikwm api/user/posts (30 c/u, shape
+   igual a search), dedup contra lo visto, region != CO, dur 4-120s, y los juzga SOLO por portada
+   (sin profundo ni Claude). Los confirmados se suman DESPUÉS de los del doble juez.
+3. HONESTIDAD: si confirmados < count → `mensaje_busqueda` ("Encontré N confirmados con estas
+   búsquedas: [términos]. Dame la marca, un hashtag o el país para ampliar.") y la UI lo pinta 💬
+   bajo el grid de TikTok.
+PRUEBA REAL (repelente ultrasónico, count=30, misma ficha en ambos runs): explorar_cuentas=False →
+25/30 confirmados (129s); True → 22/30 (153s). La diferencia es RUIDO de tikwm (candidatos distintos
+por corrida); el bloque de cuentas corrió y sumó 0 AQUÍ porque las 3 cuentas confirmadas son
+multi-gadget: test dirigido → user/posts sí trae 30 posts/cuenta (covers absolutos, GET 200) pero
+0 de 24 portadas recientes muestran el repelente → el juez honesto no infla. Con cuentas
+mono-producto (lo común en dropshipping) la palanca sí suma. Smoke HTTP en :8421 con 2 fotos
+(campo `fotos`): ok, 5/5 confirmados, sin CO, mensaje vacío por llegar al count. py_compile ok
+(app.py, tiktok_search.py, creative_search.py) + node --check 14/14. Reglas intactas: Colombia
+excluida siempre, sin precio, topes (Claude top-20, profundo ≤12, cuentas solo portada).
+AVISO Juan: _verificar/_verificar_claude/_verificar_video ahora aceptan ref_bytes como bytes O
+lista (normalizan con _refs; tus llamadas con bytes sueltos siguen idénticas). app.py ganó el
+helper _guardar_fotos_busqueda para ambos endpoints de búsqueda. No toqué offer_banner/auto_studio.
+
 ### 2026-07-04 · Claude (juanesal-lab) · ✍️ Guiones que SÍ nombran el producto + 🖼️ preview de videos al subirlos
 Dos quejas de Juan:
 1. **Guiones genéricos que no nombraban el producto**: la causa era el prompt de generate_scripts —

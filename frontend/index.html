@@ -587,9 +587,9 @@
         MISMO producto en <b>🎵 TikTok</b> (links reales) y en <b>📚 Foreplay</b> (ads ganadores con
         video descargable), para que armes tus clips. Los de TikTok los copias y los bajas en
         📥 Descargar; los de Foreplay se ven y descargan aquí mismo.</p>
-      <input type="file" id="tkFoto" accept="image/*" class="hidden">
-      <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Foto del producto (opcional)</b>
-        <div class="s">o solo escribe el nombre abajo</div></label>
+      <input type="file" id="tkFoto" accept="image/*" multiple class="hidden">
+      <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Fotos del producto (hasta 3, opcional)</b>
+        <div class="s">frente / lado / empaque = búsqueda más precisa — o solo escribe el nombre abajo</div></label>
       <div class="autoOpts">
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
         <select id="tkCount"><option value="15">15 por fuente</option><option value="20" selected>20 por fuente</option><option value="30">30 por fuente</option></select>
@@ -600,14 +600,17 @@
     </div>
     <script>
       (function(){ const el=document.getElementById('tkFoto');
-        el.addEventListener('change',e=>{ const f=e.target.files[0]; window._tkFoto=f;
-          document.getElementById('tkFotoName').textContent = f?('📸 '+f.name):'📸 Foto del producto (opcional)'; }); })();
+        el.addEventListener('change',e=>{ const fs=[...e.target.files].slice(0,3);
+          window._tkFotos=fs; window._tkFoto=fs[0]||null;   // _tkFoto se conserva por compatibilidad
+          document.getElementById('tkFotoName').textContent =
+            fs.length>1?('📸 '+fs.length+' fotos'):(fs[0]?('📸 '+fs[0].name):'📸 Fotos del producto (hasta 3, opcional)'); }); })();
       function tkEsc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
       async function tkRun(){
         const nombre=document.getElementById('tkNombre').value.trim();
-        if(!nombre && !window._tkFoto){ alert('Escribe el nombre o sube una foto'); return; }
+        const fs=window._tkFotos||(window._tkFoto?[window._tkFoto]:[]);
+        if(!nombre && !fs.length){ alert('Escribe el nombre o sube una foto'); return; }
         const fd=new FormData();
-        if(window._tkFoto) fd.append('foto',window._tkFoto);
+        fs.slice(0,3).forEach(f=>fd.append('fotos',f));   // hasta 3 fotos del MISMO producto
         const cnt=document.getElementById('tkCount').value;
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
         document.getElementById('tkGo').disabled=true;
@@ -626,7 +629,8 @@
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
-                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[])};
+                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[]),
+                     tkMens:tk.mensaje_busqueda||''};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
         tkPaint();
       }
@@ -646,6 +650,8 @@
           links.forEach((l,i)=>{ h+=tkTkCard(l,i,S.tkVerif); });
           h+='</div>';
         }
+        // mensaje HONESTO cuando los confirmados no llegan al count pedido (con las búsquedas probadas)
+        if(S.tkMens){ h+='<div class="autoStep" style="margin-top:8px">💬 '+tkEsc(S.tkMens)+'</div>'; }
         // ── grupo 2: Foreplay ────────────────────────────────────────────
         const fpConf=ads.filter(a=>a.verificado_producto);
         h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${ads.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
@@ -1132,6 +1138,11 @@
       <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
+
+      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL (opcional): links de tomas de apoyo — contexto, dolor, ambiente. Se bajan y se suman como material extra.</label>
+      <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
+      <button class="btn sec" id="goBroll" style="margin-top:10px;width:auto" onclick="bajarLinks('tkBrollLinks','goBroll')">📥 Bajar B-roll</button>
     </div>
   </div>
 
@@ -1191,6 +1202,7 @@
     </div>
     <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Textos del proveedor</label>
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="chkBanner"> 🏷️ Oferta 2x1 · envío gratis (banner arriba)</label>
       <span id="textModeWrap" style="display:none;align-items:center;gap:8px">
         <select id="textMode" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
           <option value="tapar">🟦 Tapar con blur</option>
@@ -1295,6 +1307,10 @@
     <details class="prodAdv">
       <summary>⚙️ Avanzado — ¿ya tienes los links de ganadores?</summary>
       <input type="text" id="prodUrl" class="full" style="margin:10px 0" placeholder="🔗 Link de tu producto (opcional — tu página o AliExpress)">
+      <input type="file" id="prodLocal" accept="video/*" multiple class="hidden">
+      <label class="autoDrop" for="prodLocal" style="margin:10px 0;padding:14px">
+        <b id="prodLocalName">📁 …o elige los videos ganadores de tu computador (Descargas)</b>
+        <div class="s">puedes combinar: archivos + links</div></label>
       <textarea id="prodUrls" class="full" rows="4" spellcheck="false"
         placeholder="Pega links de TikTok (uno por línea) y me salto la búsqueda automática:&#10;https://www.tiktok.com/@usuario/video/123..."></textarea>
     </details>
@@ -1331,13 +1347,20 @@
       });
     })();
     window._prodScout='';   // mensaje del scout, para no perderlo al pintar resultados
+    (function(){ const el=document.getElementById('prodLocal'); if(!el) return;
+      el.addEventListener('change',e=>{ window._prodLocal=Array.from(e.target.files);
+        document.getElementById('prodLocalName').textContent=e.target.files.length
+          ?('📁 '+e.target.files.length+' video(s) de tu computador')
+          :'📁 …o elige los videos ganadores de tu computador (Descargas)'; });
+    })();
     async function prodRun(){
       const nombre=document.getElementById('prodDesc').value.trim();
       const manual=document.getElementById('prodUrls').value.trim();
+      const locales=(window._prodLocal||[]).length;
       const img=document.getElementById('prodImg').files[0];
       const msg=document.getElementById('prodMsg'), prog=document.getElementById('prodProg');
       const meta=document.getElementById('prodMeta'), go=document.getElementById('prodGo');
-      if(!manual && !nombre && !img){
+      if(!manual && !locales && !nombre && !img){
         prog.classList.remove('hidden'); msg.textContent='Escribe el nombre del producto o sube su imagen 👆'; return;
       }
       go.disabled=true;
@@ -1348,7 +1371,8 @@
       msg.textContent='Iniciando…';
       try{
         let links=manual;
-        if(!links){
+        if(!links && locales){ links=''; }        // solo archivos locales: sin scout
+        else if(!links){
           // FASE 1 · SCOUT: buscar creativos ganadores en TikTok (endpoint del amigo)
           msg.textContent='🔎 Buscando creativos ganadores en TikTok...';
           const sf=new FormData();
@@ -1382,6 +1406,7 @@
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
         fd.append('caption_size',document.getElementById('prodCapSize').value);
         fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
+        (window._prodLocal||[]).forEach(f=>fd.append('winner_files',f));
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
@@ -2485,6 +2510,7 @@ function buildForm(){
   fd.append("enhance", document.getElementById("enhance").checked);
   fd.append("effects", document.getElementById("effects").checked);
   fd.append("blur_captions", document.getElementById("blurCaptions").checked);
+  fd.append("banner_oferta", document.getElementById("chkBanner").checked);
   fd.append("text_mode", document.getElementById("textMode").value);
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);
@@ -2508,10 +2534,10 @@ document.getElementById("go").onclick = async ()=>{
 
 // Solo BAJA los videos de TikTok y los agrega a la lista de arriba (NO los corta).
 // Luego el usuario configura los ajustes y le da "Generar clips" (flujo normal).
-async function bajarLinks(){
-  const links = document.getElementById("tkClipLinks").value.trim();
+async function bajarLinks(srcId, btnId){
+  const links = document.getElementById(srcId||"tkClipLinks").value.trim();
   if(!links){ alert("Pega al menos un link de TikTok"); return; }
-  const btn = document.getElementById("goLinks");
+  const btn = document.getElementById(btnId||"goLinks");
   const orig = btn.textContent; btn.disabled = true; btn.textContent = "📥 Bajando…";
   try{
     const fd = new FormData(); fd.append("links", links);
@@ -2520,7 +2546,7 @@ async function bajarLinks(){
     const vids = j.videos || [];
     vids.forEach(v=>{ if(v.path) linkVids.push({path:v.path, name:v.name||"video"}); });
     if(vids.length){
-      document.getElementById("tkClipLinks").value = "";
+      document.getElementById(srcId||"tkClipLinks").value = "";
       renderFiles();
       btn.textContent = `✅ ${vids.length} bajado(s) — configura y dale Generar`;
     } else {

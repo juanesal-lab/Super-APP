@@ -2086,3 +2086,26 @@ completas en **`assets/edicion-pro-reglas.md`** (leerla antes de tocar edición)
   phase_effects (_PHASE_CFG), producto_clips (_voz_y_subtitulos), orchestrator (_cut_times),
   app.py (_agregar_musica_sfx). Firmas retro-compatibles (params nuevos opcionales). Las versiones
   ahora traen "cut_times" en el dict. Reiniciar server para probar.
+
+### 2026-07-03 · Claude (juanesal-lab) · 💰 Ads imagen: BORRADOR barato + botón ✨ HD (gasto de Gemini ~-70%)
+Juan: $50 de Gemini en 3 días. Diagnóstico con datos: el gasto NO es de las llamadas de visión
+(flash, centavos) — son las IMÁGENES con gemini-3-pro-image: 117 finales en work/ en 3 días
+(+ regeneraciones/verify ocultas que sobreescriben) ≈ $27-47. Aparte se evaluó Magnific: su
+"ilimitado" solo aplica generando A MANO en su web; por API cobra créditos (60/imagen ≈ mismo
+precio que Gemini pro) — NO es más barato para la app.
+- disruptive_images.py: NUEVO `_IMG_MODEL_DRAFT = "gemini-2.5-flash-image"` (Nano Banana 1,
+  ~$0.04). `generar_ad_fullprompt(..., hd=False)`: el LOTE completo, 🔄 Regenerar y 🎲 salen en
+  borrador; `hd=True` re-renderiza con el pro (~$0.13). `max_regen` default 2→1 (peor caso 2
+  gens, no 3). `generar_imagen`/`_integrar_producto_ia` ganaron param `model=` (default = pro,
+  igual que antes). El verify de ortografía ya usaba flash (no se tocó).
+- app.py: NUEVO POST /api/disruptive-hd (job_id, index) — mismo patrón que regenerate-image,
+  con hd=True; marca `v["hd"]=True` y persiste.
+- frontend: botón "✨ Calidad HD (la que vayas a usar)" por card (muestra "✅ Ya está en HD"
+  después). Flujo: el lote de 10 sale por ~$0.40 (antes $1.30-4.00) y Juan paga HD solo en las
+  2-3 que de verdad va a pautar.
+- PROBADO: py_compile ok; JS 13/13 node --check; 1 generación REAL con el modelo borrador
+  ($0.04): texto en español nítido y sin errores (verificado visualmente).
+- AVISO Jack/Landings: la firma vieja sigue funcionando igual (hd default False = borrador;
+  si algún flujo necesita pro directo, pasa hd=True). Para el módulo Landings: usen
+  _IMG_MODEL_DRAFT para las previews del gate de aprobación y el pro solo al aprobar — es
+  exactamente el mismo patrón.

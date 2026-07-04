@@ -1472,6 +1472,33 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     return {"imagen": img}
 
 
+@app.post("/api/disruptive-hd")
+def disruptive_hd(job_id: str = Form(...), index: int = Form(...)):
+    """✨ HD: re-renderiza UNA imagen elegida con el modelo PRO (Nano Banana 2, ~$0.13).
+    El lote sale en borrador barato (~$0.04) — solo se paga calidad pro en las que Juan va a usar."""
+    job = _get_job(job_id)
+    if not job or not (job.get("result") or {}).get("variantes"):
+        raise HTTPException(404, "No hay un proyecto de ads para ese job")
+    variantes = job["result"]["variantes"]
+    if index < 0 or index >= len(variantes):
+        raise HTTPException(400, "Índice fuera de rango")
+    v = variantes[index]
+    out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    try:
+        img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
+                                    product_image_path=job.get("_image_path"),
+                                    integrar_producto=bool(job.get("_image_path")), hd=True)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo renderizar en HD: {e}")
+    if not img:
+        raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
+    v["imagen"] = img
+    v["hd"] = True
+    _persist_disruptive(job_id)
+    return {"imagen": img}
+
+
 @app.post("/api/disruptive-add-product")
 def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
     """Mete el PRODUCTO real integrado en UNA imagen ya generada (2ª pasada). Síncrono."""

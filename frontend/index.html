@@ -1557,6 +1557,7 @@
                <div class="disActions">
                  <button class="disAct disRegen" onclick="disRegen(${i},this)">🔄 Regenerar</button>
                  <a class="disAct disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a>
+                 <button class="disAct disHD" style="grid-column:1/-1" onclick="disHD(${i},this)">${v.hd?'✅ Ya está en HD':'✨ Calidad HD (la que vayas a usar)'}</button>
                  <button class="disAct disSwap" style="grid-column:1/-1" onclick="disSwapConcept(${i},this)">🎲 Otro ángulo diferente</button>
                  <button class="disAct disEdit" style="grid-column:1/-1" onclick="disEditImg(${i},this)">✏️ Ajustar con instrucción</button>
                  <button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">${prodBtn}</button>
@@ -1577,6 +1578,19 @@
         const r=await fetch('/api/regenerate-image',{method:'POST',body:fd}); const j=await r.json();
         if(j.imagen){
           disCacheBust=Date.now();   // fuerza recargar la imagen nueva (misma ruta)
+          const s=await (await fetch('/api/status/'+window._disJob)).json();
+          disRender(s.result);
+        } else { btn.innerHTML='✗ reintenta'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }
+      }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }
+    }
+    async function disHD(i, btn){
+      if(!window._disJob) return;
+      const t=btn.innerHTML; btn.innerHTML='⏳ Renderizando en HD…'; btn.disabled=true;
+      try{
+        const fd=new FormData(); fd.append('job_id',window._disJob); fd.append('index',i);
+        const r=await fetch('/api/disruptive-hd',{method:'POST',body:fd}); const j=await r.json();
+        if(j.imagen){
+          disCacheBust=Date.now();
           const s=await (await fetch('/api/status/'+window._disJob)).json();
           disRender(s.result);
         } else { btn.innerHTML='✗ reintenta'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,2500); }

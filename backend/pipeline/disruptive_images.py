@@ -15,7 +15,9 @@ from typing import Callable
 from PIL import Image
 
 _CLAUDE = "claude-opus-4-8"
-_IMG_MODEL = "gemini-3-pro-image-preview"   # Nano Banana 2 (Gemini 3 Pro Image) — calidad pro
+_IMG_MODEL = "gemini-3-pro-image-preview"    # Nano Banana 2 — calidad pro (~$0.13/imagen)
+_IMG_MODEL_DRAFT = "gemini-2.5-flash-image"  # Nano Banana 1 — borradores (~$0.04/imagen): el lote
+                                             # sale BARATO y ✨ HD re-renderiza solo las elegidas
 _TXT_MODEL = "gemini-2.5-flash"             # para verificar ortografía del render
 
 _BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -294,7 +296,8 @@ def _recortar_producto(img: "Image.Image", umbral: int = 244) -> "Image.Image":
     return out.crop(bbox) if bbox else out
 
 
-def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_key: str) -> str | None:
+def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_key: str,
+                          model: str | None = None) -> str | None:
     """2ª pasada: Nano Banana 2 mete el PRODUCTO REAL integrado en la escena (con luz y sombra reales,
     no pegado plano). Mantiene el producto idéntico a la foto.
 
@@ -330,7 +333,7 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
             "image: keep all existing captions, the video player, progress bar and the CTA button exactly as "
             "they are. Output only the edited first image.")
         r = client.models.generate_content(
-            model=_IMG_MODEL,
+            model=model or _IMG_MODEL,
             contents=[prompt,
                       types.Part.from_bytes(data=ad_b, mime_type="image/png"),
                       types.Part.from_bytes(data=prod_b, mime_type="image/png")])
@@ -382,10 +385,12 @@ def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str) -> str | 
 
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                           product_image_path: str | None = None, verify: bool = True,
-                          max_regen: int = 2, integrar_producto: bool = False) -> str | None:
-    """Genera el ad (Nano Banana 2 dibuja la escena+texto SIN producto) + verifica ortografía/regenera.
+                          max_regen: int = 1, integrar_producto: bool = False,
+                          hd: bool = False) -> str | None:
+    """Genera el ad (Nano Banana dibuja la escena+texto SIN producto) + verifica ortografía/regenera.
     Por defecto NO mete el producto (queda limpio); si `integrar_producto`, hace la 2ª pasada que lo integra
-    en la escena. Devuelve la ruta o None."""
+    en la escena. `hd=False` usa el modelo BORRADOR (~$0.04); `hd=True` el pro (~$0.13) — el flujo genera
+    todo en borrador y el botón ✨ HD re-renderiza solo las que Juan va a usar. Devuelve la ruta o None."""
     prompt = variant.get("prompt", "")
     if not prompt:
         return None
@@ -398,7 +403,8 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             prompt + f" IMPORTANT (retry {intento}): make ABSOLUTELY every letter of the Spanish embedded "
             "text correct, complete and legible; do not misspell or repeat letters.")
         # OJO: NO pasamos el producto como referencia -> el modelo NO lo dibuja; lo pegamos real después.
-        img = generar_imagen(p, gemini_key, out_path, product_image_path=None, errors=errs)
+        img = generar_imagen(p, gemini_key, out_path, product_image_path=None, errors=errs,
+                             model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT)
         if not img:
             if not got:
                 if errs:         # deja el motivo (tope de gasto, cuota, key...) para el UI
@@ -411,7 +417,8 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
     if not got:
         return None
     if integrar_producto:            # 2ª pasada que integra el producto real en la escena
-        res = _integrar_producto_ia(out_path, product_image_path, gemini_key)
+        res = _integrar_producto_ia(out_path, product_image_path, gemini_key,
+                                    model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT)
         variant["producto_integrado"] = bool(res)   # False → la UI ofrece reintentar
         return res or out_path                       # si no se pudo, el ad queda limpio (no se pierde)
     return out_path                  # ad LIMPIO sin producto
@@ -474,7 +481,7 @@ def _error_amigable(msg: str) -> str:
 
 def generar_imagen(prompt: str, gemini_key: str, out_path: str,
                    product_image_path: str | None = None, tries: int = 4,
-                   errors: list | None = None) -> str | None:
+                   errors: list | None = None, model: str | None = None) -> str | None:
     """Nano Banana convierte el prompt en imagen (usa la foto del producto como referencia si hay).
 
     Reintenta ante errores transitorios de Google (500 INTERNAL / 503 / rate-limit) con backoff.
@@ -495,7 +502,7 @@ def generar_imagen(prompt: str, gemini_key: str, out_path: str,
 
     for attempt in range(tries):
         try:
-            resp = client.models.generate_content(model=_IMG_MODEL, contents=contents)
+            resp = client.models.generate_content(model=model or _IMG_MODEL, contents=contents)
             cands = resp.candidates or []
             if not cands:            # bloqueo por políticas: sin candidatos -> mensaje claro, no reintenta
                 if errors is not None:

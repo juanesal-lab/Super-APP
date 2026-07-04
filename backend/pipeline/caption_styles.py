@@ -49,6 +49,26 @@ ESTILOS = ["bold_outline", "hormozi", "yellow_highlight", "red_highlight", "high
 # Tamaño del subtítulo elegible por el usuario (regla de Juan: default MEDIANO, los gigantes no)
 TAMANOS = {"pequeno": 0.66, "mediano": 0.82, "grande": 1.0}
 
+# Safe zone por DESTINO (Manual Maestro §10.1): TikTok tolera captions a ~80% de altura;
+# Meta Reels/Stories exige el 35% INFERIOR libre (la UI de Meta tapa esa franja) → el bloque
+# sube a ~60%. Global tipo _ACCENT: el job lo fija con set_destino() antes de quemar.
+_DESTINO = "tiktok"
+
+
+def set_destino(destino: str | None):
+    global _DESTINO
+    _DESTINO = "meta" if str(destino or "").lower().startswith("meta") else "tiktok"
+
+
+def _y_centro(H: int) -> int:
+    """Centro vertical del bloque de captions según la safe zone del destino."""
+    return int(H * (0.60 if _DESTINO == "meta" else 0.80))
+
+
+def _y_piso(H: int) -> int:
+    """Techo superior del bloque (que no suba más de esto)."""
+    return int(H * (0.42 if _DESTINO == "meta" else 0.55))
+
 
 def _tam(cap_size) -> float:
     return TAMANOS.get(str(cap_size or "mediano").lower().replace("ñ", "n"), 0.82)
@@ -208,8 +228,8 @@ def render_caption(text: str, W: int, H: int, style: str = "bold_outline",
     keywords = _keywords(text)
 
     total_h = line_h * len(lines)
-    y0 = int(H * 0.80) - total_h // 2          # bloque en el tercio INFERIOR (tapa menos)
-    y0 = max(int(H * 0.55), min(y0, H - SAFE - total_h))
+    y0 = _y_centro(H) - total_h // 2           # bloque según safe zone del destino
+    y0 = max(_y_piso(H), min(y0, H - SAFE - total_h))
 
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
     if _ACCENT:                      # acento dinámico: contrasta con el color del producto/video
@@ -317,7 +337,7 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
                                      min_size=max(16, int(30 * f)))
     stroke = max(3, size // 8)
     total_h = line_h * len(lines)
-    y0 = max(int(H * 0.60), min(int(H * 0.80) - total_h // 2, H - SAFE - total_h))
+    y0 = max(_y_piso(H), min(_y_centro(H) - total_h // 2, H - SAFE - total_h))
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
     accent = _ACCENT or (red if style == "red_highlight" else yellow)
     boxed = style in ("pill", "highlight_box", "karaoke")

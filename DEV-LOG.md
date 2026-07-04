@@ -2404,3 +2404,22 @@ el SFX más fuerte cae sobre el "50% OFF"); el orchestrator ahora pasa las FASES
 mezclador (frases_por_nombre → phases): DOLOR sin SFX, SOLUCIÓN chime, CTA caja. Probado.
 AVISO Jack: guion_match._mejor reestructurado (2 pasadas), plan_montaje(+max_usos), orchestrator
 (fases completas + phases al mixer + aviso), pro_mix (_familia caja + t_cta). py_compile OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 📘 Destino TikTok/Meta (safe zone + cut 4:5) + QA gate del producto visible
+Siguientes pendientes del Manual Maestro ejecutados:
+- **Destino** (§10): selector nuevo "🎵 TikTok / 📘 Meta Ads" en Cortar clips y Mi producto.
+  caption_styles: `set_destino()` (global tipo _ACCENT) — TikTok = bloque a ~80% de altura (como
+  las referencias); Meta = bloque a ~60% (Meta Reels tapa el 35% inferior con su UI). Medido en
+  render real: TikTok 80%, Meta 60% ✓. Cableado: /api/process, /api/scripts, /api/producto-clips
+  → settings → process_job/render_versions(destino=...).
+- **Cut 4:5 para Meta feed** (§10.2): con destino=meta y aspect 9:16, cada versión genera además
+  `path_45` (crop central 1080x1350, captions a 60% quedan adentro ✓). Botón "⬇️ Cut 4:5 para
+  Meta feed" en la tarjeta de la versión.
+- **QA GATE** (§11.1): al final del render, 1 llamada Gemini flash con un frame del s2.5 de CADA
+  versión → si el producto no se alcanza a ver en los primeros 3s, la versión sale con
+  `qa_aviso` y la UI muestra el ⚠️ (no bloquea, avisa).
+Verificado: py_compile OK, node --check 14/14, posición de captions medida por píxeles en ambos
+destinos, crop 4:5 dimensiones exactas. AVISO Jack: caption_styles (+set_destino/_y_centro/_y_piso,
+y0 en _render_wordgroup y render de bloque), orchestrator (render_versions+process_job con destino,
+bloque 4:5 + QA antes de Finalizando), app.py (3 endpoints + settings + passthrough), producto_clips
+(destino a process_job), index.html (2 selectores + fd.append x2 + badge/botón en renderResults).

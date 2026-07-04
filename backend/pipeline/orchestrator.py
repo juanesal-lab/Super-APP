@@ -189,6 +189,7 @@ def render_versions(
     captions: bool = False,
     caption_style: str = "hormozi",
     caption_size: str = "mediano",
+    destino: str = "tiktok",      # "tiktok" | "meta": safe zone de captions + cut 4:5 (Manual §10)
     word_timings: list | None = None,
     used_gemini: bool = False,
     n_sources: int = 0,
@@ -475,6 +476,7 @@ def render_versions(
     # producto/video (se calcula 1 vez sobre el primer montaje). Si falla → colores clásicos.
     try:
         from . import caption_styles as _cs
+        _cs.set_destino(destino)      # safe zone: TikTok ~80% | Meta bloque a ~60% (35% inf. libre)
         _cs.set_accent(_cs.accent_for_video(versions[0]["path"]) if versions else None)
     except Exception:  # noqa: BLE001
         pass
@@ -545,6 +547,55 @@ def render_versions(
             report(f"Agregando voz en off{' y efectos' if effects else ''} ({v_i + 1}/{len(versions)})...", 86 + v_i)
             _apply_vo(v, v_i, voiceover_path, word_timings)
 
+    # ── Cut 4:5 para Meta feed (Manual §10.2): mismo master, recorte central 1080x1350 ──
+    if destino == "meta" and aspect == "9:16":
+        report("Generando el cut 4:5 para Meta feed...", 96)
+        for v in versions:
+            try:
+                out45 = v["path"].replace(".mp4", "_45.mp4")
+                run(["ffmpeg", "-y", "-i", v["path"],
+                     "-vf", "crop=iw:iw*5/4:0:(ih-iw*5/4)/2,setsar=1",
+                     "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+                     "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy", out45])
+                v["path_45"] = out45
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ── QA GATE (Manual §11.1): ¿el producto se ve en los primeros 3s? (1 llamada Gemini) ──
+    if gemini_key and versions and product_desc.strip():
+        try:
+            report("QA: verificando que el producto salga en los primeros segundos...", 97)
+            import json as _json
+            import re as _re
+            from google import genai as _genai
+            from google.genai import types as _types
+            partes = [f"Producto: {product_desc.strip()}. Te paso 1 frame del segundo ~2.5 de "
+                      "cada video (numerados). Responde SOLO un JSON array "
+                      '[{"i":0,"producto_visible":true}, ...] indicando si el PRODUCTO (o su uso '
+                      "directo) se alcanza a ver en ese frame."]
+            oks = []
+            for k, v in enumerate(versions):
+                fj = os.path.join(work_dir, f"_qa_{k}.jpg")
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "2.5", "-i", v["path"],
+                                "-frames:v", "1", "-vf", "scale=320:-2", fj],
+                               capture_output=True, timeout=30)
+                if os.path.exists(fj):
+                    with open(fj, "rb") as fh:
+                        partes.append(_types.Part.from_bytes(data=fh.read(), mime_type="image/jpeg"))
+                    oks.append(k)
+            if oks:
+                rq = _genai.Client(api_key=gemini_key).models.generate_content(
+                    model="gemini-2.5-flash", contents=partes)
+                m = _re.search(r"\[.*\]", rq.text or "", _re.DOTALL)
+                if m:
+                    for item in _json.loads(m.group(0)):
+                        k = int(item.get("i", -1))
+                        if 0 <= k < len(oks) and not item.get("producto_visible", True):
+                            versions[oks[k]]["qa_aviso"] = ("El producto no se alcanza a ver en "
+                                                            "los primeros 3s (regla del manual)")
+        except Exception:  # noqa: BLE001
+            pass
+
     report("Finalizando...", 98)
     manifest = {
         "ok": True,
@@ -595,6 +646,7 @@ def process_job(
     captions: bool = False,
     caption_style: str = "hormozi",
     caption_size: str = "mediano",
+    destino: str = "tiktok",
     gemini_key: str | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
@@ -613,6 +665,7 @@ def process_job(
         gemini_key=gemini_key, voiceover_path=voiceover_path, version_vos=version_vos,
         sfx_paths=sfx_paths, music_path=music_path, effects=effects,
         captions=captions, caption_style=caption_style, caption_size=caption_size,
+        destino=destino,
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds, progress=progress)

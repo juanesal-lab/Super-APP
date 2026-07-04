@@ -278,6 +278,7 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         captions=bool(settings.get("subtitulos", True)) and bool(version_vos),
         caption_style=settings.get("caption_style", "hormozi"),
         caption_size=settings.get("caption_size", "mediano"),
+        destino=settings.get("destino", "tiktok"),
         gemini_key=gemini_key,
         progress=lambda m, p: report(m, 36 + p * 0.62),
     )

@@ -1169,6 +1169,13 @@
         </select>
       </div>
       <div class="opt">
+        <label class="lbl">Destino (safe zone de subtítulos)</label>
+        <select id="destino" title="Meta Reels tapa el 35% inferior con su UI: los subtítulos suben y además sale un cut 4:5 extra por versión" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+          <option value="tiktok">🎵 TikTok / orgánico (subtítulos abajo)</option>
+          <option value="meta">📘 Meta Ads (subtítulos más arriba + cut 4:5)</option>
+        </select>
+      </div>
+      <div class="opt">
         <label class="lbl">Duración máx por corte</label>
         <select id="maxClip" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
           <option value="1.5">1.5s · muy dinámico</option>
@@ -1275,6 +1282,10 @@
         <option value="15" selected>Duración objetivo: 15s</option>
         <option value="20">Duración objetivo: 20s</option>
         <option value="30">Duración objetivo: 30s</option>
+      </select>
+      <select id="prodDestino" title="Meta Reels tapa el 35% inferior: los subtítulos suben y sale un cut 4:5 extra">
+        <option value="tiktok">Destino: 🎵 TikTok</option>
+        <option value="meta">Destino: 📘 Meta Ads (+cut 4:5)</option>
       </select>
     </div>
     <div class="autoChk">
@@ -1398,6 +1409,7 @@
         fd.append('product_desc',nombre);
         fd.append('aspect',document.getElementById('prodAspect').value);
         fd.append('target_seconds',document.getElementById('prodDur').value);
+        fd.append('destino',document.getElementById('prodDestino').value);
         fd.append('blur_captions',document.getElementById('prodBlur').checked);
         fd.append('musica',document.getElementById('prodMusica').checked);
         fd.append('bajar_volumen',document.getElementById('prodBajarVol').checked);
@@ -2517,6 +2529,7 @@ function buildForm(){
   fd.append("caption_style", document.getElementById("capStyle").value);
   fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
+  fd.append("destino", document.getElementById("destino").value);
   return fd;
 }
 
@@ -2669,6 +2682,8 @@ function renderResults(res, rootId){
       <div class="body">
         <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
+        ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
           <select id="res${i}">
             <option value="2160">4K · 2160</option>

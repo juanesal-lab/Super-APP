@@ -423,6 +423,7 @@
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
+    <button data-p="p-radar">📡 Radar</button>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
   </nav>
@@ -1068,6 +1069,15 @@
   </script>
   </div><!-- /p-varhook -->
 
+  <div class="panel" id="p-radar" style="display:none">
+  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">📡 Radar Ganadores</h2>
+  <p class="sub" style="margin-bottom:10px">Spy tool propio: productos ganadores detectados en la Meta Ad Library de 11 países,
+    con disponibilidad en Dropi 🟦 y oportunidades Europa→Colombia 🟢. Se actualiza solo cada mañana (7:30am).
+    <a href="/radar" target="_blank" style="color:var(--gold);font-weight:600">Abrir en pestaña completa ↗</a></p>
+  <iframe id="radarFrame" title="Radar Ganadores"
+    style="width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#0d0d0d"></iframe>
+  </div>
+
   <div class="panel" id="p-config" style="display:none">
   <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
   <p class="sub" style="margin-bottom:16px">Pega tus API keys aquí. Cada una habilita funciones distintas — todas son opcionales excepto Gemini para lo inteligente.</p>
@@ -1174,7 +1184,7 @@
     <div class="row">
       <div class="opt">
         <label class="lbl">Duración total objetivo: <span class="val" id="durVal">15s</span></label>
-        <input type="range" id="dur" min="6" max="40" value="15" step="1">
+        <input type="range" id="dur" min="6" max="40" value="22" step="1">
       </div>
       <div class="opt">
         <label class="lbl">Formato de salida</label>
@@ -1183,6 +1193,13 @@
           <option value="1:1">1:1 cuadrado · Landing page</option>
           <option value="4:5">4:5 vertical · Feed Meta</option>
           <option value="16:9">16:9 horizontal</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label class="lbl">Destino (safe zone de subtítulos)</label>
+        <select id="destino" title="Meta Reels tapa el 35% inferior con su UI: los subtítulos suben y además sale un cut 4:5 extra por versión" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+          <option value="tiktok">🎵 TikTok / orgánico (subtítulos abajo)</option>
+          <option value="meta">📘 Meta Ads (subtítulos más arriba + cut 4:5)</option>
         </select>
       </div>
       <div class="opt">
@@ -1289,9 +1306,14 @@
       </select>
       <select id="prodDur">
         <option value="10">Duración objetivo: 10s</option>
-        <option value="15" selected>Duración objetivo: 15s</option>
-        <option value="20">Duración objetivo: 20s</option>
+        <option value="15">Duración objetivo: 15s</option>
+        <option value="20" selected>Duración objetivo: 20s (sweet spot frío)</option>
+        <option value="25">Duración objetivo: 25s</option>
         <option value="30">Duración objetivo: 30s</option>
+      </select>
+      <select id="prodDestino" title="Meta Reels tapa el 35% inferior: los subtítulos suben y sale un cut 4:5 extra">
+        <option value="tiktok">Destino: 🎵 TikTok</option>
+        <option value="meta">Destino: 📘 Meta Ads (+cut 4:5)</option>
       </select>
     </div>
     <div class="autoChk">
@@ -1415,6 +1437,7 @@
         fd.append('product_desc',nombre);
         fd.append('aspect',document.getElementById('prodAspect').value);
         fd.append('target_seconds',document.getElementById('prodDur').value);
+        fd.append('destino',document.getElementById('prodDestino').value);
         fd.append('blur_captions',document.getElementById('prodBlur').checked);
         fd.append('musica',document.getElementById('prodMusica').checked);
         fd.append('bajar_volumen',document.getElementById('prodBajarVol').checked);
@@ -2350,6 +2373,10 @@ document.querySelectorAll('#tabs button').forEach(b=>{
     const panel = document.getElementById(b.dataset.p);
     if(panel) panel.style.display='';
     b.classList.add('active');
+    if(b.dataset.p==='p-radar'){ // el dashboard (~2.5MB) se carga solo al entrar por primera vez
+      const f=document.getElementById('radarFrame');
+      if(f && !f.getAttribute('src')) f.src='/radar';
+    }
     window.scrollTo({top:0,behavior:'smooth'});
   };
 });
@@ -2534,6 +2561,7 @@ function buildForm(){
   fd.append("caption_style", document.getElementById("capStyle").value);
   fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
+  fd.append("destino", document.getElementById("destino").value);
   return fd;
 }
 
@@ -2686,6 +2714,8 @@ function renderResults(res, rootId){
       <div class="body">
         <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
+        ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
           <select id="res${i}">
             <option value="2160">4K · 2160</option>

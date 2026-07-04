@@ -2362,6 +2362,157 @@ Verificado: py_compile OK, node --check 14/14 bloques OK. AVISO Jack: renderFile
 <img data-th>), bind() de Clonar tiene 2 líneas nuevas, helpers globales antes de addFiles. Nada
 de backend salvo scripts.py (prompt).
 
+### 2026-07-04 · Claude (juanesal-lab) · 📖 MANUAL MAESTRO absorbido: conocimiento al repo + quick-wins implementados
+Juan entregó su manual maestro (862 líneas: filosofía, pipeline 100% IA, guion, shotlist, assets,
+voz, música, subtítulos, edición, export, QA, schemas, stack). Absorción:
+- `assets/manual-maestro-videos-ia.md`: el manual COMPLETO copiado al repo (canónico).
+- `assets/manual-maestro-adoptado.md`: mapa de qué regla vive dónde + CONFLICTOS manual-genérico
+  vs MEDIDO en las referencias reales (regla de la casa: gana lo medido) + roadmap. Conflictos
+  clave: −18 LUFS medido vs −14 del manual (queda −18), cama plana sin drops vs "drop en reveal"
+  (queda cama+chime), dissolve medido vs hard-cut genérico (queda dissolve), y ⚠️ PENDIENTE DE
+  JUAN: el manual exige ANCLA DE PRECIO en guiones pero su regla actual PROHÍBE cifras → hoy
+  manda su regla; si quiere anclas se agrega toggle.
+- IMPLEMENTADO del manual: (1) `voiceover.acelerar()` — locución a 1.12× (atempo, sin cambiar
+  tono) con word-timings re-escalados ÷factor (subtítulos karaoke y montaje por guion siguen
+  clavados); cableada en Mi producto (_guiones_y_narraciones) y Cortar clips (/api/scripts).
+  Probado con VO real: 53.13s→47.45s exacto, timings ÷1.12 ✓. (2) Prompt de guiones: ARRANQUE
+  EN CALIENTE (primera línea a mitad de pensamiento, jamás "Hola") + HOOK STACKING (micro-gancho
+  por fase). (3) hook_gen ya cumplía el ≤8 palabras (usa 6).
+- Corto plazo anotado en el doc: SFX cash-register/notification al banco (gasta créditos → OK de
+  Juan), safe zone Meta (35% inferior libre, toggle destino), master→2 cuts TikTok/Meta, QA gate
+  de video. Grande: módulo GENERACIÓN 100% IA (4º módulo; specs §12-14 del manual).
+- AVISO Jack: voiceover.py (+acelerar), producto_clips._tts, app._run_scripts_job (acelera tras
+  TTS), scripts.py (2 reglas nuevas en el prompt). py_compile OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🎨 Diversidad entre versiones v2 (tope duro de reuso) + 💰 cha-ching en la oferta
+Juan reporta que las versiones seguían compartiendo clips ("el mismo video, solo cambia el guion").
+Causas encontradas y arregladas:
+1. `fases_por_idx` solo cubría el top-60 clasificado por Gemini → ahora TODO el pool de `selected`
+   entra al montaje por guion (el resto con fase heurística) = más material disponible.
+2. TOPE DURO de reuso entre versiones: `max_usos = ceil(slots_totales / clips_disponibles)`
+   (calculado en orchestrator con las frases reales). plan_montaje lo aplica en DOS PASADAS:
+   la 1ª respeta el tope en TODAS las fases; solo si el pool entero se agotó bajo el tope, la
+   2ª relaja. (El primer intento relajaba por-fase y el tope no servía: un clip salía en 7/8.)
+3. Desempate DISTINTO por versión ((i*131+v*977)%13) tras el rinde cuantizado a 0.5s → versiones
+   con material equivalente eligen clips distintos sin sacrificar cobertura de la voz.
+4. Aviso honesto si el material es escaso (max_usos>3): "sube MÁS videos".
+Medido: 80 clips/8 versiones → solape 1.1 de 11 slots (usos máx = tope 2 ✓); 40 clips → 2.9 ✓;
+16 clips → inevitable (física), con aviso.
+💰 SFX nuevos al banco con ElevenLabs (~$0.10): cash_register.mp3 + notification_pop.mp3.
+pro_mix: familia "caja" + cha-ching PROTAGONISTA en el arranque del CTA/oferta (medido en ref 72:
+el SFX más fuerte cae sobre el "50% OFF"); el orchestrator ahora pasa las FASES del guion al
+mezclador (frases_por_nombre → phases): DOLOR sin SFX, SOLUCIÓN chime, CTA caja. Probado.
+AVISO Jack: guion_match._mejor reestructurado (2 pasadas), plan_montaje(+max_usos), orchestrator
+(fases completas + phases al mixer + aviso), pro_mix (_familia caja + t_cta). py_compile OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 📘 Destino TikTok/Meta (safe zone + cut 4:5) + QA gate del producto visible
+Siguientes pendientes del Manual Maestro ejecutados:
+- **Destino** (§10): selector nuevo "🎵 TikTok / 📘 Meta Ads" en Cortar clips y Mi producto.
+  caption_styles: `set_destino()` (global tipo _ACCENT) — TikTok = bloque a ~80% de altura (como
+  las referencias); Meta = bloque a ~60% (Meta Reels tapa el 35% inferior con su UI). Medido en
+  render real: TikTok 80%, Meta 60% ✓. Cableado: /api/process, /api/scripts, /api/producto-clips
+  → settings → process_job/render_versions(destino=...).
+- **Cut 4:5 para Meta feed** (§10.2): con destino=meta y aspect 9:16, cada versión genera además
+  `path_45` (crop central 1080x1350, captions a 60% quedan adentro ✓). Botón "⬇️ Cut 4:5 para
+  Meta feed" en la tarjeta de la versión.
+- **QA GATE** (§11.1): al final del render, 1 llamada Gemini flash con un frame del s2.5 de CADA
+  versión → si el producto no se alcanza a ver en los primeros 3s, la versión sale con
+  `qa_aviso` y la UI muestra el ⚠️ (no bloquea, avisa).
+Verificado: py_compile OK, node --check 14/14, posición de captions medida por píxeles en ambos
+destinos, crop 4:5 dimensiones exactas. AVISO Jack: caption_styles (+set_destino/_y_centro/_y_piso,
+y0 en _render_wordgroup y render de bloque), orchestrator (render_versions+process_job con destino,
+bloque 4:5 + QA antes de Finalizando), app.py (3 endpoints + settings + passthrough), producto_clips
+(destino a process_job), index.html (2 selectores + fd.append x2 + badge/botón en renderResults).
+
+### 2026-07-04 · Claude (juanesal-lab) · 🔥 GUIONES CON CLAUDE + fix del congelón mid-video (mismo look) y del final (margen del dissolve)
+Feedback de Juan: (a) los guiones no convencen ("les falta atracción"); (b) file 79: imagen quieta
+~5s a mitad del video con voz/captions andando + 2 videos con el final quieto 2-3s.
+**Congelón mid-video (file 79 analizado frame a frame):** el guard de variedad compara por
+source_index, pero Juan subió VARIOS TikToks de la misma creadora → clips de "fuentes distintas"
+visualmente IDÉNTICOS 5s seguidos. Fix: `_mismo_look()` en guion_match — misma fuente O firmas
+perceptuales (segment_signature, dist <10) casi iguales = mismo look; el orchestrator calcula la
+firma de cada clip del pool y la pasa al plan. Aplica al sort, a la racha y al fallback.
+**Congelón del final:** la compensación +0.17s/corte del dissolve NO cabe cuando el clip se usa
+completo → faltante acumulado ≈2s en 12 cortes. Fix doble: (1) plan usa nat_efectivo = nat−0.18
+(el margen siempre cabe); (2) assemble: si el montaje queda hasta 8% corto vs la voz, se ESTIRA
+el video imperceptiblemente (setpts; el audio del montaje no se usa) en vez de congelar.
+**Guiones:** ahora los escribe CLAUDE OPUS (claude-opus-4-8, tool-use, mismo cerebro de los ads
+de imagen) con Gemini de respaldo; `_anthropic_key()` lee env/.env. Listón de calidad en el
+prompt (hook '¿QUÉ? a ver…', un momento MEMORABLE citable, chisme > locutor, arriesgado > correcto).
+DESCUBRIMIENTO clave: a 15s el CTA obligatorio (16 palabras) se come el 40% del presupuesto → el
+cuerpo quedaba en 19 palabras (por eso se sentían planos). Presupuesto ahora 2.55 palabras/s
+(2.4 medido × 1.12 de la aceleración), defaults de duración 22s (Cortar) y 20s (Mi producto) =
+sweet spot frío del Manual §10.1. Y el recorte anti-desborde ahora es POR FASES
+(_ajustar_por_fases: usa el desglose hook/problema/giro/producto/prueba del modelo y sacrifica
+prueba→problema→giro, JAMÁS hook/producto/CTA — el recorte ciego amputaba el producto del final;
+por eso "no nombraba el producto" aunque Claude sí lo escribía). Tolerancia del recorte ciego 1.35.
+Probado live x3: guiones nombran NUTRILAN, 56-58 palabras, hooks citables, voz de parcero.
+AVISO Jack: scripts.py (Claude 1º + _ajustar_por_fases + presupuesto), guion_match (firmas +
+mismo_look + nat−0.18), orchestrator (firmas al plan), assemble (stretch ≤8% pre-tpad),
+index.html (defaults 22s/20s). py_compile todo OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 📡 RADAR GANADORES — nueva función: spy tool tipo Minea integrado
+Nueva pestaña "📡 Radar": spy tool propio (Meta Ad Library de 11 países — CO/MX/EC/PE/CL/PA/GT/ES/IT/FR/DE
+vía ScrapeCreators + matcher de catálogo Dropi + 186 tiendas Shopify competidoras rastreadas + detector de
+oportunidades Europa→Colombia con reach real DSA). El motor completo vive en `radar/` (solo stdlib, cero
+pip installs); `backend/radar_api.py` expone GET /radar (dashboard visual), /api/radar/resumen y
+/api/radar/candidatos (filtros: min_score, pais, sourcing). En el Mac de Juan un cron (launchd 7:30am)
+escanea y regenera el dashboard a diario. Datos y keys NO van al repo (radar/.gitignore cubre .env,
+radar.db, privado.json). Para usarlo en otra máquina: SCRAPECREATORS_API_KEY en radar/.env (gratis 1.000
+créditos en scrapecreators.com) y correr radar/run_daily.sh — guía completa en radar/HANDOFF.md.
+AVISO Jack: app.py solo ganó 2 líneas (include_router tras el mount de /assets); index.html: botón nuevo
+en #tabs, panel p-radar con iframe lazy, 3 líneas en el handler de tabs. NO toqué pipeline/. Sin
+dependencias nuevas. Probado con TestClient (el server estaba ocupado renderizando — al reiniciar con
+./run.sh queda activa la pestaña). Fix extra en radar/tiendas.py: tiendas recién descubiertas ya no
+inundan el reporte de novedades con su primer catálogo.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🧊 CAUSA RAÍZ del congelón encontrada: la cadena xfade se SECABA (video muere, audio sigue)
+Juan: "aún algunos videos se siguen congelando". Diagnóstico forense del job b98267b7325b:
+versiones A/B/F con el frame QUIETO desde el s8.5 hasta el final (24s!) — el primer escaneo no lo
+veía porque los captions karaoke se mueven encima (hay que croppear el 55% superior para medir).
+**La pista clave**: `ffprobe -select_streams v` → el stream de VIDEO del montaje A duraba 8.57s
+y el de AUDIO 32.0s. La cadena xfade se SECA cuando un clip tiene menos frames de video que lo
+que dice su contenedor (los offsets se calculaban con la duración del contenedor = max(v,a)) →
+el offset cae después del final real del video → xfade muere → el tpad de la voz clona ese
+último frame por el resto del video. Reproducido sintéticamente con un clip video=1.0s/audio=2.5s.
+**BLINDAJE triple en concat_clips_xfade:**
+1. offsets calculados con `_video_stream_dur()` (el stream de VIDEO real, no el contenedor);
+2. colchón `tpad stop_duration=3` en CADA rama de video (a un clip corto se le sostiene su
+   último frame ESE instante, la cadena jamás muere) + `atrim` del audio al video + `-t acc`
+   exacto para que el colchón no alargue el final;
+3. VERIFICACIÓN post-render en build_variations: si video+0.5 < audio → se reconstruye la
+   versión con concat_clips (cortes duros, demuxer robusto) y cut_times recalculados.
+Probado: cadena sana 22 clips → 29.07/29.04 (video/audio ≈ esperado 28.8); cadena con el clip
+roto en el medio → video=15.37 audio=15.33 (antes: video moría en el clip roto). Además
+_LOOK_DIST 10→16 (misma creadora con otra ropa/luz daba 12-20 bits y el guard no la veía).
+AVISO Jack: assemble (concat_clips_xfade blindada + _video_stream_dur + verificación en
+build_variations), guion_match (_LOOK_DIST). py_compile OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🎙️ GUIONES v3: calibrados con 246 videos REALES de +1M vistas (workflow de 6 agentes)
+Juan: "no me convencen los guiones — pon N agentes, mira miles de videos de +1M y que queden perfectos".
+**INVESTIGACIÓN**: (1) sweep GRATIS con nuestro buscar_tiktok: 34 queries en los nichos COD → 246
+videos únicos de +1M plays (mediana 3.4M, 83 con +5M, 24% LATAM) con título/plays/likes/dur/región;
+(2) research web de retención/hooks 2026; (3) crítica adversarial del sistema actual. Síntesis +
+2 JUECES (reglas contra el código real y calidad con guiones simulados) antes de tocar nada.
+**assets/guion-framework.md — NUEVA sección FRAMEWORK v3** (manda sobre v2 donde contradiga):
+familias de hooks que dominan HOY con citas textuales del dataset (regalo a familiar = 15% likes/plays
+récord; pregunta relatable; secreto; plata concreta; unboxing; social proof), dos formatos ganadores
+(demo cruda 12-18s / storytime 35-59s, valle 20-34s), productos de dolor/vergüenza se miden por
+retención no likes, re-enganche 5-10s (la lista de features mata el hold), staccato DEROGADO como
+regla base, "no te voy a mentir" máx 1/lote, ancla de cierre SIN cifras, lista negra de transiciones
+quemadas ("hasta que probé esto"), PROHIBIDO inventar specs (la especificidad va del lado del DOLOR).
+**scripts.py (9 cambios quirúrgicos al prompt)**: autoridad v3>v2 + framework[:30000] (con v3 el .md
+mide 25.7k — el [:22000] lo truncaba); hooks por 2-3 FAMILIAS que calzan con la categoría + variar
+NIVEL DE CONSCIENCIA del avatar (no sabe / ya probó / comparando); presupuesto por beat (CTA=17
+palabras exactas); few-shot completo de guion perfecto; tope de modismos; re-enganche solo ≥30s.
+**creative_variator.py (3 cambios)**: mismas familias/reglas para los hooks de variaciones (estaba
+enseñando el staccato que scripts ya prohibía — divergencia real detectada por los agentes).
+**VALIDADO con generación REAL** (producto láser hongos, 25s, n=3): 3/3 parsean, fases completas,
+CTA exacto, 63-68 palabras (presupuesto 63), y la calidad se nota: especificidad de dolor real,
+3 niveles de consciencia distintos, ancla sin cifras, cero tics. py_compile ok ambos.
+- AVISO Jack: NO toqué el flujo/parseo (mismo schema angulo/texto/fases y tool entregar_variaciones)
+  ni el congelón (vi tu fix ebe9029 del xfade — quedó intacto). Solo prompts + framework.
+
 ### 2026-07-04 · Claude (jackingshop1-cell) · 🎥 Buscar creativos ahora acepta VIDEOS del producto + 🔗 link de la landing
 Pedido de Jack ("que sean exactos los videos"): además de fotos y nombre, la búsqueda acepta:
 1. VIDEOS DE REFERENCIA: `videos_ref` (máx 2, tope 100MB c/u) en /api/tiktok-search y

@@ -19,8 +19,13 @@ CONSERVAN el concepto y el arco que YA funciona (HOOK → DOLOR → SOLUCIÓN/PR
 VARÍAN lo de arriba para que Meta las vea como creativos NUEVOS (mata el ad-fatigue y el detector de duplicados).
 
 Qué varías en cada variación:
-- HOOK (0-3s): un gancho DISTINTO y potente — pregunta, dato de shock, confesión, curiosidad, escena. Es lo
-  que más mueve el rendimiento; hazlos MUY diferentes entre sí.
+- HOOK (0-3s): un gancho DISTINTO y potente, de las familias que HOY dominan en videos de +1M vistas
+  (dataset 2026-07): familiar como personaje ("le compré esto a mi mamá…" — 15% likes/plays, récord),
+  pregunta relatable ("¿te pasa que…?"), confesión con tiempo concreto ("dos años escondiendo…"),
+  resultado-primero (el final ANTES del proceso), secreto/revelación ("este es el secreto para…"),
+  reverse-sell ("NO compres esto… a menos que…"), o responder una objeción/comentario negativo real.
+  El PAYOFF del hook llega ANTES del segundo 3. Es lo que más mueve el rendimiento; hazlos MUY
+  diferentes entre sí.
 - GUION de voz en off: reescribe el mensaje con OTRAS palabras y otro tono, pero respetando el arco y el
   beneficio real. Español colombiano, natural, hablado (no acartonado).
 - COPY en pantalla: el texto/subtítulo gancho corto que iría encima del video.
@@ -30,12 +35,22 @@ Para el modo con TOMAS: además, por cada FASE del arco dime qué TIPO de escena
 original (así el video queda ~80% nuevo). Descríbelo como se BUSCARÍA en TikTok: corto y concreto
 (ej. "primer plano de mujer frustrada frente al espejo", "manos aplicando crema", "antes/después de piel").
 
-REGLAS: nada de precio ni % médicos (usa "ayuda a / apoya"). Mantén el producto y el dolor reales del ganador.
-Variedad obligatoria: los N hooks deben ser MUY distintos entre sí (no 3 versiones de lo mismo).
+REGLAS: nada de cifras de dinero ni % médicos (usa "ayuda a / apoya"); el cierre SÍ puede llevar ancla de
+VALOR sin cifras ("menos de lo que ya gastaste en cremas que no funcionan"). Mantén el producto y el dolor
+reales del ganador. PROHIBIDO inventar specs, números o mecanismos que no estén en el creativo ganador ni
+en la info del producto: si faltan, la especificidad va del lado del DOLOR (situacional), no del producto.
+Variedad obligatoria: los N hooks deben ser MUY distintos entre sí (no 3 versiones de lo mismo) y variar el
+NIVEL DE CONSCIENCIA del avatar (no sabe que existe solución / ya probó de todo y desconfía / está comparando).
+LISTA NEGRA DE TICS DE IA (rechazo automático): "Hasta que probé/llegó…", "¿Te imaginas…?", "Dile adiós a…",
+"Es hora de…", paralelismo triple repetido. MÁXIMO UN modismo colombiano por variación, y solo si calza natural.
 
-DINAMISMO (de ads ganadores validados): frases de 3-8 palabras, staccato; un "PERO" o "Ahora…" que gira la
-historia; números concretos (20 segundos, 3 semanas); una honestidad calculada por guion ("no te voy a
-mentir…"); social proof conversacional ("la gente te empieza a preguntar ¿qué hiciste?").
+DINAMISMO CON FLUIDEZ (misma regla del motor de guiones — el v3 derogó el staccato): la variación suena a
+una persona CONTÁNDOLE algo a un amigo, con frases conversacionales COMPLETAS; los golpes cortos van SOLO
+en la ráfaga del problema o del producto ("No aprieta. No mancha. Funciona."). PROHIBIDO el telegrama
+continuo tipo "Rollito molesto. Ropa no luce." Un "PERO" o "Ahora…" que gira la historia; números concretos
+SOLO si son reales (del ganador o del producto, nunca inventados); "no te voy a mentir" en MÁXIMO 1 de las
+N variaciones y siempre concediendo algo negativo real primero; social proof conversacional ("la gente te
+empieza a preguntar ¿qué hiciste?").
 
 🛡️ POLÍTICAS Meta/TikTok: NUNCA ataques el atributo personal del que ve. Di lo MISMO con metáfora o
 situación: "estás gordo"→"te levantas sintiéndote como un hipopótamo"; disfunción→"tu amiguito ya no

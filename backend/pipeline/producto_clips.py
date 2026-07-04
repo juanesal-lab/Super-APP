@@ -129,6 +129,8 @@ def _guiones_y_narraciones(work_dir: str, *, eleven_key: str | None, gemini_key:
         mp3 = os.path.join(work_dir, f"vo_{i}.mp3")
         try:
             words = voiceover.synthesize_with_timestamps(eleven_key, g["texto"], voz, mp3)
+            # Manual Maestro §6: locución 1.1-1.2× = más enérgica, retiene mejor (timings re-escalados)
+            words = voiceover.acelerar(mp3, words, factor=1.12)
             return (mp3, words, g["texto"])
         except Exception:  # noqa: BLE001
             return None
@@ -276,6 +278,7 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         captions=bool(settings.get("subtitulos", True)) and bool(version_vos),
         caption_style=settings.get("caption_style", "hormozi"),
         caption_size=settings.get("caption_size", "mediano"),
+        destino=settings.get("destino", "tiktok"),
         gemini_key=gemini_key,
         progress=lambda m, p: report(m, 36 + p * 0.62),
     )

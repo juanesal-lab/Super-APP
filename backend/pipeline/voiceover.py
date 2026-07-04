@@ -88,6 +88,31 @@ def synthesize_with_timestamps(api_key: str, text: str, voice_key: str,
     return _words_from_chars(data.get("alignment") or {})
 
 
+def acelerar(mp3_path: str, words: list[dict] | None, factor: float = 1.12) -> list[dict]:
+    """Acelera la locución (Manual Maestro §6: 1.1-1.2× suena más enérgica y retiene mejor en
+    short-form) SIN cambiar el tono (atempo) y re-escala los tiempos por palabra para que los
+    subtítulos karaoke y el montaje por guion sigan clavados. Devuelve los words re-escalados;
+    si algo falla, deja el mp3 y los tiempos como estaban (nunca lanza)."""
+    import os
+    import subprocess
+    if factor <= 1.01 or not os.path.exists(mp3_path):
+        return words or []
+    tmp = mp3_path + ".spd.mp3"
+    try:
+        subprocess.run(["ffmpeg", "-y", "-i", mp3_path, "-filter:a", f"atempo={factor:.3f}",
+                        "-c:a", "libmp3lame", "-q:a", "3", tmp],
+                       capture_output=True, timeout=120, check=True)
+        os.replace(tmp, mp3_path)
+        return [{**w, "start": round(float(w["start"]) / factor, 3),
+                 "end": round(float(w["end"]) / factor, 3)} for w in (words or [])]
+    except Exception:  # noqa: BLE001
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return words or []
+
+
 def music(api_key: str, prompt: str, out_path: str, length_ms: int = 18000) -> str:
     """Genera musica de fondo (mp3) con ElevenLabs Music a partir de una descripcion."""
     if not api_key:

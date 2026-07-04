@@ -195,6 +195,11 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         job["message"] = f"Error: {e}"
 
 
+# Assets estáticos del frontend (ej. /assets/garage/*.webp del home)
+from fastapi.staticfiles import StaticFiles
+app.mount("/assets", StaticFiles(directory=os.path.join(BASE, "assets")), name="assets")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     # Sin cache: el navegador siempre carga la version mas reciente de la app

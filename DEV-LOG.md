@@ -2004,3 +2004,30 @@ sin cambiar el estilo que ya le gusta. Cambio mínimo, cero cambios al prompt cr
 - AVISO Jack: toqué disruptive_images.py (_integrar_producto_ia, generar_ad_fullprompt,
   generar_ads_fullprompt), app.py (3 endpoints) y el disRender del index. Retro-compatible con jobs
   viejos (flag ausente = botón de siempre). Reiniciar server para probar.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🏎️ HOME: "El garaje de Jack" — showroom rotativo con los carros de verdad
+Jack pidió su garaje en la portada: sus 4 naves (Porsche 911 GT3 RS, Ducati Panigale V4, Lamborghini
+Huracán STO, Rolls-Royce Phantom Drophead) rotando cada 10s, el home teñido con los colores del carro
+de turno y la tipografía con la vibra de cada marca. Las secciones de adentro quedan IGUAL.
+- IMÁGENES: las fotos que mandó Jack (chiquitas, la del Porsche era un juguete con control y escudo
+  encima) se re-renderizaron a calidad de ESTUDIO con Nano Banana (editar_imagen_ia de Juan, 4 llamadas:
+  fondo negro showroom, piso reflectivo, sin logos ni juguetes) → assets/garage/*.webp (54-82KB c/u,
+  quality 86). OJO: editar_imagen_ia SOBREESCRIBE el archivo de entrada (trabajé sobre copias).
+- backend/app.py: mount NUEVO `/assets` (StaticFiles sobre BASE/assets) — sirve el garaje y de paso
+  cualquier asset futuro del frontend.
+- frontend/index.html (SOLO la sección #home): fuera el carro 3D genérico de three.js (y su CDN unpkg
+  — el home ya no depende de internet); entra el showroom: 2 <img> apiladas con crossfade 1.15s +
+  máscara radial que funde la foto con el fondo, halo del color del carro, flotación sutil, parallax
+  3D al puntero/gyro (rotateY/rotateX con perspective). Variables --hacc/--hacc2 POR CARRO tiñen:
+  saludo (gradiente), bordes/hover de las hCards, iconos, flechas, "MAXING" del brand, números de
+  pasos y fondo radial. Tipografías por marca (system fonts, $0, sin red): Porsche Helvetica 800,
+  Ducati Avenir Next 900 itálica, Lambo Futura uppercase, Rolls DIDOT serif (queda divino). Badge
+  "TU GARAJE · marca · modelo". setInterval 10s + guard `girando` (atómico: si se dispara doble,
+  imagen y tema jamás quedan de carros distintos — lo vi pasar adelantando a mano y lo blindé).
+  prefers-reduced-motion respetado (sin parallax).
+- VERIFICADO visual (screenshots en :8421): Porsche tema rojo/blanco ✓, Ducati tricolor con badge
+  sincronizado a ritmo natural ✓, Lambo Futura grafito ✓ (computed style), Rolls Didot plata ✓;
+  /assets/garage 200; py_compile ok; node --check 13/13; sin three.js en el html.
+- AVISO Juan: NO toqué tus hCards/hSteps/homeEnter ni el resto del home — solo el escenario (#hStage),
+  el <script> del 3D (reemplazado) y tintes a var() en tu CSS del home. Si quieres cambiar los carros
+  o los colores: array GARAJE en el script "EL GARAJE DE JACK" + assets/garage/.

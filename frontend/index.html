@@ -138,44 +138,63 @@
 <!-- ═══════════════════ HOME PREMIUM — "no parece una app común" ═══════════════════ -->
 <section id="home">
   <style>
-    #home{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    #home{--hacc:#e63329;--hacc2:#f2efe9;min-height:100vh;display:flex;flex-direction:column;align-items:center;
       padding:0 24px 70px;position:relative;overflow:hidden;
-      background:radial-gradient(1200px 500px at 50% -8%, rgba(212,175,55,.10), transparent 60%), var(--bg)}
+      background:radial-gradient(1200px 500px at 50% -8%, color-mix(in srgb, var(--hacc) 9%, transparent), transparent 60%), var(--bg)}
     #home.saliendo{animation:homeOut .55s cubic-bezier(.4,0,.2,1) forwards}
     @keyframes homeOut{to{opacity:0;transform:scale(.985);filter:blur(6px)}}
     .hGreet{margin:9vh 0 0;text-align:center;opacity:0;animation:hUp .9s .1s cubic-bezier(.2,.7,.2,1) forwards}
     .hGreet h2{font-size:clamp(28px,4.6vw,52px);font-weight:800;letter-spacing:-.02em;margin:0;
-      background:linear-gradient(100deg,#f6efdd 30%, #d4af37 50%, #f6efdd 70%);background-size:220% 100%;
+      background:linear-gradient(100deg, var(--hacc2) 30%, var(--hacc) 50%, var(--hacc2) 70%);background-size:220% 100%;
       -webkit-background-clip:text;background-clip:text;color:transparent;animation:hShimmer 7s linear infinite}
     @keyframes hShimmer{to{background-position:-220% 0}}
     .hGreet p{color:var(--muted);font-size:clamp(13px,1.5vw,16px);margin:10px 0 0;font-weight:500;letter-spacing:.04em}
     @keyframes hUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
     #hStage{width:min(1040px,96vw);height:min(46vh,470px);position:relative;margin:1.5vh 0 0;
       opacity:0;animation:hUp 1s .25s cubic-bezier(.2,.7,.2,1) forwards}
-    #hStage canvas{display:block;border-radius:24px;cursor:grab}
-    #hStage canvas:active{cursor:grabbing}
+    #hStage{perspective:1100px}
+    #hCarFloat{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform;
+      transition:transform .6s cubic-bezier(.2,.7,.2,1)}
+    .hCarImg{position:absolute;left:50%;bottom:2%;transform:translateX(-50%);
+      max-width:94%;max-height:96%;border-radius:26px;opacity:0;transition:opacity 1.15s ease;
+      -webkit-mask-image:radial-gradient(115% 105% at 50% 46%, #000 55%, transparent 79%);
+      mask-image:radial-gradient(115% 105% at 50% 46%, #000 55%, transparent 79%);
+      filter:drop-shadow(0 36px 70px rgba(0,0,0,.55));animation:hRespira 7s ease-in-out infinite}
+    .hCarImg.on{opacity:1}
+    @keyframes hRespira{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-7px)}}
+    #hHalo{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:82%;height:40%;
+      pointer-events:none;filter:blur(10px);opacity:.8;
+      background:radial-gradient(52% 62% at 50% 100%, color-mix(in srgb, var(--hacc) 30%, transparent), transparent 72%)}
+    #hCarName{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);text-align:center;
+      display:flex;flex-direction:column;gap:3px;pointer-events:none}
+    #hCarName .eyebrow{font-size:9.5px;letter-spacing:.42em;text-transform:uppercase;color:var(--muted);opacity:.85}
+    #hCarName b{font-size:19px;letter-spacing:.30em;text-transform:uppercase;color:var(--hacc2);
+      transition:color 1s;font-weight:800}
+    #hCarName span#hCarModelo{font-size:11px;letter-spacing:.34em;text-transform:uppercase;
+      color:var(--hacc);transition:color 1s;font-weight:700}
     .hHint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:var(--muted);
       font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;pointer-events:none;opacity:.75}
     .hCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:22px;width:min(1180px,96vw);margin-top:3vh;
       opacity:0;animation:hUp 1s .45s cubic-bezier(.2,.7,.2,1) forwards}
     @media(max-width:760px){.hCards{grid-template-columns:1fr}}
-    .hCard{position:relative;border-radius:26px;padding:34px 32px 30px;cursor:pointer;overflow:hidden;
+    .hCard{position:relative;border-radius:26px;padding:34px 32px 30px;cursor:pointer;overflow:hidden;transition:border-color 1s;
       background:linear-gradient(160deg,#16141a 0%, #1b1712 100%);
-      border:1px solid rgba(212,175,55,.16);box-shadow:0 20px 50px rgba(0,0,0,.5);
+      border:1px solid color-mix(in srgb, var(--hacc) 20%, transparent);box-shadow:0 20px 50px rgba(0,0,0,.5);
       transition:transform .45s cubic-bezier(.2,.7,.2,1), box-shadow .45s, border-color .45s;
       transform-style:preserve-3d;will-change:transform}
-    .hCard:hover{transform:translateY(-7px);border-color:rgba(212,175,55,.5);
-      box-shadow:0 30px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(212,175,55,.25), 0 18px 60px rgba(212,175,55,.12)}
+    .hCard:hover{transform:translateY(-7px);border-color:color-mix(in srgb, var(--hacc) 55%, transparent);
+      box-shadow:0 30px 70px rgba(0,0,0,.6), 0 0 0 1px color-mix(in srgb, var(--hacc) 28%, transparent), 0 18px 60px color-mix(in srgb, var(--hacc) 14%, transparent)}
     .hCard .sheen{position:absolute;inset:0;background:linear-gradient(115deg,transparent 42%,rgba(246,233,208,.10) 50%,transparent 58%);
       background-size:260% 100%;background-position:120% 0;transition:background-position 1s cubic-bezier(.2,.7,.2,1);pointer-events:none}
     .hCard:hover .sheen{background-position:-120% 0}
     .hCard .hIco{width:64px;height:64px;border-radius:18px;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(140deg,rgba(212,175,55,.16),rgba(212,175,55,.05));
-      border:1px solid rgba(212,175,55,.3);margin-bottom:20px;transition:transform .45s}
+      background:linear-gradient(140deg,color-mix(in srgb, var(--hacc) 17%, transparent),color-mix(in srgb, var(--hacc) 6%, transparent));
+      border:1px solid color-mix(in srgb, var(--hacc) 34%, transparent);margin-bottom:20px;transition:transform .45s}
     .hCard:hover .hIco{transform:translateY(-3px) scale(1.05)}
+    .hIco svg{stroke:var(--hacc2);transition:stroke 1s}
     .hCard h3{margin:0 0 8px;font-size:24px;font-weight:800;letter-spacing:-.01em}
     .hCard p{margin:0;color:var(--muted);font-size:14.5px;line-height:1.65;max-width:40ch}
-    .hCard .hGo{margin-top:22px;display:inline-flex;align-items:center;gap:9px;color:var(--accent2);
+    .hCard .hGo{margin-top:22px;display:inline-flex;align-items:center;gap:9px;color:var(--hacc2);transition:color 1s;
       font-weight:700;font-size:13.5px;letter-spacing:.06em;text-transform:uppercase}
     .hCard .hGo span{transition:transform .35s}
     .hCard:hover .hGo span{transform:translateX(6px)}
@@ -188,13 +207,13 @@
     .hStep{border-radius:22px;padding:26px 24px;background:#141218;border:1px solid #262129;
       opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1), border-color .4s}
     .hStep.vis{opacity:1;transform:none}
-    .hStep:hover{border-color:rgba(212,175,55,.35)}
-    .hStep .n{font-size:11px;letter-spacing:.2em;color:var(--accent);font-weight:800;margin-bottom:14px}
+    .hStep:hover{border-color:color-mix(in srgb, var(--hacc) 38%, transparent)}
+    .hStep .n{font-size:11px;letter-spacing:.2em;color:var(--hacc);transition:color 1s;font-weight:800;margin-bottom:14px}
     .hStep h5{margin:0 0 8px;font-size:17.5px;font-weight:800}
     .hStep p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.7}
     #homeBrand{position:absolute;top:26px;left:50%;transform:translateX(-50%);font-weight:800;font-size:15px;
       letter-spacing:.30em;text-transform:uppercase;color:var(--muted);opacity:0;animation:hUp .8s forwards}
-    #homeBrand b{color:var(--accent)}
+    #homeBrand b{color:var(--hacc);transition:color 1s}
     @media (prefers-reduced-motion: reduce){#home *{animation-duration:.01s !important;transition-duration:.01s !important}}
   </style>
 
@@ -205,7 +224,14 @@
     <p>Tu estudio de creativos impulsado por IA</p>
   </div>
 
-  <div id="hStage"><div class="hHint">Arrastra · Gira 360° · Acerca con el scroll</div></div>
+  <div id="hStage">
+    <div id="hHalo"></div>
+    <div id="hCarFloat">
+      <img id="hCarA" class="hCarImg" alt="">
+      <img id="hCarB" class="hCarImg" alt="">
+    </div>
+    <div id="hCarName"><span class="eyebrow">Tu garaje</span><b id="hCarMarca"></b><span id="hCarModelo"></span></div>
+  </div>
 
   <div class="hCards">
     <div class="hCard" onclick="homeEnter('p-foreplay')">
@@ -300,119 +326,72 @@
   })();
 </script>
 
-<!-- ── AUTO CONCEPTO 3D — original, interactivo (giro 360°, zoom, reflejos, luz premium) ── -->
-<script type="importmap">{"imports":{
-  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
-}}</script>
-<script type="module">
-try{
-  const THREE = await import('three');
-  const {OrbitControls} = await import('three/addons/controls/OrbitControls.js');
-  const {RoomEnvironment} = await import('three/addons/environments/RoomEnvironment.js');
+<!-- ── EL GARAJE DE JACK — showroom rotativo: cada 10s otro carro, y el home se tiñe con él ── -->
+<script>
+(function(){
+  // Cada carro: imagen de estudio (assets/garage), paleta y tipografía con la vibra de la marca
+  const GARAJE=[
+    {src:'/assets/garage/porsche.webp', marca:'Porsche', modelo:'911 GT3 RS',
+     acc:'#e63329', acc2:'#f2efe9',
+     font:"'Helvetica Neue',Helvetica,Arial,sans-serif", fw:800, fst:'normal', ls:'-.02em', up:false},
+    {src:'/assets/garage/ducati.webp', marca:'Ducati', modelo:'Panigale V4',
+     acc:'#d0021b', acc2:'#f0ede8',
+     font:"'Avenir Next','Helvetica Neue',Helvetica,sans-serif", fw:900, fst:'italic', ls:'.01em', up:false},
+    {src:'/assets/garage/lambo.webp', marca:'Lamborghini', modelo:'Huracán STO',
+     acc:'#aab1bc', acc2:'#eceef2',
+     font:"'Futura','Avenir Next Condensed','Arial Narrow',sans-serif", fw:700, fst:'normal', ls:'.07em', up:true},
+    {src:'/assets/garage/rolls.webp', marca:'Rolls-Royce', modelo:'Phantom Drophead',
+     acc:'#d6cfc0', acc2:'#f4f0e7',
+     font:"'Didot','Bodoni 72',Georgia,serif", fw:500, fst:'normal', ls:'.05em', up:false},
+  ];
+  const home=document.getElementById('home'), stage=document.getElementById('hStage');
+  const A=document.getElementById('hCarA'), B=document.getElementById('hCarB');
+  const h2=document.getElementById('hGreetTxt');
+  const marcaEl=document.getElementById('hCarMarca'), modeloEl=document.getElementById('hCarModelo');
+  if(!(home&&stage&&A&&B)) return;
+  GARAJE.forEach(c=>{ const i=new Image(); i.src=c.src; });   // precarga: cambios sin parpadeo
 
-  const stage=document.getElementById('hStage');
-  const W=stage.clientWidth, H=stage.clientHeight;
-  const renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(W,H);
-  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
-  stage.prepend(renderer.domElement);
-
-  const scene=new THREE.Scene();
-  scene.fog=new THREE.Fog(0x0c0b0e, 9, 17);
-  const pmrem=new THREE.PMREMGenerator(renderer);
-  scene.environment=pmrem.fromScene(new RoomEnvironment(), .06).texture;   // reflejos dinámicos
-
-  const cam=new THREE.PerspectiveCamera(38, W/H, .1, 60);
-  cam.position.set(4.1, 1.7, 4.6);
-
-  const ctl=new OrbitControls(cam, renderer.domElement);
-  ctl.target.set(0,.42,0); ctl.enableDamping=true; ctl.dampingFactor=.05;
-  ctl.autoRotate=true; ctl.autoRotateSpeed=.9;                    // movimiento continuo
-  ctl.minDistance=3.2; ctl.maxDistance=8.5;
-  ctl.maxPolarAngle=Math.PI/2.05; ctl.enablePan=false;
-
-  // ——— Carrocería: silueta GT extruida (concepto propio) ———
-  const negro=new THREE.MeshPhysicalMaterial({color:0x0b0b0e, metalness:.9, roughness:.32,
-    clearcoat:1, clearcoatRoughness:.08});
-  const vidrio=new THREE.MeshPhysicalMaterial({color:0x05060a, metalness:.95, roughness:.05,
-    clearcoat:1, clearcoatRoughness:.03});
-  const oro=new THREE.MeshPhysicalMaterial({color:0xd4af37, metalness:1, roughness:.22});
-  const oroLuz=new THREE.MeshStandardMaterial({color:0x1a1408, emissive:0xecca6e, emissiveIntensity:2.6});
-
-  const auto=new THREE.Group();
-  const perfil=new THREE.Shape();
-  perfil.moveTo(-2.35,.16);
-  perfil.splineThru([[-2.42,.40],[-2.05,.56],[-1.30,.62],[-.55,.66],[.30,.60],[1.15,.46],[1.90,.30],[2.42,.18]].map(p=>new THREE.Vector2(p[0],p[1])));
-  perfil.lineTo(2.30,.06); perfil.lineTo(-2.25,.06); perfil.closePath();
-  const cuerpo=new THREE.Mesh(new THREE.ExtrudeGeometry(perfil,{depth:1.06,bevelEnabled:true,
-    bevelThickness:.20,bevelSize:.16,bevelSegments:6,curveSegments:24}), negro);
-  cuerpo.geometry.translate(0,0,-.53); cuerpo.position.y=.12; auto.add(cuerpo);
-
-  const cab=new THREE.Shape();
-  cab.moveTo(.95,.46);
-  cab.splineThru([[.35,.78],[-.45,.84],[-1.25,.66]].map(p=>new THREE.Vector2(p[0],p[1])));
-  cab.lineTo(-1.05,.46); cab.closePath();
-  const cabina=new THREE.Mesh(new THREE.ExtrudeGeometry(cab,{depth:.78,bevelEnabled:true,
-    bevelThickness:.10,bevelSize:.09,bevelSegments:5,curveSegments:20}), vidrio);
-  cabina.geometry.translate(0,0,-.39); cabina.position.y=.12; auto.add(cabina);
-
-  // línea de luz dorada lateral + faros + luz trasera (el acento)
-  for(const z of [.72,-.72]){
-    const strip=new THREE.Mesh(new THREE.BoxGeometry(3.9,.022,.012), oroLuz);
-    strip.position.set(-.1,.40,z); auto.add(strip);
+  function vestir(c){
+    home.style.setProperty('--hacc', c.acc);
+    home.style.setProperty('--hacc2', c.acc2);
+    for(const el of [h2, marcaEl]){
+      if(!el) continue;
+      el.style.fontFamily=c.font; el.style.fontWeight=c.fw;
+      el.style.fontStyle=c.fst; el.style.letterSpacing=c.ls;
+    }
+    if(h2) h2.style.textTransform=c.up?'uppercase':'none';
+    if(marcaEl) marcaEl.textContent=c.marca;
+    if(modeloEl) modeloEl.textContent=c.modelo;
   }
-  const faro=new THREE.Mesh(new THREE.BoxGeometry(.05,.05,.85), oroLuz); faro.position.set(2.47,.30,0); auto.add(faro);
-  const trasera=new THREE.Mesh(new THREE.BoxGeometry(.04,.06,1.15), oroLuz); trasera.position.set(-2.46,.42,0); auto.add(trasera);
 
-  // ruedas con rin dorado
-  const ruedas=[];
-  for(const [x,z] of [[1.52,.68],[1.52,-.68],[-1.52,.68],[-1.52,-.68]]){
-    const g=new THREE.Group();
-    const llanta=new THREE.Mesh(new THREE.CylinderGeometry(.36,.36,.24,40),
-      new THREE.MeshStandardMaterial({color:0x0a0a0c, roughness:.85}));
-    llanta.rotation.x=Math.PI/2;
-    const rin=new THREE.Mesh(new THREE.TorusGeometry(.22,.035,12,40), oro);
-    rin.position.z=(z>0?.13:-.13);
-    const eje=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.26,20), oro); eje.rotation.x=Math.PI/2;
-    g.add(llanta,rin,eje); g.position.set(x,.36,z); auto.add(g); ruedas.push(g);
+  let gi=0, imgs=[A,B], cur=0, girando=false;
+  A.src=GARAJE[0].src; A.classList.add('on'); vestir(GARAJE[0]);
+  function girar(){
+    if(girando) return;                       // atómico: imagen y tema SIEMPRE del mismo carro
+    girando=true;
+    gi=(gi+1)%GARAJE.length;
+    const c=GARAJE[gi], show=imgs[1-cur], hide=imgs[cur];
+    show.src=c.src;
+    (show.decode ? show.decode().catch(()=>{}) : Promise.resolve()).then(()=>{
+      show.classList.add('on'); hide.classList.remove('on'); cur=1-cur; vestir(c);
+      setTimeout(()=>{ girando=false; }, 250);
+    });
   }
-  auto.position.y=.02; scene.add(auto);
+  const quieto=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window._garajeGirar=girar;                                  // para probar a mano desde consola
+  setInterval(girar, 10000);                                  // cada 10 segundos, el siguiente
 
-  // piso reflectivo + halo dorado
-  const piso=new THREE.Mesh(new THREE.CircleGeometry(5.4,72),
-    new THREE.MeshPhysicalMaterial({color:0x0e0d11, metalness:.75, roughness:.28}));
-  piso.rotation.x=-Math.PI/2; scene.add(piso);
-  const halo=new THREE.Mesh(new THREE.RingGeometry(5.15,5.4,72),
-    new THREE.MeshBasicMaterial({color:0xd4af37, transparent:true, opacity:.20, side:THREE.DoubleSide}));
-  halo.rotation.x=-Math.PI/2; halo.position.y=.005; scene.add(halo);
-
-  // iluminación premium
-  scene.add(new THREE.AmbientLight(0xfff3d8,.22));
-  const key=new THREE.SpotLight(0xfff0cf, 900, 30, .6, .55); key.position.set(5,7,4); scene.add(key);
-  const rim=new THREE.SpotLight(0xd4af37, 500, 30, .7, .6); rim.position.set(-6,4,-5); scene.add(rim);
-
-  // reacciona al puntero (parallax sutil) y al movimiento del dispositivo
-  let px=0,py=0;
-  addEventListener('pointermove',e=>{px=(e.clientX/innerWidth-.5);py=(e.clientY/innerHeight-.5);},{passive:true});
-  addEventListener('deviceorientation',e=>{ if(e.gamma!=null){px=Math.max(-.5,Math.min(.5,e.gamma/60)); py=Math.max(-.5,Math.min(.5,(e.beta-45)/90));} },{passive:true});
-
-  addEventListener('resize',()=>{ const w=stage.clientWidth,h=stage.clientHeight;
-    cam.aspect=w/h; cam.updateProjectionMatrix(); renderer.setSize(w,h); });
-
-  const clock=new THREE.Clock();
-  (function anim(){
-    requestAnimationFrame(anim);
-    const t=clock.getElapsedTime();
-    auto.position.y=.02+Math.sin(t*1.1)*.012;                     // respiración sutil
-    auto.rotation.z=px*.03; auto.rotation.x=py*.02;               // reacción al usuario
-    ruedas.forEach(r=>r.rotation.z-=.02);
-    ctl.update(); renderer.render(scene,cam);
-  })();
-}catch(err){ /* sin WebGL/CDN: el home vive sin el 3D, nada se rompe */
-  const s=document.getElementById('hStage');
-  if(s) s.innerHTML='<div style="height:100%;border-radius:24px;background:radial-gradient(600px 220px at 50% 60%, rgba(212,175,55,.18), transparent 70%)"></div>';
-}
+  // Parallax 3D sutil: el carro reacciona al puntero (y al giro del celular)
+  if(!quieto){
+    const wrap=document.getElementById('hCarFloat');
+    let px=0,py=0,raf=null;
+    const mover=()=>{ raf=null; wrap.style.transform=`rotateY(${px*7}deg) rotateX(${-py*4.5}deg)`; };
+    addEventListener('pointermove',e=>{ px=(e.clientX/innerWidth-.5); py=(e.clientY/innerHeight-.5);
+      if(!raf) raf=requestAnimationFrame(mover); },{passive:true});
+    addEventListener('deviceorientation',e=>{ if(e.gamma!=null){ px=Math.max(-.5,Math.min(.5,e.gamma/60));
+      py=Math.max(-.5,Math.min(.5,(e.beta-45)/90)); if(!raf) raf=requestAnimationFrame(mover);} },{passive:true});
+  }
+})();
 </script>
 
 <div class="wrap" style="display:none">

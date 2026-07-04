@@ -2465,3 +2465,25 @@ en #tabs, panel p-radar con iframe lazy, 3 líneas en el handler de tabs. NO toq
 dependencias nuevas. Probado con TestClient (el server estaba ocupado renderizando — al reiniciar con
 ./run.sh queda activa la pestaña). Fix extra en radar/tiendas.py: tiendas recién descubiertas ya no
 inundan el reporte de novedades con su primer catálogo.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🧊 CAUSA RAÍZ del congelón encontrada: la cadena xfade se SECABA (video muere, audio sigue)
+Juan: "aún algunos videos se siguen congelando". Diagnóstico forense del job b98267b7325b:
+versiones A/B/F con el frame QUIETO desde el s8.5 hasta el final (24s!) — el primer escaneo no lo
+veía porque los captions karaoke se mueven encima (hay que croppear el 55% superior para medir).
+**La pista clave**: `ffprobe -select_streams v` → el stream de VIDEO del montaje A duraba 8.57s
+y el de AUDIO 32.0s. La cadena xfade se SECA cuando un clip tiene menos frames de video que lo
+que dice su contenedor (los offsets se calculaban con la duración del contenedor = max(v,a)) →
+el offset cae después del final real del video → xfade muere → el tpad de la voz clona ese
+último frame por el resto del video. Reproducido sintéticamente con un clip video=1.0s/audio=2.5s.
+**BLINDAJE triple en concat_clips_xfade:**
+1. offsets calculados con `_video_stream_dur()` (el stream de VIDEO real, no el contenedor);
+2. colchón `tpad stop_duration=3` en CADA rama de video (a un clip corto se le sostiene su
+   último frame ESE instante, la cadena jamás muere) + `atrim` del audio al video + `-t acc`
+   exacto para que el colchón no alargue el final;
+3. VERIFICACIÓN post-render en build_variations: si video+0.5 < audio → se reconstruye la
+   versión con concat_clips (cortes duros, demuxer robusto) y cut_times recalculados.
+Probado: cadena sana 22 clips → 29.07/29.04 (video/audio ≈ esperado 28.8); cadena con el clip
+roto en el medio → video=15.37 audio=15.33 (antes: video moría en el clip roto). Además
+_LOOK_DIST 10→16 (misma creadora con otra ropa/luz daba 12-20 bits y el guard no la veía).
+AVISO Jack: assemble (concat_clips_xfade blindada + _video_stream_dur + verificación en
+build_variations), guion_match (_LOOK_DIST). py_compile OK.

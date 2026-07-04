@@ -20,7 +20,7 @@ from .phase_classify import FASES
 # Umbral de "MISMO LOOK": firmas perceptuales a menos de esta distancia = misma escena aunque
 # vengan de ARCHIVOS distintos (bug real: varios TikToks de la misma creadora hablando a cámara
 # → clips "de fuentes distintas" pero idénticos en pantalla 5s seguidos = se ve congelado).
-_LOOK_DIST = 10
+_LOOK_DIST = 16    # 10 era muy estricto: misma creadora con otra ropa/luz daba 12-20 bits
 
 # Pausa entre palabras que corta frase aunque no haya puntuación (respiro del locutor)
 _PAUSA_FRASE = 0.35

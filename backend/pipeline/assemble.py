@@ -216,20 +216,44 @@ _XFADE_D = 0.17          # dissolve estándar (5 frames a 30fps)
 _XFADE_D_HARD = 0.034    # "corte duro" (1 frame de mezcla: evita el salto entre fuentes)
 
 
+def _video_stream_dur(path: str) -> float:
+    """Duración del STREAM de video (no del contenedor: el contenedor toma el máximo de
+    video/audio y esconde streams de video cortos — causa real de un congelón de 24s)."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v",
+                              "-show_entries", "stream=duration", "-of", "csv=p=0", path],
+                             capture_output=True, text=True, timeout=20)
+        return float((out.stdout or "").strip().splitlines()[0])
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
 def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
                        d: float = _XFADE_D,
                        cut_times_out: list[float] | None = None) -> str:
     """Une clips estilo ads ganadores: dissolve corto por defecto + corte duro selectivo
     (1 de cada ~5 y en la entrada del último plano = el payoff/impacto).
-    Si `cut_times_out` es una lista, deja ahí los tiempos reales de cada transición
-    (para alinear los SFX con el corte de verdad, no con la suma teórica)."""
+    Si `cut_times_out` es una lista, deja ahí los tiempos reales de cada transición.
+
+    BLINDAJE (bug real 2026-07-04: el stream de video de un clip terminaba antes que su audio
+    → la cadena xfade se SECABA a mitad del montaje → tpad clonaba el último frame 24s):
+    - los offsets se calculan con la duración del STREAM DE VIDEO real (no del contenedor);
+    - cada rama de video lleva un colchón tpad (si a un clip le faltan frames, sostiene su
+      último frame ese instante en vez de matar la cadena entera);
+    - el audio de cada clip se recorta a su video (atrim) y el render se limita a la duración
+      planeada (-t) para que el colchón no alargue el final."""
     if len(clip_paths) <= 1:
         return concat_clips(clip_paths, out_path, work_dir)
 
     from .ffmpeg_utils import probe
     # Todos los clips deben tener pista de audio o el acrossfade falla ("[i:a] matches no streams").
     clip_paths = [_ensure_audio(p, work_dir) for p in clip_paths]
-    durs = [max(0.4, probe(p).duration) for p in clip_paths]
+    durs = []
+    for p in clip_paths:
+        dv = _video_stream_dur(p)
+        if dv <= 0.05:
+            dv = probe(p).duration
+        durs.append(max(0.4, dv))
 
     n_b = len(clip_paths) - 1
     hard = {n_b - 1} | {i for i in range(n_b) if i % 5 == 2}   # payoff + 1 de cada ~5
@@ -238,7 +262,10 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
     for p in clip_paths:
         inputs += ["-i", p]
     fc = []
-    vlast, alast = "[0:v]", "[0:a]"
+    for i, dv in enumerate(durs):    # colchón de video + audio recortado al video
+        fc.append(f"[{i}:v]tpad=stop_mode=clone:stop_duration=3[vp{i}]")
+        fc.append(f"[{i}:a]atrim=0:{dv:.3f}[at{i}]")
+    vlast, alast = "[vp0]", "[at0]"
     acc = durs[0]
     for i in range(1, len(clip_paths)):
         dd = _XFADE_D_HARD if (i - 1) in hard else d
@@ -246,13 +273,13 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
         if cut_times_out is not None:
             cut_times_out.append(round(off + dd / 2, 3))
         vtag, atag = f"[vx{i}]", f"[ax{i}]"
-        fc.append(f"{vlast}[{i}:v]xfade=transition=fade:duration={dd}:offset={off:.3f}{vtag}")
-        fc.append(f"{alast}[{i}:a]acrossfade=d={dd}{atag}")
+        fc.append(f"{vlast}[vp{i}]xfade=transition=fade:duration={dd}:offset={off:.3f}{vtag}")
+        fc.append(f"{alast}[at{i}]acrossfade=d={dd}{atag}")
         vlast, alast = vtag, atag
         acc = acc + durs[i] - dd
     run([
         "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(fc),
-        "-map", vlast, "-map", alast,
+        "-map", vlast, "-map", alast, "-t", f"{acc:.3f}",
         *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         "-c:a", "aac", "-b:a", "128k",
         out_path,
@@ -435,6 +462,20 @@ def build_variations(selected: list[Segment], work_dir: str,
         # transiciones tipo PowerPoint que se veían amateur.
         cuts: list[float] = []
         concat_clips_xfade(clip_list, out_path, work_dir, cut_times_out=cuts)
+        # VERIFICACIÓN anti-congelón: si el stream de video murió antes que el audio (cadena
+        # xfade seca), se reconstruye con cortes duros (demuxer, robusto) — jamás entregar un
+        # montaje que congele media pantalla.
+        try:
+            from .ffmpeg_utils import probe as _probe
+            if _video_stream_dur(out_path) + 0.5 < _probe(out_path).duration:
+                concat_clips(clip_list, out_path + ".hc.mp4", work_dir)
+                os.replace(out_path + ".hc.mp4", out_path)
+                cuts, _acc = [], 0.0
+                for c in slot_plans[name][:-1]:
+                    _acc += min(selected[c[0]].duration(), c[1])
+                    cuts.append(round(_acc, 3))
+        except Exception:  # noqa: BLE001
+            pass
         out_versions.append({
             "name": name,
             "path": out_path,

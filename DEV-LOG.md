@@ -2278,3 +2278,12 @@ validación acepta solo-archivos (salta el scout).
 (3) PENDIENTE: Jack reporta ~20 min por corrida de Cortar clips — falta PERFILAR una corrida con
 este build (los congelados de hoy también alargaban: huecos → más regeneraciones?). Próxima sesión:
 cronometrar por etapa con los mtimes del work dir.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🎞️ Cortar clips: slot de B-ROLL por links
+Pedido de Jack: un espacio aparte en Cortar clips para pegar links de escenas de APOYO (contexto/
+dolor/ambiente). Nuevo textarea "🎞️ Escenas B-ROLL" + botón que reusa bajarLinks()/api/fetch-links
+(generalizada con srcId/btnId) — los b-roll se bajan y entran como material extra al pool (el
+analizador los puntúa y el guion los usa donde calcen). Solo frontend.
+PENDIENTE anotado (plantilla de búsqueda de Jack): cuando la búsqueda TikTok no confirme NADA,
+decir QUÉ búsquedas probó y pedir marca/hashtag/país (punto 5 de su plantilla; el resto — ficha
+profunda, multi-búsquedas ES+EN, verificación obligatoria, sin relleno mezclado — ya está).

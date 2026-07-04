@@ -1127,6 +1127,11 @@
       <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
+
+      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL (opcional): links de tomas de apoyo — contexto, dolor, ambiente. Se bajan y se suman como material extra.</label>
+      <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
+      <button class="btn sec" id="goBroll" style="margin-top:10px;width:auto" onclick="bajarLinks('tkBrollLinks','goBroll')">📥 Bajar B-roll</button>
     </div>
   </div>
 
@@ -2462,10 +2467,10 @@ document.getElementById("go").onclick = async ()=>{
 
 // Solo BAJA los videos de TikTok y los agrega a la lista de arriba (NO los corta).
 // Luego el usuario configura los ajustes y le da "Generar clips" (flujo normal).
-async function bajarLinks(){
-  const links = document.getElementById("tkClipLinks").value.trim();
+async function bajarLinks(srcId, btnId){
+  const links = document.getElementById(srcId||"tkClipLinks").value.trim();
   if(!links){ alert("Pega al menos un link de TikTok"); return; }
-  const btn = document.getElementById("goLinks");
+  const btn = document.getElementById(btnId||"goLinks");
   const orig = btn.textContent; btn.disabled = true; btn.textContent = "📥 Bajando…";
   try{
     const fd = new FormData(); fd.append("links", links);
@@ -2474,7 +2479,7 @@ async function bajarLinks(){
     const vids = j.videos || [];
     vids.forEach(v=>{ if(v.path) linkVids.push({path:v.path, name:v.name||"video"}); });
     if(vids.length){
-      document.getElementById("tkClipLinks").value = "";
+      document.getElementById(srcId||"tkClipLinks").value = "";
       renderFiles();
       btn.textContent = `✅ ${vids.length} bajado(s) — configura y dale Generar`;
     } else {

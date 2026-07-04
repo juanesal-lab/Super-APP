@@ -2109,3 +2109,36 @@ precio que Gemini pro) — NO es más barato para la app.
   si algún flujo necesita pro directo, pasa hd=True). Para el módulo Landings: usen
   _IMG_MODEL_DRAFT para las previews del gate de aprobación y el pro solo al aprobar — es
   exactamente el mismo patrón.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🎬 MONTAJE GUIADO POR GUION: "primero se crea el guion y después se edita"
+Pedido explícito de Juan: el sistema debe mirar TODOS los clips y, según el guion, elegir el mejor
+clip para CADA momento de la voz (antes el montaje era ciego y la voz se pegaba encima).
+- NUEVO `pipeline/guion_match.py`: frases_de_vo (parte la voz en FRASES con los tiempos por
+  palabra de ElevenLabs: puntuación, pausas >0.35s, tope 4.8s, micro-frases fundidas, el silencio
+  post-frase pertenece a la frase) + etiquetar_frases (fase narrativa por frase: 1 llamada Gemini
+  flash para TODAS las versiones + heurística keywords/posición de fallback, incluye fase "cta") +
+  plan_montaje (cada frase se llena con el clip de SU fase visual — fallback por vecindad de
+  significado _PREFERENCIA —, balanceo de uso entre versiones, JAMÁS repite clip en la versión,
+  hook en ráfaga ≤1.2s / cierre ≤2.2s, colitas absorbidas o estiradas con el clip).
+- `assemble.build_variations`: nuevo param `version_caps` — el guion fija la DURACIÓN de cada
+  slot (+compensación del overlap del xfade, espejo de la regla de cortes duros: sin esto la voz
+  se desincroniza ~0.17s por transición). Filenames de combos ahora con cap en milésimas.
+- `orchestrator.render_versions`: la clasificación visual por fase (phase_classify) se movió
+  ANTES del plan (top-60, antes top-30 y solo para gifs) → si hay voz con timings (version_vos o
+  voiceover+word_timings), el plan ciego se REEMPLAZA por el plan por guion (por versión; si a
+  una versión le falta voz/timings conserva el plan clásico — nunca rompe). _apply_vo: los SFX
+  ya no dependen del toggle "efectos" (el plan pro es sutil por diseño; "efectos" sigue mandando
+  en lo visual).
+- `process_job`: passthrough nuevo (version_vos/sfx_paths/music_path/captions/estilo/tamaño).
+- **Mi producto (producto_clips) reestructurado al flujo guion-primero**: _voz_y_subtitulos se
+  partió — _guiones_y_narraciones (guiones+TTS) corre ANTES de process_job; la música también se
+  genera antes; el render monta por guion y quema voz+subtítulos+mezcla pro ADENTRO (antes se
+  pegaban sobre un montaje ya cerrado). Sin voz → comportamiento viejo intacto (música sola).
+- Verificado E2E sintético: 6 frases etiquetadas bien por heurística (problema→solucion→
+  funcionamiento→caracteristicas→resultado→cta), 12/12 slots con la fase pedida o su vecina,
+  0 clips repetidos, suma de slots = duración exacta de la voz, y tras el render real cada borde
+  de frase tiene su corte a ≤0.18s (dentro de la ventana del dissolve). py_compile + imports OK.
+- AVISO Jack: toqué orchestrator (process_job + render_versions + _apply_vo), assemble
+  (build_variations firma), producto_clips (reestructurado el flujo; _voz_y_subtitulos YA NO
+  existe — ahora _guiones_y_narraciones), guion_match.py nuevo. Todo retro-compatible si no pasas
+  los params nuevos. Tu disruptive_images (draft/HD) no lo toqué.

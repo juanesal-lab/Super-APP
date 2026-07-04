@@ -365,21 +365,28 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
 def build_variations(selected: list[Segment], work_dir: str,
                      dims: tuple[int, int], enhance: bool = False,
                      fx: bool = False, target_seconds: float = 15.0,
-                     version_orders: list[tuple[str, list[int]]] | None = None) -> dict:
+                     version_orders: list[tuple[str, list[int]]] | None = None,
+                     version_caps: dict[str, list[float]] | None = None) -> dict:
     """Crea clips normalizados y arma varias versiones (montajes) del video final.
 
     `version_orders` (opcional) permite pasar un plan ya calculado con plan_variations
-    (los indices refieren a `selected`). Devuelve dict con: clips[], versions[].
+    (los indices refieren a `selected`). `version_caps` (opcional, por nombre de versión)
+    fija la duración de CADA slot — es el montaje guiado por guion (guion_match): la
+    duración viene de las frases de la voz. Devuelve dict con: clips[], versions[].
     """
     os.makedirs(work_dir, exist_ok=True)
     if version_orders is None:
         version_orders = plan_variations(selected, target_seconds=target_seconds)
+    version_caps = version_caps or {}
 
     # CURVA DE RITMO PRO (medida en 4 ads ganadores): ancla ≤1.6s → ráfaga 0.9s → crucero ≤1.7s
     # → cierre/CTA calmado ≤2.2s. Movimiento por plano: hook fuerte, payoff punch (con fx),
     # cuerpo Ken Burns alternado 2-3 in : 1 out (por índice → estable entre versiones).
-    def _slot_plan(order: list[int]) -> list[tuple[int, float, str]]:
+    # Con guion (caps): la DURACIÓN la mandan las frases de la voz; el movimiento sigue la curva.
+    def _slot_plan(order: list[int], caps: list[float] | None) -> list[tuple[int, float, str]]:
         n = len(order)
+        n_b = n - 1
+        hard = {n_b - 1} | {k for k in range(n_b) if k % 5 == 2}   # espejo de concat_clips_xfade
         plan = []
         ciclo = ("in_suave", "in_suave", "out")
         for slot, i in enumerate(order):
@@ -393,18 +400,24 @@ def build_variations(selected: list[Segment], work_dir: str,
                 cap, motion = 2.2, ciclo[i % 3]        # CTA calmado: que la oferta se lea
             else:
                 cap, motion = 1.7, ciclo[i % 3]
-            plan.append((i, cap, motion))
+            if caps and slot < len(caps):
+                # el guion manda la duración + compensación del overlap del dissolve
+                # (xfade CONSUME dd por transición; sin esto la voz se desincroniza del plano)
+                cap = caps[slot]
+                if slot < n - 1:
+                    cap += _XFADE_D_HARD if slot in hard else _XFADE_D
+            plan.append((i, round(cap, 3), motion))
         return plan
 
     # Renderizar SOLO las combinaciones (clip, tope, movimiento) que de verdad se usan;
     # el dict dedup evita renderizar dos veces la misma combinación entre versiones.
-    slot_plans = {name: _slot_plan(order) for name, order in version_orders}
+    slot_plans = {name: _slot_plan(order, version_caps.get(name)) for name, order in version_orders}
     combos = sorted({c for plan in slot_plans.values() for c in plan})
     norm_paths: dict[tuple, str] = {}
 
     def _mk(combo):
         i, cap, motion = combo
-        p = os.path.join(work_dir, f"clip_{i:02d}_{int(cap * 10):02d}_{motion}.mp4")
+        p = os.path.join(work_dir, f"clip_{i:02d}_{int(cap * 1000):04d}_{motion}.mp4")
         _normalized_clip(selected[i], p, dims, enhance, fx, motion=motion, max_dur=cap)
         return combo, p
 

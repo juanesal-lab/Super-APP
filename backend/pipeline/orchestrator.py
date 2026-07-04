@@ -230,12 +230,10 @@ def render_versions(
         vo_paths.append(voiceover_path)
     vo_max = max((_audio_dur(p) for p in vo_paths if p and os.path.exists(p)), default=0.0)
     plan_seconds = max(float(target_seconds), vo_max + 0.5) if vo_max else float(target_seconds)
-    version_orders = plan_variations(selected, target_seconds=plan_seconds)
 
-    # Clips sueltos: MEZCLA por FASE narrativa (problema / solución / funcionamiento / producto /
-    # características / resultado) para que los "gifs" tengan SENTIDO y cuenten la historia.
-    # La fase la decide GEMINI mirando un frame de cada clip (1 sola llamada, sobre los tiempos
-    # ORIGINALES — el masking aún no corre); si no hay key o falla, cae a la heurística vieja.
+    # FASE VISUAL de cada clip — AHORA ANTES del plan (el montaje por guion la necesita).
+    # Gemini mira un frame de cada clip del pool (1 sola llamada, tiempos ORIGINALES — el
+    # masking aún no corre); si no hay key o falla, heurística vieja. También alimenta los gifs.
     def _fase_heur(s):
         if s.shows_use:
             return "solucion"
@@ -243,14 +241,52 @@ def render_versions(
             return "producto"
         return "problema"
 
-    pool_idx = sorted(range(len(selected)), key=lambda k: selected[k].score, reverse=True)[:30]
+    pool_idx = sorted(range(len(selected)), key=lambda k: selected[k].score, reverse=True)[:60]
     fases_pool = None
     if gemini_key:
-        report("Clasificando los clips por fase (problema/solución/producto)...", 52)
+        report("Clasificando los clips por fase (problema/solución/producto)...", 50)
         fases_pool = phase_classify.clasificar([selected[i] for i in pool_idx],
                                                gemini_key, product_desc)
     if not fases_pool:
         fases_pool = [_fase_heur(selected[i]) for i in pool_idx]
+    fases_por_idx = dict(zip(pool_idx, fases_pool))
+
+    version_orders = plan_variations(selected, target_seconds=plan_seconds)
+
+    # ── MONTAJE GUIADO POR EL GUION (flujo de Juan: primero el guion, después la edición) ──
+    # Si la voz de cada versión ya existe con tiempos por palabra, el plan ciego se REEMPLAZA:
+    # cada FRASE de la voz recibe el clip que mejor ilustra lo que se dice (guion_match) y el
+    # corte cae en el límite de frase. Si algo falta (sin voz/timings), la versión conserva
+    # su plan clásico — nunca rompe.
+    version_caps: dict[str, list[float]] = {}
+    vos_pv = list(version_vos or [])
+    if not vos_pv and voiceover_path and word_timings:
+        vos_pv = [(voiceover_path, word_timings)] * len(version_orders)
+    if vos_pv:
+        from . import guion_match
+        frases_pv = []
+        for v_i in range(len(version_orders)):
+            vp, wt = vos_pv[v_i] if v_i < len(vos_pv) else (None, None)
+            frases_pv.append(guion_match.frases_de_vo(wt or [], _audio_dur(vp) if vp else 0.0)
+                             if (vp and wt) else [])
+        if any(frases_pv):
+            report("Montaje por guion: eligiendo el mejor clip para cada frase...", 51)
+            guion_match.etiquetar_frases([f for f in frases_pv if f], gemini_key, product_desc)
+            usage: dict[int, int] = {}
+            nuevos = []
+            for (name, order), frases in zip(version_orders, frases_pv):
+                plan_g = (guion_match.plan_montaje(selected, fases_por_idx, frases, usage)
+                          if frases else None)
+                if plan_g:
+                    nuevos.append((name, plan_g[0]))
+                    version_caps[name] = plan_g[1]
+                else:
+                    nuevos.append((name, order))
+            version_orders = nuevos
+    # ───────────────────────────────────────────────────────────────────────────────────────
+
+    # Clips sueltos: MEZCLA por FASE narrativa para que los "gifs" tengan SENTIDO (reusa la
+    # clasificación de arriba).
     _orden_fases = list(phase_classify.FASES)
     _grupos = {k: [] for k in _orden_fases}
     for _i, _f in zip(pool_idx, fases_pool):
@@ -402,7 +438,8 @@ def render_versions(
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,
-                             target_seconds=target_seconds, version_orders=version_orders)
+                             target_seconds=target_seconds, version_orders=version_orders,
+                             version_caps=version_caps)
     versions = built["versions"]
 
     # ACENTO DINÁMICO de captions: el color de resalte CONTRASTA con el color dominante del
@@ -441,8 +478,10 @@ def render_versions(
             return
         vo_out = v["path"].replace(".mp4", "_vo.mp4")
         try:
+            # SFX ya no dependen del toggle "efectos": el plan pro (pro_mix) los pone SUTILES
+            # y solo donde tocan; "efectos" sigue mandando en lo VISUAL (punch/zoom fuerte).
             add_voiceover_and_sfx(v["path"], vo_path, vo_out,
-                                  sfx_paths=sfx_paths if effects else None,
+                                  sfx_paths=sfx_paths,
                                   cut_times=_cut_times(v), music_path=music_path)
             v["path"] = vo_out
             v["voiceover"] = True
@@ -515,10 +554,18 @@ def process_job(
     text_mode: str = "tapar",
     caption_pos: str = "abajo",
     voiceover_path: str | None = None,
+    version_vos: list | None = None,
+    sfx_paths: list | None = None,
+    music_path: str | None = None,
+    captions: bool = False,
+    caption_style: str = "hormozi",
+    caption_size: str = "mediano",
     gemini_key: str | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
-    """Pipeline de una pasada (sin paso de guiones): analiza y renderiza."""
+    """Pipeline de una pasada: analiza y renderiza. Si `version_vos` viene (voz por versión ya
+    narrada con tiempos), el montaje se hace GUIADO POR EL GUION (guion_match) y la voz +
+    subtítulos + mezcla pro se queman adentro del render (flujo de Mi producto)."""
     a = analyze_select(
         video_paths, target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
         use_gemini=use_gemini, product_desc=product_desc, gemini_key=gemini_key, progress=progress)
@@ -528,7 +575,9 @@ def process_job(
         a["selected"], a["has_audio_by_src"], work_dir,
         aspect=aspect, enhance=enhance, hook_text=hook_text, hook_pos=hook_pos,
         auto_hook=auto_hook, page_url=page_url, product_desc=product_desc,
-        gemini_key=gemini_key, voiceover_path=voiceover_path, effects=effects,
+        gemini_key=gemini_key, voiceover_path=voiceover_path, version_vos=version_vos,
+        sfx_paths=sfx_paths, music_path=music_path, effects=effects,
+        captions=captions, caption_style=caption_style, caption_size=caption_size,
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds, progress=progress)

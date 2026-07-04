@@ -32,6 +32,12 @@ números, ajustar allá.
 **Captions**: capa CONTINUA que sobreviva los cortes (río sincronizado a UNA voz), karaoke
 palabra a palabra, 3-5 palabras por pantalla, base a ~80% de altura, franja central 30-70% libre.
 
+**Montaje por guion** (pedido explícito de Juan, implementado en `guion_match.py`): primero se
+crea el GUION y su narración; el montaje se arma DESPUÉS obedeciéndolo — la voz se parte en
+frases (tiempos por palabra de ElevenLabs), cada frase se etiqueta con su fase narrativa
+(Gemini + heurística) y recibe el clip cuya fase VISUAL (phase_classify) mejor la ilustra;
+el corte cae en el límite de frase (regla #18). Jamás se repite un clip en la misma versión.
+
 ## AUDIO (implementado en `pro_mix.py`)
 
 **Master**: −18 LUFS integrado (NO −14), true peak ≤ −1.5, LRA 7-9 (`loudnorm=I=-18:TP=-1.5:LRA=8`).

@@ -278,7 +278,11 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "ya gastaste en cremas que no pasan de la superficie', 'una fracción de lo que vale una sola "
         "cita del especialista' — el ancla comparativa es el cierre que nunca falla en el banco de "
         "Juan; lo prohibido es la CIFRA, no la comparación de valor. "
-        + ("OFERTA 2x1: integra de forma natural que al pedir uno se lleva OTRO GRATIS (2x1), sin decir precio. "
+        + ("🎁 OFERTA 2x1 (OBLIGATORIO EN TODOS LOS GUIONES, no es opcional): justo ANTES del CTA "
+           "final, TODOS los guiones dicen la oferta de forma natural y clara — que al pedir uno se "
+           "lleva OTRO completamente GRATIS ('y hoy por pedir uno te llevas el segundo gratis', 'están "
+           "de 2x1: pides uno y llegan dos'). SIN decir precio ni cifras. Un guion sin la mención del "
+           "2x1 se rechaza. "
            if oferta_2x1 else "")
         + f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
         f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"

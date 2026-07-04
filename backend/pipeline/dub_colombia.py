@@ -65,8 +65,11 @@ def _prompt(segments: list[dict], product_desc: str, oferta_2x1: bool) -> str:
     framework = _load_framework()[:12000]
     prod = product_desc.strip()
     oferta = (
-        "OFERTA 2x1: integra de forma natural (donde mejor fluya) que al pedir uno/una se "
-        "lleva otro/otra GRATIS, con envío gratis y pago contra entrega. Ajusta el género.\n"
+        "🎁 OFERTA 2x1 (OBLIGATORIA, no opcional): el guion DEBE decir de forma natural y clara "
+        "— idealmente justo antes del cierre — que al pedir uno/una se lleva otro/otra "
+        "completamente GRATIS ('hoy están de 2x1: pides uno y te llegan dos'), con envío gratis "
+        "y pago contra entrega. SIN precio ni cifras. Ajusta el género. Un guion que no mencione "
+        "el 2x1 está MAL.\n"
         if oferta_2x1 else "")
     # Fases numeradas con su función, tiempo, largo objetivo, qué se ve y qué se dice
     fases = []

@@ -935,7 +935,8 @@ def scripts(
 N_VERSIONS = 6
 
 
-def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
+def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
+                    voces: list[str] | None = None):
     job = JOBS[job_id]
 
     def progress(msg, pct):
@@ -952,12 +953,14 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
         version_vos = []
         from pipeline.voiceover import acelerar as _acelerar_vo
         for i, txt in enumerate(chosen):
-            progress(f"Generando voz {i + 1}/{N_VERSIONS} con ElevenLabs...", 12 + i * 4)
+            # voz por versión: la mezcla del usuario (jc/kate cicladas) o la única elegida
+            v_i = voces[i % len(voces)] if voces else voice_key
+            progress(f"Generando voz {i + 1}/{N_VERSIONS} ({v_i}) con ElevenLabs...", 12 + i * 4)
             vp = os.path.join(wd, f"vo_{i}.mp3")
             if s.get("captions"):
-                wt = synthesize_with_timestamps(key, txt, voice_key, vp)
+                wt = synthesize_with_timestamps(key, txt, v_i, vp)
             else:
-                synthesize(key, txt, voice_key, vp); wt = None
+                synthesize(key, txt, v_i, vp); wt = None
             # Manual Maestro §6: locución 1.1-1.2× = más enérgica y retiene mejor
             wt = _acelerar_vo(vp, wt, factor=1.12) or wt
             version_vos.append((vp, wt))
@@ -1029,6 +1032,7 @@ def preview_voice(text: str = Form(...), voice: str = Form("kate")):
 
 @app.post("/api/render")
 def render(job_id: str = Form(...), voice: str = Form("kate"),
+           voz_jc: int = Form(0), voz_kate: int = Form(0),
            scripts_json: str = Form(""), script_text: str = Form("")):
     job = JOBS.get(job_id)
     if not job or "selected" not in job:
@@ -1045,7 +1049,11 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
     if not scripts:
         raise HTTPException(400, "No hay guiones seleccionados")
     job["status"] = "running"; job["progress"] = 0; job["message"] = "Iniciando..."; job["result"] = None
-    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice), daemon=True).start()
+    # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
+    voces = (["juan_carlos"] * max(0, min(8, int(voz_jc)))
+             + ["kate"] * max(0, min(8, int(voz_kate)))) or None
+    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces),
+                     daemon=True).start()
     return {"job_id": job_id}
 
 
@@ -1244,6 +1252,9 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
             product_desc=product_desc, settings=settings,
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(), progress=progress,
         )
+        # Banner de oferta ARRIBA (2x1 · envío gratis · pagas al recibir), igual que en Cortar clips
+        if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
+            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -1268,6 +1279,10 @@ def producto_clips(
     bajar_volumen: bool = Form(True),
     voz_en_off: bool = Form(False),
     voz: str = Form("juan_carlos"),
+    voz_jc: int = Form(0),
+    voz_kate: int = Form(0),
+    oferta_2x1: bool = Form(False),
+    banner_oferta: bool = Form(False),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
@@ -1309,6 +1324,11 @@ def producto_clips(
         "bajar_volumen": bool(bajar_volumen),
         "voz_en_off": bool(voz_en_off),
         "voz": voz if voz in ("kate", "juan_carlos") else "juan_carlos",
+        # Mezcla personalizada: N versiones con juan_carlos + M con kate (0/0 = todas con `voz`)
+        "voz_jc": max(0, min(8, int(voz_jc))),
+        "voz_kate": max(0, min(8, int(voz_kate))),
+        "oferta_2x1": bool(oferta_2x1),
+        "banner_oferta": bool(banner_oferta),
         "caption_style": caption_style if caption_style in (
             "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
             else "hormozi",

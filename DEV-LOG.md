@@ -2616,3 +2616,25 @@ y el param opcional landing_text — tus llamadas viejas siguen idénticas. No t
 offer_banner/auto_studio. OJO: tu server :8420 quedó SIN reiniciar (tienes trabajo sin commitear
 en la carpeta principal — app.py/orchestrator/tiktok_search/index.html — y no quise pisarlo ni
 matarte el server con código a medias); cuando cierres, haz pull y ./run.sh para que esto quede vivo.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🎁🗣️ 2x1 que SÍ se dice + mezcla de voces JC/Kate + banner en Mi producto
+Quejas/pedidos de Jack: (1) marcaba "Oferta 2x1" y la voz NO la decía; (2) quería escoger cuántos
+videos con la voz de juan_carlos y cuántos con kate; (3) el banner de oferta arriba no estaba en
+Mi producto.
+- 2x1 ARREGLADO en dos frentes: scripts.py y dub_colombia.py — la instrucción era UNA línea débil
+  ("integra de forma natural") perdida en un prompt gigante → ahora es OBLIGATORIA con ejemplo y
+  posición (justo antes del CTA) y "un guion sin la mención se rechaza". Además Mi producto NUNCA
+  pasaba oferta_2x1 a generate_scripts → nueva casilla 🎁 en la UI + Form + cableado completo.
+- MEZCLA DE VOCES (por versión): producto_clips._guiones_y_narraciones acepta voces= (lista por
+  versión) y solo paga TTS por cada par (guion, voz) ÚNICO; /api/producto-clips y /api/render
+  aceptan voz_jc + voz_kate (0/0 = todas con la voz única, retrocompatible); _run_render_job narra
+  cada versión con su voz. UI: selector "Mezcla" en Mi producto (prodMezcla) y Cortar clips
+  (voiceMezcla): 4+4, 6+2, 2+6, 5+3, 3+5.
+- BANNER en Mi producto: toggle 🏷️ (prodBanner) + Form banner_oferta + _run_producto_job aplica
+  _agregar_banner_oferta igual que Cortar clips.
+- Verificado: py_compile ok, JS 9/9 node --check, mock-test de la mezcla (5 jc + 3 kate por versión
+  correcto; con vo_guiones=2 solo paga pares únicos; sin mezcla = comportamiento de siempre).
+- AVISO Juan: toqué scripts.py y dub_colombia.py SOLO el texto del prompt del 2x1 (más fuerte);
+  producto_clips._guiones_y_narraciones ahora devuelve narraciones POR VERSIÓN (8 entradas, tu
+  caller version_vos sigue funcionando igual); app.py: Forms nuevos en /api/producto-clips y
+  /api/render + banner en _run_producto_job. Nada más.

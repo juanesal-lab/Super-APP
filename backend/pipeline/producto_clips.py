@@ -106,39 +106,55 @@ def _mezclar_musica(versions: list[dict], music_path: str, *, bajar_volumen: boo
 
 def _guiones_y_narraciones(work_dir: str, *, eleven_key: str | None, gemini_key: str | None,
                            desc: str, page_text: str, target_seconds: float, voz: str,
-                           n_guiones: int, n_versiones: int,
-                           report) -> tuple[list[dict], list[tuple]] | None:
+                           n_guiones: int, n_versiones: int, report,
+                           voces: list[str] | None = None,
+                           oferta_2x1: bool = False) -> tuple[list[dict], list[tuple]] | None:
     """PASO 1 del flujo "primero el guion": guiones con Gemini (reglas de oro: sin precio +
-    CTA exacto) → narración colombiana (ElevenLabs con tiempos por palabra). El montaje se
-    hace DESPUÉS, guiado por estas frases (guion_match dentro de render_versions).
+    CTA exacto; con `oferta_2x1` TODOS los guiones mencionan el 2x1) → narración colombiana
+    (ElevenLabs con tiempos por palabra). El montaje se hace DESPUÉS, guiado por estas frases
+    (guion_match dentro de render_versions).
 
-    Devuelve (guiones, narraciones=[(mp3, words, texto)]) o None si no se pudo."""
+    `voces`: mezcla personalizada POR VERSIÓN (ej. 5×juan_carlos + 3×kate); sin ella, todas
+    con `voz`. Solo se paga TTS por cada par (guion, voz) ÚNICO.
+
+    Devuelve (guiones, narraciones_POR_VERSIÓN=[(mp3, words, texto)] × n_versiones) o None."""
     if not eleven_key:
         return None
     n = n_versiones if not n_guiones else max(1, min(int(n_guiones), n_versiones))
     report("Escribiendo los guiones de la voz en off...", 32)
-    guiones = generate_scripts(gemini_key, desc, page_text, target_seconds, n=n)
+    guiones = generate_scripts(gemini_key, desc, page_text, target_seconds, n=n,
+                               oferta_2x1=oferta_2x1)
     if not guiones:
         return None
 
-    from concurrent.futures import ThreadPoolExecutor
-    report(f"Narrando {len(guiones)} guion(es) con la voz colombiana...", 34)
+    voces = [v for v in (voces or []) if v in ("kate", "juan_carlos")] or [voz]
+    # asignación por versión (guion ciclado + voz ciclada); TTS solo de los pares únicos
+    pares = [(i % len(guiones), voces[i % len(voces)]) for i in range(n_versiones)]
+    unicos = sorted(set(pares))
 
-    def _tts(item):
-        i, g = item
-        mp3 = os.path.join(work_dir, f"vo_{i}.mp3")
+    from concurrent.futures import ThreadPoolExecutor
+    report(f"Narrando {len(unicos)} narración(es) ({' + '.join(sorted({v for _, v in unicos}))})...", 34)
+
+    def _tts(par):
+        gi, v = par
+        mp3 = os.path.join(work_dir, f"vo_{gi}_{v}.mp3")
         try:
-            words = voiceover.synthesize_with_timestamps(eleven_key, g["texto"], voz, mp3)
+            words = voiceover.synthesize_with_timestamps(eleven_key, guiones[gi]["texto"], v, mp3)
             # Manual Maestro §6: locución 1.1-1.2× = más enérgica, retiene mejor (timings re-escalados)
             words = voiceover.acelerar(mp3, words, factor=1.12)
-            return (mp3, words, g["texto"])
+            return par, (mp3, words, guiones[gi]["texto"])
         except Exception:  # noqa: BLE001
-            return None
+            return par, None
 
-    with ThreadPoolExecutor(max_workers=min(4, len(guiones))) as ex:
-        narraciones = [r for r in ex.map(_tts, list(enumerate(guiones))) if r]
-    if not narraciones:
+    hechas: dict = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(unicos))) as ex:
+        for par, r in ex.map(_tts, unicos):
+            if r:
+                hechas[par] = r
+    if not hechas:
         return None
+    respaldo = list(hechas.values())    # si un par falló, esa versión usa otra narración hecha
+    narraciones = [hechas.get(p) or respaldo[i % len(respaldo)] for i, p in enumerate(pares)]
     return guiones, narraciones
 
 
@@ -245,14 +261,17 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
                 page_text = fetch_page_text(product_url.strip(), max_chars=2500)
             except Exception:  # noqa: BLE001
                 page_text = ""
+        # mezcla personalizada: N con juan_carlos + M con kate (0/0 = todas con `voz`)
+        mezcla = (["juan_carlos"] * int(settings.get("voz_jc", 0) or 0)
+                  + ["kate"] * int(settings.get("voz_kate", 0) or 0)) or None
         gn = _guiones_y_narraciones(
             out_dir, eleven_key=eleven_key, gemini_key=gemini_key, desc=desc,
             page_text=page_text, target_seconds=float(settings.get("target_seconds", 15.0)),
-            voz=settings.get("voz", "juan_carlos"),
+            voz=settings.get("voz", "juan_carlos"), voces=mezcla,
+            oferta_2x1=bool(settings.get("oferta_2x1")),
             n_guiones=int(settings.get("vo_guiones", 0) or 0), n_versiones=8, report=report)
         if gn:
-            guiones, narraciones = gn
-            # una voz por versión (cicladas si hay menos guiones que versiones)
+            guiones, narraciones = gn      # narraciones ya viene POR VERSIÓN (8 entradas)
             version_vos = [(narraciones[i % len(narraciones)][0],
                             narraciones[i % len(narraciones)][1]) for i in range(8)]
 

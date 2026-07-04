@@ -1253,6 +1253,14 @@
       <span id="voiceWrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="lbl" style="margin:0">Voz:</span>
         <select id="voice" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px"></select>
+        <select id="voiceMezcla" title="Mezcla personalizada: cuántos videos con cada voz (ignora el selector de una sola voz)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px">
+          <option value="">Mezcla: todos con la misma voz</option>
+          <option value="4,4">Mezcla: 4 Juan Carlos + 4 Kate</option>
+          <option value="6,2">Mezcla: 6 Juan Carlos + 2 Kate</option>
+          <option value="2,6">Mezcla: 2 Juan Carlos + 6 Kate</option>
+          <option value="5,3">Mezcla: 5 Juan Carlos + 3 Kate</option>
+          <option value="3,5">Mezcla: 3 Juan Carlos + 5 Kate</option>
+        </select>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useMusic"> 🎵 Música de fondo</label>
         <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="useCaptions" checked> 💬 Subtítulos animados</label>
         <select id="capStyle" title="Estilo de subtítulos (los que más CTR tienen en TikTok/Meta)" onchange="document.getElementById('capPrev').src='/api/caption-preview?style='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
@@ -1324,12 +1332,22 @@
       <label><input type="checkbox" id="prodMusica" checked> 🎵 Música automática (la IA elige el género)</label>
       <label><input type="checkbox" id="prodBajarVol" checked> 🔉 Bajar el volumen de los clips</label>
       <label><input type="checkbox" id="prodVO" onchange="document.getElementById('prodVOOpts').style.display=this.checked?'flex':'none'"> 🎙️ Voz en off (guion IA + voz colombiana + subtítulos)</label>
+      <label title="Banner rojo arriba del video: OFERTA 2X1 · ENVÍO GRATIS · PAGAS AL RECIBIR (la IA lo ubica sin tapar nada)"><input type="checkbox" id="prodBanner"> 🏷️ Banner arriba: 2x1 · envío gratis · pagas al recibir</label>
     </div>
     <div id="prodVOOpts" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
       <select id="prodVoz" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
         <option value="juan_carlos">Voz: Juan Carlos</option>
         <option value="kate">Voz: Kate</option>
       </select>
+      <select id="prodMezcla" title="Mezcla personalizada: cuántos videos con cada voz (ignora el selector de una sola voz)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+        <option value="">Mezcla: todos con la voz de arriba</option>
+        <option value="4,4">Mezcla: 4 Juan Carlos + 4 Kate</option>
+        <option value="6,2">Mezcla: 6 Juan Carlos + 2 Kate</option>
+        <option value="2,6">Mezcla: 2 Juan Carlos + 6 Kate</option>
+        <option value="5,3">Mezcla: 5 Juan Carlos + 3 Kate</option>
+        <option value="3,5">Mezcla: 3 Juan Carlos + 5 Kate</option>
+      </select>
+      <label class="toggle" style="white-space:nowrap" title="TODOS los guiones mencionan que al pedir uno llega otro gratis (sin decir precio)"><input type="checkbox" id="prod2x1"> 🎁 Oferta 2x1 (en la voz)</label>
       <select id="prodCapStyle" title="Estilo de subtítulos (los que más CTR tienen en TikTok/Meta)" onchange="document.getElementById('prodCapPrev').src='/api/caption-preview?style='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
         <option value="hormozi">Subtítulos: Hormozi (palabra x palabra, keyword amarilla)</option>
         <option value="karaoke">Subtítulos: Karaoke (resalta la palabra que suena)</option>
@@ -1449,6 +1467,10 @@
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
         fd.append('caption_size',document.getElementById('prodCapSize').value);
         fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
+        const mez=(document.getElementById('prodMezcla').value||'').split(',');
+        fd.append('voz_jc',mez[0]||'0'); fd.append('voz_kate',mez[1]||'0');
+        fd.append('oferta_2x1',document.getElementById('prod2x1').checked);
+        fd.append('banner_oferta',document.getElementById('prodBanner').checked);
         (window._prodLocal||[]).forEach(f=>fd.append('winner_files',f));
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
@@ -2719,6 +2741,8 @@ function renderScripts(jobId, scripts){
     fd.append("job_id", jobId);
     fd.append("scripts_json", JSON.stringify(chosen));
     fd.append("voice", document.getElementById("voice").value);
+    const vm=(document.getElementById("voiceMezcla").value||'').split(',');
+    fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
     const r = await fetch("/api/render",{method:"POST",body:fd});
     const j = await r.json();
     poll(j.job_id);

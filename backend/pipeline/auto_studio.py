@@ -232,8 +232,12 @@ def _verticalize(inp: str, out: str, w: int = 1080, h: int = 1920) -> str:
         return out
 
     # Formato distinto (cuadrado/horizontal) -> fondo desenfocado + original completo centrado
+    # El blur se hace a 1/8 de resolución y se agranda (bilinear): mismo look borroso pero
+    # ~10x más rápido que gblur a 1080×1920 (medido: 12 min -> ~1.3 min en un video de 5.5 min).
+    bw, bh = max(2, round(w / 16) * 2), max(2, round(h / 16) * 2)
     fc = (f"[0:v]split=2[bg][fg];"
-          f"[bg]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},gblur=sigma=22[bgb];"
+          f"[bg]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
+          f"gblur=sigma=3,scale={w}:{h}:flags=bilinear[bgb];"
           f"[fg]scale={w}:{h}:force_original_aspect_ratio=decrease[fgs];"
           f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1")
     run(["ffmpeg", "-y", "-i", inp, "-filter_complex", fc,

@@ -2361,3 +2361,23 @@ helper _guardar_fotos_busqueda para ambos endpoints de búsqueda. No toqué offe
   Claude + ElevenLabs siguen normales.
 - CERO cambios de código en esta tarea (fue prueba + verificación). Los videos quedaron en
   work/bf80c273cf46/var_0*/final.mp4 por si quieren verlos.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ⚡ Perfilado de la lentitud (con datos) + FIX: verticalizar 10x más rápido
+Autopsia $0 del "¿por qué tarda 20 min?" usando los mtimes de work/ (el pendiente anotado ayer):
+- **Corrida A — Clon con mi producto, 19.2 min** (work/c51cd92b8dd1, video de Juan/Jack de **5.5 MIN**):
+  · 12.4 min (64%) = `_verticalize` → el culpable era `gblur=sigma=22` a 1080×1920 cuadro por cuadro.
+  · 3 min = traducir texto (además FALLÓ y dejó traducido.mp4 de 4KB — el pipeline siguió bien con el
+    paso anterior, degradación correcta). · resto ≈ 3.5 min (swap, música copy, subs, pace — sanos).
+  **FIX APLICADO (auto_studio._verticalize, rama del fondo desenfocado):** el fondo se desenfoca a
+  1/8 de resolución y se agranda bilinear — borroso es borroso, se ve IGUAL. Medido con 20s del video
+  real: 47.9s → 2.7s (~10x). En esa corrida: 12.4 min → ~1.3 min. Verificado frame vs frame (idéntico
+  a ojo) + salida 1080×1920 + py_compile + server reiniciado y sirviendo.
+- **Corrida B — Mi producto con voz, 14.8 min** (work/8e56fd8079b2): 62% (9.3 min) = cortar + TAPAR
+  35 segmentos (segraw/segmask en paralelo, EAST 2 pases); versiones+subs ≈ 4 min. → **la próxima
+  palanca grande es el masking** (text_detect/orchestrator = terreno de Juan; lo coordinamos —
+  ideas: cachear detección por fuente, bajar resolución del pase 1 de detección).
+- Moraleja para Jack: parte de los "20 minutos" era el video de ENTRADA de 5.5 minutos — con
+  ganadores de 15-60s todo el pipeline vuela mucho más.
+- AVISO Juan: solo toqué `auto_studio._verticalize` (la rama del fondo desenfocado; la rama "ya es
+  9:16" quedó igual). Lo usan Crear creativo y Clonar ganador. Cortar clips NO pasa por ahí (su
+  hotspot es el masking, dato de arriba).

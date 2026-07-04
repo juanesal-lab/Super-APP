@@ -31,7 +31,10 @@ def _ajustar_largo(texto: str, max_words: int) -> str:
     bug real del 2026-07-03). Se corta por FRASES desde el inicio reservando el CTA obligatorio,
     y se cierra con el CTA exacto. Si ya cabe, no toca nada."""
     t = (texto or "").strip()
-    tope = int(max_words * 1.15)                                  # 15% de gracia (CTA incluido)
+    # tolerancia AMPLIA: un 35% de desborde solo alarga el video unos segundos (la voz manda y el
+    # montaje la sigue). El recorte duro es SOLO para desbordes catastróficos (Gemini 140 palabras
+    # para 15s) porque corta desde el final y se puede comer el momento del producto.
+    tope = int(max_words * 1.35)
     if len(t.split()) <= tope:
         return _con_cta(t)
     idx = t.lower().find(CTA_OBLIGATORIO.lower()[:30])            # quita el CTA: se re-agrega al final
@@ -48,8 +51,55 @@ def _ajustar_largo(texto: str, max_words: int) -> str:
         cuenta += nw
     return _con_cta(" ".join(out))
 
+
+def _ajustar_por_fases(d: dict, max_words: int) -> str | None:
+    """Recorte INTELIGENTE usando el desglose por fases que entrega el modelo: si el guion se
+    pasa del presupuesto, se sacrifican fases en orden de importancia (prueba → problema → giro)
+    pero JAMÁS el hook, el producto ni el CTA. (El recorte ciego por frases amputaba desde el
+    final y se comía el momento del producto — bug real del 2026-07-04.)"""
+    f = d.get("fases")
+    if not isinstance(f, dict):
+        return None
+    orden = ["hook", "problema", "giro", "producto", "prueba"]
+    partes = {k: str(f.get(k, "") or "").strip().rstrip(".") for k in orden}
+    if not partes["hook"] or not partes["producto"]:
+        return None                        # sin hook o sin producto el desglose no sirve
+    tope = int(max_words * 1.2)
+    sacrificables = ["prueba", "problema", "giro"]
+    omitidas: set[str] = set()
+
+    def _arma() -> str:
+        trozos = [partes[k] for k in orden if k not in omitidas and partes[k]]
+        cuerpo = " ".join(p if p.endswith(("?", "!", "…")) else p + "." for p in trozos)
+        return _con_cta(cuerpo)
+
+    texto = _arma()
+    for k in sacrificables:
+        if len(texto.split()) <= tope:
+            break
+        omitidas.add(k)
+        texto = _arma()
+    return texto
+
+
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "assets")
+
+
+def _anthropic_key() -> str | None:
+    """Key de Claude (mejor copywriter para los guiones): env o .env del repo."""
+    k = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    if k:
+        return k
+    try:
+        env = os.path.join(os.path.dirname(_ASSETS), ".env")
+        for ln in open(env):
+            if ln.startswith("ANTHROPIC_API_KEY="):
+                v = ln.split("=", 1)[1].strip().strip('"').strip("'")
+                return v or None
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 # Fallback condensado (si no está el framework real de Juan en assets/)
 _FRAMEWORK_FALLBACK = """METODOLOGIA: el hook (0-3s) frena el scroll; el producto aparece DESPUES
@@ -129,18 +179,24 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     referencia. Si viene, los guiones copian su arco (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA) y ritmo.
     """
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
+    ak = _anthropic_key()          # Claude escribe mejor copy: es la 1ª opción; Gemini respaldo
+    if not api_key and not ak:
         return []
-    try:
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=api_key)
-    except Exception:
+    client = None
+    if api_key:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=api_key)
+        except Exception:  # noqa: BLE001
+            client = None
+    if client is None and not ak:
         return []
 
-    # ~2.4 palabras/seg: medido con ElevenLabs es-CO (con sus pausas reales habla más lento que
-    # el 2.6 teórico — guiones "de 15s" salían de 20s+). El presupuesto INCLUYE el CTA obligatorio.
-    max_words = max(28, int(target_seconds * 2.4))
+    # ~2.55 palabras/seg: ElevenLabs es-CO medido (2.4) x la aceleración 1.12 del Manual §6.
+    # El presupuesto INCLUYE el CTA obligatorio (16 palabras): a 15s el cuerpo queda muy corto
+    # → el sweet spot para tráfico frío es 20-25s (Manual §10.1).
+    max_words = max(30, int(target_seconds * 2.55))
 
     info = ""
     if product_desc.strip():
@@ -210,10 +266,11 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
            if oferta_2x1 else "")
         + f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
         f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
-        f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, MÁXIMO {max_words} palabras "
-        f"(CUÉNTALAS: {max_words} palabras ≈ {int(target_seconds)}s hablados; si te pasas, el video "
-        "queda CONGELADO al final — inaceptable, se recorta tu guion). Sin "
-        "emojis, sin overlays ni acotaciones de escena, listo para narrar de corrido.\n"
+        f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, de ENTRE {max(20, max_words - 12)} "
+        f"y {max_words} palabras TOTALES (CTA incluido — cuéntalas: {max_words} ≈ "
+        f"{int(target_seconds)}s hablados). Si te pasas, el guion se AMPUTA por el final y pierde "
+        "el momento del producto — inaceptable. Sin emojis, sin overlays ni acotaciones de escena, "
+        "listo para narrar de corrido.\n"
         "Devuelve SOLO un JSON válido (array) con esta forma exacta (fases = el MISMO texto partido por "
         "fase del arco, para que el editor sepa qué es cada parte):\n"
         '[{"angulo":"nombre del hook usado",'
@@ -221,27 +278,78 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         '"texto":"el voiceover hablado completo de corrido"}, ...]'
     )
 
-    contents = [prompt]
-    if sample_seg is not None:
-        fb = _frame_bytes(sample_seg)
-        if fb:
-            contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
+    # LISTÓN DE CALIDAD (queja de Juan: "los guiones no me convencen, les falta atracción"):
+    prompt += (
+        "\n🔥 LISTÓN FINAL antes de entregar cada guion: (1) el HOOK debe provocar '¿QUÉ? a ver...' "
+        "en 1 segundo — si es tibio, reescríbelo con más riesgo (mala noticia más dura, pregunta "
+        "más incómoda, dato más impactante); (2) cada guion lleva UN momento MEMORABLE que se pueda "
+        "citar de memoria (metáfora visual extrema, número hiperespecífico, giro inesperado — como "
+        "'te levantas sintiéndote como un hipopótamo' o 'con 50 mil pesos le clonan la señal'); "
+        "(3) léelo en voz alta mentalmente: si suena a locutor y no a un parcero contándote un "
+        "chisme bueno, reescríbelo. Prefiere lo ARRIESGADO a lo correcto.")
 
-    try:
-        resp = client.models.generate_content(model=_MODEL, contents=contents)
-        m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
-        if not m:
+    # 1º Claude (el mejor copywriter disponible — mismo cerebro de los ads de imagen);
+    # si no hay key o falla → Gemini (comportamiento anterior).
+    data = None
+    if ak:
+        try:
+            from anthropic import Anthropic
+            tool = {
+                "name": "entregar_guiones",
+                "description": "Entrega los guiones de voz en off.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"guiones": {"type": "array", "items": {
+                        "type": "object",
+                        "properties": {
+                            "angulo": {"type": "string"},
+                            "fases": {"type": "object"},
+                            "texto": {"type": "string"},
+                        },
+                        "required": ["angulo", "texto"],
+                    }}},
+                    "required": ["guiones"],
+                },
+            }
+            resp = Anthropic(api_key=ak).messages.create(
+                model="claude-opus-4-8", max_tokens=8000,
+                tools=[tool], tool_choice={"type": "tool", "name": "entregar_guiones"},
+                messages=[{"role": "user", "content": prompt}])
+            for block in resp.content:
+                if getattr(block, "type", None) == "tool_use" and block.name == "entregar_guiones":
+                    data = list(block.input.get("guiones", []))
+                    break
+        except Exception:  # noqa: BLE001
+            data = None
+
+    if data is None:
+        if client is None:
             return []
-        data = json.loads(m.group(0))
-    except Exception:
-        return []
+        contents = [prompt]
+        if sample_seg is not None:
+            fb = _frame_bytes(sample_seg)
+            if fb:
+                contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
+        try:
+            resp = client.models.generate_content(model=_MODEL, contents=contents)
+            m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
+            if not m:
+                return []
+            data = json.loads(m.group(0))
+        except Exception:
+            return []
 
     out = []
     for d in data if isinstance(data, list) else []:
         if isinstance(d, dict) and d.get("texto"):
+            # recorte por FASES primero (respeta hook/producto/CTA); si no hay desglose,
+            # recorte ciego por frases + CTA exacto
+            crudo = str(d["texto"]).strip()[:900]
+            texto = None
+            if len(crudo.split()) > int(max_words * 1.35):
+                texto = _ajustar_por_fases(d, max_words)
             item = {"angulo": str(d.get("angulo", ""))[:40],
-                    # cierre con CTA EXACTO + recorte DURO al presupuesto de palabras
-                    "texto": _ajustar_largo(str(d["texto"]).strip()[:900], max_words)}
+                    "texto": texto or _ajustar_largo(crudo, max_words)}
             f = d.get("fases")
             if isinstance(f, dict):   # desglose por fase (hook/problema/giro/producto/prueba/cta)
                 item["fases"] = {k: str(v)[:220] for k, v in f.items() if isinstance(v, str) and v.strip()}

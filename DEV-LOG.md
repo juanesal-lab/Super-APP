@@ -2423,3 +2423,30 @@ destinos, crop 4:5 dimensiones exactas. AVISO Jack: caption_styles (+set_destino
 y0 en _render_wordgroup y render de bloque), orchestrator (render_versions+process_job con destino,
 bloque 4:5 + QA antes de Finalizando), app.py (3 endpoints + settings + passthrough), producto_clips
 (destino a process_job), index.html (2 selectores + fd.append x2 + badge/botón en renderResults).
+
+### 2026-07-04 · Claude (juanesal-lab) · 🔥 GUIONES CON CLAUDE + fix del congelón mid-video (mismo look) y del final (margen del dissolve)
+Feedback de Juan: (a) los guiones no convencen ("les falta atracción"); (b) file 79: imagen quieta
+~5s a mitad del video con voz/captions andando + 2 videos con el final quieto 2-3s.
+**Congelón mid-video (file 79 analizado frame a frame):** el guard de variedad compara por
+source_index, pero Juan subió VARIOS TikToks de la misma creadora → clips de "fuentes distintas"
+visualmente IDÉNTICOS 5s seguidos. Fix: `_mismo_look()` en guion_match — misma fuente O firmas
+perceptuales (segment_signature, dist <10) casi iguales = mismo look; el orchestrator calcula la
+firma de cada clip del pool y la pasa al plan. Aplica al sort, a la racha y al fallback.
+**Congelón del final:** la compensación +0.17s/corte del dissolve NO cabe cuando el clip se usa
+completo → faltante acumulado ≈2s en 12 cortes. Fix doble: (1) plan usa nat_efectivo = nat−0.18
+(el margen siempre cabe); (2) assemble: si el montaje queda hasta 8% corto vs la voz, se ESTIRA
+el video imperceptiblemente (setpts; el audio del montaje no se usa) en vez de congelar.
+**Guiones:** ahora los escribe CLAUDE OPUS (claude-opus-4-8, tool-use, mismo cerebro de los ads
+de imagen) con Gemini de respaldo; `_anthropic_key()` lee env/.env. Listón de calidad en el
+prompt (hook '¿QUÉ? a ver…', un momento MEMORABLE citable, chisme > locutor, arriesgado > correcto).
+DESCUBRIMIENTO clave: a 15s el CTA obligatorio (16 palabras) se come el 40% del presupuesto → el
+cuerpo quedaba en 19 palabras (por eso se sentían planos). Presupuesto ahora 2.55 palabras/s
+(2.4 medido × 1.12 de la aceleración), defaults de duración 22s (Cortar) y 20s (Mi producto) =
+sweet spot frío del Manual §10.1. Y el recorte anti-desborde ahora es POR FASES
+(_ajustar_por_fases: usa el desglose hook/problema/giro/producto/prueba del modelo y sacrifica
+prueba→problema→giro, JAMÁS hook/producto/CTA — el recorte ciego amputaba el producto del final;
+por eso "no nombraba el producto" aunque Claude sí lo escribía). Tolerancia del recorte ciego 1.35.
+Probado live x3: guiones nombran NUTRILAN, 56-58 palabras, hooks citables, voz de parcero.
+AVISO Jack: scripts.py (Claude 1º + _ajustar_por_fases + presupuesto), guion_match (firmas +
+mismo_look + nat−0.18), orchestrator (firmas al plan), assemble (stretch ≤8% pre-tpad),
+index.html (defaults 22s/20s). py_compile todo OK.

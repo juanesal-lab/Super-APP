@@ -668,8 +668,18 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
 
     # SIN loop de video: si la voz es más larga, se sostiene el último frame (tpad clone).
     # (El loop repetía TODO el montaje desde el inicio → cortes duplicados. Queja de Juan.)
+    # ANTI-CONGELÓN: si el montaje quedó hasta 8% más corto que la voz (overlap de dissolves,
+    # colitas), se ESTIRA el video imperceptiblemente (setpts) — el audio del montaje no se usa.
+    try:
+        from .ffmpeg_utils import probe as _probe
+        vdur_montaje = _probe(video_path).duration
+    except Exception:  # noqa: BLE001
+        vdur_montaje = 0.0
+    stretch = ""
+    if vo_dur_s and vdur_montaje and 1.0 < (vo_dur_s / vdur_montaje) <= 1.08:
+        stretch = f"setpts=PTS*{vo_dur_s / vdur_montaje:.5f},"
     inputs = ["-i", video_path, "-i", vo_path]
-    fc = ["[0:v]tpad=stop_mode=clone:stop_duration=60[v]", "[1:a]volume=1.0[vo]"]
+    fc = [f"[0:v]{stretch}tpad=stop_mode=clone:stop_duration=60[v]", "[1:a]volume=1.0[vo]"]
     idx = 2
     music_index = None
     if has_music:

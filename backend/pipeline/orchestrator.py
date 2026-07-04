@@ -280,6 +280,14 @@ def render_versions(
         if any(frases_pv):
             report("Montaje por guion: eligiendo el mejor clip para cada frase...", 51)
             guion_match.etiquetar_frases([f for f in frases_pv if f], gemini_key, product_desc)
+            # firma perceptual de cada clip del pool: detecta "misma escena" aunque venga de
+            # ARCHIVOS distintos (varios TikToks de la misma creadora = se veía congelado)
+            firmas: dict[int, object] = {}
+            for _i in fases_por_idx:
+                try:
+                    firmas[_i] = segment_signature(selected[_i])
+                except Exception:  # noqa: BLE001
+                    pass
             usage: dict[int, int] = {}
             hook_srcs: set[int] = set()           # cada versión abre con una FUENTE distinta
             # TOPE DURO de reuso entre versiones: un clip solo puede salir en ~su cuota justa
@@ -298,7 +306,8 @@ def render_versions(
                 plan_g = (guion_match.plan_montaje(selected, fases_por_idx, frases, usage,
                                                    version_i=v_i,
                                                    n_versiones=len(version_orders),
-                                                   hook_srcs=hook_srcs, max_usos=max_usos)
+                                                   hook_srcs=hook_srcs, max_usos=max_usos,
+                                                   firmas=firmas)
                           if frases else None)
                 if frases:
                     frases_por_nombre[name] = frases

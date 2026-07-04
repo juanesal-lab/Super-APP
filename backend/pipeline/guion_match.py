@@ -17,6 +17,11 @@ from typing import Sequence
 
 from .phase_classify import FASES
 
+# Umbral de "MISMO LOOK": firmas perceptuales a menos de esta distancia = misma escena aunque
+# vengan de ARCHIVOS distintos (bug real: varios TikToks de la misma creadora hablando a cámara
+# → clips "de fuentes distintas" pero idénticos en pantalla 5s seguidos = se ve congelado).
+_LOOK_DIST = 10
+
 # Pausa entre palabras que corta frase aunque no haya puntuación (respiro del locutor)
 _PAUSA_FRASE = 0.35
 # Una frase muy larga se parte (el plano aguantaría >2 slots y el ritmo se muere)
@@ -167,7 +172,8 @@ def etiquetar_frases(frases_por_version: list[list[dict]], gemini_key: str | Non
 def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                  usage: dict[int, int], *, version_i: int = 0, n_versiones: int = 1,
                  hook_srcs: set[int] | None = None,
-                 max_usos: int = 99) -> tuple[list[int], list[float]] | None:
+                 max_usos: int = 99,
+                 firmas: dict[int, object] | None = None) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
@@ -191,25 +197,41 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     ranking = sorted(fases_por_idx, key=lambda i: -selected[i].score)
     bucket = {i: (pos % max(1, n_versiones)) for pos, i in enumerate(ranking)}
 
+    def _mismo_look(a: int, b: int) -> bool:
+        """¿Se ven IGUAL en pantalla? misma fuente O firmas perceptuales casi idénticas
+        (misma creadora/escena en archivos distintos)."""
+        if selected[a].source_index == selected[b].source_index:
+            return True
+        if firmas:
+            fa, fb = firmas.get(a), firmas.get(b)
+            if fa is not None and fb is not None:
+                try:
+                    from .analyze import sig_distance
+                    return sig_distance(fa, fb) < _LOOK_DIST
+                except Exception:  # noqa: BLE001
+                    return False
+        return False
+
     # REGLA DE VARIEDAD (bug real 2026-07-03): sin esto, un video-fuente con muchos segmentos
     # de la misma fase (ej. un testimonio hablando quieto 40s) llenaba 15 slots SEGUIDOS →
     # clips técnicamente distintos pero la MISMA toma en pantalla 30s = "se ve congelado".
     # Como el plan clásico: nunca 2 tomas seguidas de la misma fuente (2 solo si no hay más).
     def _mejor(fase: str, tope: float) -> int | None:
-        prev_src = selected[orden[-1]].source_index if orden else None
+        prev_i = orden[-1] if orden else None
         racha = 0
-        for k in range(len(orden) - 1, -1, -1):
-            if selected[orden[k]].source_index == prev_src:
-                racha += 1
-            else:
-                break
+        if prev_i is not None:
+            for k in range(len(orden) - 1, -1, -1):
+                if _mismo_look(orden[k], prev_i):
+                    racha += 1
+                else:
+                    break
 
         es_hook = not orden                       # primer plano de la versión
 
         def _ordenar(pool: list[int]) -> list[int]:
             pool.sort(key=lambda i: (
                 selected[i].source_index in hook_srcs if es_hook else False,  # gancho: fuente NUEVA
-                selected[i].source_index == prev_src,       # fuente distinta al plano anterior 1º
+                _mismo_look(i, prev_i) if prev_i is not None else False,      # look distinto 1º
                 usage.get(i, 0),                            # menos usado por OTRAS versiones
                 bucket.get(i, 0) != version_i,              # su propia tajada del pool primero
                 -round(min(selected[i].duration(), tope) * 2) / 2,   # que rinda (en pasos de 0.5s)
@@ -232,13 +254,13 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                     continue
                 pool = _ordenar(pool)
                 pick = pool[0]
-                if selected[pick].source_index != prev_src:
+                if prev_i is None or not _mismo_look(pick, prev_i):
                     return pick
-                # toda esta fase es de la misma fuente: guarda el mejor y prueba la fase vecina
+                # toda esta fase se ve igual al plano anterior: guarda y prueba la fase vecina
                 if candidato_misma_fuente is None:
                     candidato_misma_fuente = pick
             sobrantes = _ordenar([i for i in fases_por_idx if _cabe(i)])
-            if sobrantes and selected[sobrantes[0]].source_index != prev_src:
+            if sobrantes and (prev_i is None or not _mismo_look(sobrantes[0], prev_i)):
                 # no había fuente distinta en ninguna fase preferida, pero sí en el resto del pool
                 if candidato_misma_fuente is None or racha >= 2:
                     return sobrantes[0]

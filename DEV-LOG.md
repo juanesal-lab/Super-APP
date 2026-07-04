@@ -2317,3 +2317,30 @@ honesto, modo exigente) queda TAL CUAL en la entrada 📋 del 2026-07-04 para la
 Verificado antes de cerrar: py_compile ok (app.py, tiktok_search.py, creative_search.py) y
 node --check 14/14 bloques de index.html — el repo queda sano e idéntico a origin/main.
 AVISO Juan: no toqué nada tuyo ni nada en general; esta entrada es solo la traza del corte.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🔍 Búsqueda 30/30: multi-foto + cuentas vendedoras + mensaje honesto (implementado)
+Las 3 piezas del plan 📋, todas con params NUEVOS OPCIONALES (firmas viejas intactas):
+1. MULTI-FOTO (≤3): /api/tiktok-search y /api/creative-search aceptan `fotos` (campo viejo `foto`
+   sigue igual). analizar_foto(image_paths=...) → UNA llamada Gemini con todas las fotos = ficha más
+   completa; jueces (_verificar y Claude) usan máx las 2 primeras como referencia (_refs normaliza:
+   bytes o lista — creative_search/_buscar_foreplay pasan la lista tal cual). UI: input multiple,
+   etiqueta "📸 N fotos". El profundo (_verificar_video) sigue con 1 sola ref (tope de costo).
+2. CUENTAS VENDEDORAS (buscar(..., explorar_cuentas=True)): si tras verificar faltan videos para el
+   count, toma los @usuario de los confirmados (máx 3), baja tikwm api/user/posts (30 c/u, shape
+   igual a search), dedup contra lo visto, region != CO, dur 4-120s, y los juzga SOLO por portada
+   (sin profundo ni Claude). Los confirmados se suman DESPUÉS de los del doble juez.
+3. HONESTIDAD: si confirmados < count → `mensaje_busqueda` ("Encontré N confirmados con estas
+   búsquedas: [términos]. Dame la marca, un hashtag o el país para ampliar.") y la UI lo pinta 💬
+   bajo el grid de TikTok.
+PRUEBA REAL (repelente ultrasónico, count=30, misma ficha en ambos runs): explorar_cuentas=False →
+25/30 confirmados (129s); True → 22/30 (153s). La diferencia es RUIDO de tikwm (candidatos distintos
+por corrida); el bloque de cuentas corrió y sumó 0 AQUÍ porque las 3 cuentas confirmadas son
+multi-gadget: test dirigido → user/posts sí trae 30 posts/cuenta (covers absolutos, GET 200) pero
+0 de 24 portadas recientes muestran el repelente → el juez honesto no infla. Con cuentas
+mono-producto (lo común en dropshipping) la palanca sí suma. Smoke HTTP en :8421 con 2 fotos
+(campo `fotos`): ok, 5/5 confirmados, sin CO, mensaje vacío por llegar al count. py_compile ok
+(app.py, tiktok_search.py, creative_search.py) + node --check 14/14. Reglas intactas: Colombia
+excluida siempre, sin precio, topes (Claude top-20, profundo ≤12, cuentas solo portada).
+AVISO Juan: _verificar/_verificar_claude/_verificar_video ahora aceptan ref_bytes como bytes O
+lista (normalizan con _refs; tus llamadas con bytes sueltos siguen idénticas). app.py ganó el
+helper _guardar_fotos_busqueda para ambos endpoints de búsqueda. No toqué offer_banner/auto_studio.

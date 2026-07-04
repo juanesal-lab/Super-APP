@@ -2161,6 +2161,53 @@ técnicamente distintos (la regla de no repetir se respetó) pero la MISMA toma 
 py_compile + tests unitarios OK. AVISO Jack: guion_match._mejor reescrito, scripts.generate_scripts
 (max_words + _ajustar_largo), orchestrator (aviso cobertura). Nada de firmas públicas cambió.
 
+### 2026-07-03 · Claude (jackingshop1-cell) · 🔥 Foreplay al fin COMPLETO: de 2 resultados a cientos + búsqueda por FOTO del producto exacto
+Queja de Jack (con razón): "en Foreplay hay 1000 anuncios y en la app 2, y está súper fea".
+DIAGNÓSTICO (medido contra el API real): (1) nunca se mandaba `limit` → el API devuelve ~10 por
+página por defecto (acepta 100); (2) las búsquedas LARGAS matan ("toallas de tela reutilizables"=3,
+"toallas tela"=10+cursor); (3) una sola búsqueda de un solo término se queda corta siempre.
+- `foreplay_search.buscar_ads` (Juan): + params ADITIVOS `limit` (1-100) y `order`
+  ("newest"|"oldest"|"longest_running" — ganadores primero). Nada tuyo cambia sin pedirlo.
+- /api/foreplay-search: passthrough de limit+order (default UI: limit=50, order=longest_running).
+- NUEVO `creative_search.foreplay_producto()` + POST /api/foreplay-producto (job): foto y/o nombre →
+  analizar_foto saca ~8 términos ES+EN → CADA término con limit=100 × 2 páginas en paralelo → dedup →
+  RELEVANCIA TEXTUAL primero (tu lección del _title_score de TikTok: ordenar el pool del juez solo
+  por días lo llenaba de mega-ads genéricos — "Brasil Paralelo" 1032 días — y confirmaba 0; con
+  relevancia: 27 confirmados) → juez visual (_verificar) top-60 thumbnails → ✅ confirmados primero
+  (por días), ⚠️ resto por relevancia. Ruido con 0 relevancia se bota si hay ≥30 relevantes.
+- Pestaña Foreplay RE-DISEÑADA estilo Discovery de Foreplay: masonry real por columnas (thumbnails
+  a su proporción), card con avatar+marca+plataformas, badge VERDE "● N días", drop 📸 "PRODUCTO
+  EXACTO", filtros (idioma/orden/activos/video/mín días), contador, SCROLL INFINITO por cursor
+  (IntersectionObserver, carga sola), y en modo producto DOS secciones (✅ confirmados / ⚠️ sin
+  verificar — la masonry por columnas regaba el orden). Se conservan INTACTOS: selección + ✂️ Cortar
+  en clips (fpCut→/api/foreplay-clips), 🎙️ Doblar, ▶️ Ver inline, proxies thumb/video.
+- PROBADO REAL: "faja" → 47 en la 1ª página (antes ~2-8) ordenados 1032/999/920 días; FOTO del
+  repelente ultrasónico (landing webp de Jack) → 512 ads crudos, 354 relevantes, ✅ 27 CONFIRMADOS
+  del dispositivo exacto (Bakanoforth-a ~500 días + "OFERTA 2X1" en español). Costo del modo foto:
+  1 Gemini foto + ~16 créditos Foreplay + ≤60 flash. Screenshots verificados. JS 13/13.
+- AVISO Juan: en tu foreplay_search.py solo los 2 params aditivos; _es_colombiano sigue filtrando
+  adentro (regla de oro). La pestaña vieja quedó reemplazada (fpSearch/fpRender nuevos, resto igual).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🧠 La app ya NO pierde el trabajo con el gesto atrás / recargas
+Queja de Jack: dos dedos a la izquierda sin querer → el navegador se devuelve, y al volver la app
+arranca desde cero (portada) y se pierde lo que había. Fix en frontend/index.html (3 capas, aditivo):
+1. `html,body{overscroll-behavior-x:none}` → el gesto de swipe-atrás de Chrome queda BLOQUEADO
+   dentro de la app (raíz del accidente).
+2. Historial interno: homeEnter hace pushState → el botón atrás vuelve AL GARAJE (dentro de la app)
+   en vez de salirse; adelante regresa a la pestaña. popstate manejado.
+3. Memoria de sesión (sessionStorage, por pestaña del navegador): pestaña activa (cm_tab),
+   resultados de Foreplay completos (cm_fp: ads+modo+cursor+query, se guarda en cada fpRender) y
+   TRABAJOS EN CURSO (cm_job_*: los poll fpProductoPoll/fpPoll/vhPoll/clonePoll/autoPoll/prodPoll/
+   swapPoll/dubPoll quedan envueltos para recordar su job_id) → al recargar se re-enganchan contra
+   /api/status (si el server ya no conoce el job, se limpia la clave). Todo con try/catch — si algo
+   falta, la app carga normal.
+- PROBADO en vivo: buscar "faja" (47 ads) → reload completo → cae directo en Foreplay con la query
+  y los 47 ads restaurados; history.back() → garaje sin salir del sitio; overscrollBehaviorX="none"
+  por computed style. JS 14/14 node --check.
+- AVISO Juan: solo index.html — un <style> de 1 línea y un <script> nuevo al final que ENVUELVE
+  (no reemplaza) homeEnter/fpRender/los polls. Si agregas una pestaña con job propio, suma su poll
+  a la lista de nombres y queda con memoria gratis.
+
 ### 2026-07-04 · Claude (juanesal-lab) · 🎨 Diversidad ENTRE versiones en el montaje por guion
 Queja de Juan (con screenshot): las 8 versiones salían con LOS MISMOS clips (A y B abrían con el
 mismo testimonio). El plan por guion balanceaba clips sueltos (usage) pero perdió la diversidad

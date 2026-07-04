@@ -155,7 +155,11 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     prompt = (
         "Eres el copywriter de Juan para ads de dropshipping (Colombia, COD). Escribes guiones "
         "de VOZ EN OFF que NO suenan a anuncio, usando SU voz real y SUS fórmulas ganadoras.\n\n"
-        "=== BANCO REAL DE HOOKS, FÓRMULAS Y VOZ DE JUAN + FRAMEWORK v2 DE ADS GANADORES (úsalo, no inventes genérico) ===\n"
+        # EL PRODUCTO VA PRIMERO (bug real: iba al final del prompt y Gemini lo ignoraba —
+        # guiones genéricos que no nombraban el producto ni usaban sus datos)
+        + (f"=== EL PRODUCTO QUE VENDES (la materia prima de CADA guion) ==={info}\n"
+           "=== FIN DEL PRODUCTO ===\n\n" if info.strip() else "")
+        + "=== BANCO REAL DE HOOKS, FÓRMULAS Y VOZ DE JUAN + FRAMEWORK v2 DE ADS GANADORES (úsalo, no inventes genérico) ===\n"
         + framework[:22000] +
         "\n=== FIN DEL BANCO ===\n"
         + bp +
@@ -190,6 +194,12 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "antes', 'tu cara dice algo diferente'). Nada de curas absolutas ni % médicos (usa 'ayuda a / "
         "apoya'), nada de promesas de resultado con plazo garantizado (repórtalo: 'muchos lo notan en "
         "pocas semanas'), nada de antes/después corporal explícito. "
+        "🏷️ NOMBRA EL PRODUCTO (OBLIGATORIO): cada guion dice el producto UNA vez en el momento "
+        "del GIRO/PRODUCTO — jamás en el hook (el hook engancha, no vende). Si la info del "
+        "producto trae NOMBRE o MARCA, úsalo EXACTO; si no, el tipo de producto con su atributo "
+        "('el aceite de ricino puro', 'el corrector de postura de neopreno'). Y usa 2-3 DETALLES "
+        "REALES de la info del producto (ingrediente, beneficio concreto, cómo se usa, para quién): "
+        "un guion que podría ser de CUALQUIER producto del nicho está MAL y se rechaza. "
         "PROHIBIDO mencionar PRECIO, cifras de dinero, pesos, '$', descuentos con número ni "
         "comparaciones de precio. Vende por deseo/dolor, NUNCA por precio. "
         + ("OFERTA 2x1: integra de forma natural que al pedir uno se lleva OTRO GRATIS (2x1), sin decir precio. "
@@ -204,7 +214,7 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "fase del arco, para que el editor sepa qué es cada parte):\n"
         '[{"angulo":"nombre del hook usado",'
         '"fases":{"hook":"...","problema":"...","giro":"...","producto":"...","prueba":"...","cta":"..."},'
-        '"texto":"el voiceover hablado completo de corrido"}, ...]' + info
+        '"texto":"el voiceover hablado completo de corrido"}, ...]'
     )
 
     contents = [prompt]

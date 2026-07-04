@@ -2229,3 +2229,20 @@ Firma: plan_montaje(..., version_i, n_versiones, hook_srcs) — opcionales, retr
 Probado (10 fuentes × 6 segmentos, 4 versiones con guiones iguales): ganchos de 4 fuentes
 DISTINTAS, solapamiento entre versiones 0-2 clips de ~10 (antes casi 100%), cada versión usa
 7-9 fuentes. py_compile OK. AVISO Jack: orchestrator pasa los params nuevos; nada más cambió.
+
+### 2026-07-04 · Claude (juanesal-lab) · ✍️ Guiones que SÍ nombran el producto + 🖼️ preview de videos al subirlos
+Dos quejas de Juan:
+1. **Guiones genéricos que no nombraban el producto**: la causa era el prompt de generate_scripts —
+   la info del producto (desc + página) iba pegada AL FINAL, después del formato JSON → Gemini la
+   ignoraba. Ahora va DE PRIMERA en un bloque "EL PRODUCTO QUE VENDES" + regla 🏷️ OBLIGATORIA:
+   nombrar el producto (nombre/marca EXACTO si existe, si no tipo+atributo) UNA vez en el
+   GIRO/PRODUCTO (jamás en el hook) + usar 2-3 detalles REALES de la info (un guion que sirva para
+   cualquier producto del nicho se rechaza).
+2. **Preview al subir videos**: helper global `vthumbInto` (saca un frame al ~20% con <video>+canvas,
+   cache por nombre+tamaño, funciona con Files locales y rutas /api/file) + `vthumbStrip(After)`.
+   Cableado en: Cortar clips (lista de archivos Y videos bajados de TikTok, thumb 56x72 en cada fila),
+   Clonar producto (ganador + fotos + clips propios vía bind()), Crear creativo (autoFile),
+   Variar hook (vhWinner) y ad de referencia del guion (refInput). Fotos = preview directa.
+Verificado: py_compile OK, node --check 14/14 bloques OK. AVISO Jack: renderFiles cambió (filas con
+<img data-th>), bind() de Clonar tiene 2 líneas nuevas, helpers globales antes de addFiles. Nada
+de backend salvo scripts.py (prompt).

@@ -1191,6 +1191,7 @@
     </div>
     <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Textos del proveedor</label>
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="chkBanner"> 🏷️ Oferta 2x1 · envío gratis (banner arriba)</label>
       <span id="textModeWrap" style="display:none;align-items:center;gap:8px">
         <select id="textMode" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
           <option value="tapar">🟦 Tapar con blur</option>
@@ -2444,6 +2445,7 @@ function buildForm(){
   fd.append("enhance", document.getElementById("enhance").checked);
   fd.append("effects", document.getElementById("effects").checked);
   fd.append("blur_captions", document.getElementById("blurCaptions").checked);
+  fd.append("banner_oferta", document.getElementById("chkBanner").checked);
   fd.append("text_mode", document.getElementById("textMode").value);
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);

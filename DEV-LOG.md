@@ -2298,3 +2298,12 @@ cuando haya menos de los pedidos. Palancas, en orden:
    cuando no llegue al count (punto 5 de la plantilla de Jack).
 4. Multi-foto de referencia (frente/lado/empaque) para el juez.
 (Contexto: hoy 9/9 láser, 21 bee venom, 27 repelente — el techo actual es supply + cuentas sin explorar.)
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🏷️ Cortar clips: toggle "Oferta 2x1 · envío gratis" (banner arriba)
+Jack pidió elegir la oferta en Cortar clips y que salga el banner de su foto (pill roja "ENVÍO
+GRATIS - PAGAS AL RECIBIR" + "OFERTA 2X1"). Se REUSA offer_banner.add_offer_banner (el de Crear
+creativo, diseño calcado de su referencia; safe_top_y con Gemini para no tapar caras/producto):
+- app.py: Form banner_oferta en /api/process + _agregar_banner_oferta() aplicada a las 8 versiones
+  tras la música en _run_job. UI: checkbox junto a "🟦 Textos del proveedor".
+- Regla de oro intacta: oferta SIN cifras de precio.
+AVISO Juan: cero cambios en offer_banner/auto_studio; solo el hook en _run_job + Form + checkbox.

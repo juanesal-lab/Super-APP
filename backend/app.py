@@ -129,6 +129,19 @@ def _load_shopify() -> tuple[str | None, str | None, str | None]:
             _load_key("SHOPIFY_THEME_ID"))
 
 
+def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress) -> None:
+    """Cortar clips: pill 'ENVÍO GRATIS · PAGAS AL RECIBIR' + 'OFERTA 2X1' arriba (como la foto
+    de Jack). La IA elige la altura para no tapar caras/producto (offer_banner.safe_top_y)."""
+    from pipeline.offer_banner import add_offer_banner
+    progress("🏷️ Poniendo el banner de oferta (2x1 · envío gratis)...", 97)
+    for v in versions:
+        try:
+            out = v["path"][:-4] + "_of.mp4"
+            v["path"] = add_offer_banner(v["path"], out, work_dir, gemini_key=_load_env_key())
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
     """Cortar clips: música de fondo (baja) + SFX variados en los cortes, conservando el audio del clip."""
     from pipeline.assemble import add_music_sfx
@@ -188,6 +201,8 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
                 and settings.get("musica", True):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
                                 settings.get("product_desc", ""), progress)
+        if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
+            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -314,6 +329,7 @@ def process(
     blur_captions: bool = Form(False),
     text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
+    banner_oferta: bool = Form(False),
 ):
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
@@ -347,6 +363,7 @@ def process(
         "enhance": bool(enhance),
         "effects": bool(effects),
         "blur_captions": bool(blur_captions),
+        "banner_oferta": bool(banner_oferta),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
     }

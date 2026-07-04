@@ -151,6 +151,38 @@ def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
     return out[:count]
 
 
+def _posts_cuenta(unique_id: str, count: int = 30) -> list[dict]:
+    """Videos recientes de UNA cuenta (tikwm api/user/posts) normalizados IGUAL que buscar_tiktok.
+
+    Palanca de volumen del plan 30/30: los vendedores suben el MISMO producto 10-30 veces →
+    explorar la cuenta de un video confirmado destapa el resto de sus creativos."""
+    out: list[dict] = []
+    if not (unique_id or "").strip():
+        return out
+    try:
+        r = requests.get("https://tikwm.com/api/user/posts",
+                         params={"unique_id": unique_id, "count": count},
+                         headers=_UA, timeout=25)
+        data = (r.json() or {}).get("data") or {}
+        for v in data.get("videos") or []:
+            au = (v.get("author") or {}).get("unique_id", "") or unique_id
+            vid = v.get("video_id", "")
+            if au and vid:
+                out.append({
+                    "url": f"https://www.tiktok.com/@{au}/video/{vid}",
+                    "title": (v.get("title") or "").strip()[:120],
+                    "cover": v.get("cover") or "",
+                    "play": v.get("play") or "",
+                    "plays": int(v.get("play_count") or 0),
+                    "likes": int(v.get("digg_count") or 0),
+                    "region": (v.get("region") or "").upper(),
+                    "dur": int(v.get("duration") or 0),
+                })
+    except Exception:  # noqa: BLE001
+        pass
+    return out[:count]
+
+
 _OVERLAY_SCORE = {"nada": 2, "poco": 1, "mucho": 0}
 
 
@@ -460,7 +492,7 @@ def _verificar_claude(cand: dict, ref_bytes, ref_desc: str, anthropic_key: str) 
 def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None = None,
            count: int = 20, anthropic_key: str | None = None,
            analisis: dict | None = None, foreplay_key: str | None = None,
-           image_paths: list[str] | None = None) -> dict:
+           image_paths: list[str] | None = None, explorar_cuentas: bool = True) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -469,7 +501,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     búsqueda combinada TikTok+Foreplay analice la foto UNA sola vez). Sin él, se calcula aquí (igual
     que siempre).
     `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → ficha más
-    completa; los jueces usan las 2 primeras como referencia. Sin él, todo sigue con `image_path`."""
+    completa; los jueces usan las 2 primeras como referencia. Sin él, todo sigue con `image_path`.
+    `explorar_cuentas`: si tras verificar faltan videos para el count, explora las CUENTAS de los
+    confirmados (máx 3, tikwm user/posts) — los vendedores suben el mismo producto muchas veces —
+    y suma los que el juez de portada confirme (solo portada: tope de costo)."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
@@ -580,6 +615,47 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     (rechazados if r is False else confirmados).append(c)
             matches = sorted(confirmados + deep, key=lambda c: c.get("_rank", ()), reverse=True) + resto
 
+        # CUENTAS VENDEDORAS (plan 30/30): si aún faltan videos para el count, explora las cuentas
+        # de los CONFIRMADOS (los vendedores suben el MISMO producto 10-30 veces). Máx 3 cuentas,
+        # dedup contra TODO lo ya visto, sin Colombia, y cada candidato se juzga SOLO por portada
+        # (sin verificación profunda ni Claude: tope de costo).
+        if explorar_cuentas and matches and len(matches) < count:
+            vistos_urls = {c["url"] for c in cand_list} | {c["url"] for c in matches}
+            cuentas: list[str] = []
+            for c in matches:
+                u = c.get("url", "")
+                if "/@" in u:
+                    uid = u.split("/@", 1)[1].split("/", 1)[0]
+                    if uid and uid not in cuentas:
+                        cuentas.append(uid)
+                if len(cuentas) >= 3:
+                    break
+            extra_cands: list[dict] = []
+            if cuentas:
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    for res in ex.map(lambda u: _posts_cuenta(u, count=30), cuentas):
+                        for c in res:
+                            if (c["url"] not in vistos_urls and c.get("region") != "CO"
+                                    and 4 <= c.get("dur", 0) <= 120):
+                                vistos_urls.add(c["url"])
+                                extra_cands.append(c)
+            extra_cands = extra_cands[:max(60, count * 4)]   # mismo tope que el pool principal
+            if extra_cands:
+                de_cuentas: list[dict] = []
+                with ThreadPoolExecutor(max_workers=10) as ex:
+                    futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c
+                            for c in extra_cands}
+                    for fut in as_completed(futs):
+                        v = fut.result()
+                        if v and v.get("match"):
+                            c = futs[fut]
+                            c["_cuenta"] = True
+                            c["_rank"] = (v.get("muestra", False), v.get("overlay", 1),
+                                          v.get("es", False), c.get("plays", 0))
+                            de_cuentas.append(c)
+                de_cuentas.sort(key=lambda c: c.get("_rank", ()), reverse=True)
+                matches.extend(de_cuentas)        # después de los ya confirmados (doble juez primero)
+
         for c in matches:
             c["verificado_producto"] = True       # pasó la verificación visual (uno o ambos jueces)
         links = matches[:count]
@@ -597,6 +673,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     for c in links:
         c.pop("_rank", None)
         c.pop("_deep", None)
+        c.pop("_cuenta", None)
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
 

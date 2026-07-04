@@ -144,26 +144,35 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
 def buscar_creativos(image_path: str | None = None, nombre: str = "",
                      gemini_key: str | None = None, foreplay_key: str | None = None,
                      anthropic_key: str | None = None, count: int = 20,
-                     fp_count: int = 20, fp_verify_max: int = _FP_VERIFY_MAX) -> dict:
+                     fp_count: int = 20, fp_verify_max: int = _FP_VERIFY_MAX,
+                     image_paths: list[str] | None = None) -> dict:
     """Foto + nombre → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
 
+    `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → ficha más
+    completa; los jueces (TikTok y Foreplay) usan las 2 primeras como referencia.
     Devuelve {ok, keywords, desc, tiktok:{...igual que /api/tiktok-search...},
               foreplay:{ok, ads, n_confirmados, verificado, terminos, error?}}."""
     nombre = (nombre or "").strip()
     ref_bytes = None
-    if image_path and os.path.exists(image_path):
-        info = analizar_foto(image_path, nombre, gemini_key)   # 1 sola llamada para AMBAS fuentes
-        try:
-            with open(image_path, "rb") as f:
-                ref_bytes = f.read()
-        except Exception:  # noqa: BLE001
-            ref_bytes = None
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:3]
+    if paths:
+        info = analizar_foto(paths[0], nombre, gemini_key,     # 1 sola llamada para AMBAS fuentes
+                             image_paths=paths)
+        refs = []
+        for p in paths[:2]:            # jueces: máximo 2 fotos de referencia (tope de costo)
+            try:
+                with open(p, "rb") as f:
+                    refs.append(f.read())
+            except Exception:  # noqa: BLE001
+                pass
+        ref_bytes = refs or None       # lista: _verificar la acepta tal cual
     else:
         info = {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         tk_fut = ex.submit(buscar, image_path=image_path, nombre=nombre, api_key=gemini_key,
-                           count=count, anthropic_key=anthropic_key, analisis=info)
+                           count=count, anthropic_key=anthropic_key, analisis=info,
+                           image_paths=image_paths)
         fp_fut = ex.submit(_buscar_foreplay, info, ref_bytes, foreplay_key, gemini_key,
                            fp_count, fp_verify_max)
         tk = tk_fut.result()

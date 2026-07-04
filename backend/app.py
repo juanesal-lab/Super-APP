@@ -490,46 +490,59 @@ def auto(
 
 # ---- BUSCAR CREATIVOS EN TIKTOK (foto + nombre -> links reales) ----
 
+def _guardar_fotos_busqueda(foto, fotos) -> list[str]:
+    """Guarda las fotos de búsqueda (campo viejo `foto` + campo nuevo `fotos`, máx 3) y devuelve rutas."""
+    d = os.path.join(UPLOAD_DIR, "tksearch")
+    paths: list[str] = []
+    for up in ([foto] if foto is not None else []) + list(fotos or []):
+        if up is None or not up.filename:
+            continue
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, os.path.basename(up.filename))
+        with open(p, "wb") as o:
+            shutil.copyfileobj(up.file, o)
+        if p not in paths:
+            paths.append(p)
+        if len(paths) >= 3:
+            break
+    return paths
+
+
 @app.post("/api/tiktok-search")
 def tiktok_search(nombre: str = Form(""), count: int = Form(20),
-                        foto: UploadFile = File(None)):
+                        foto: UploadFile = File(None),
+                        fotos: list[UploadFile] = File([])):
+    """`foto` (una, campo viejo) sigue igual; `fotos` acepta hasta 3 del MISMO producto (multi-foto)."""
     from pipeline.tiktok_search import buscar
-    img_path = None
-    if foto is not None and foto.filename:
-        d = os.path.join(UPLOAD_DIR, "tksearch")
-        os.makedirs(d, exist_ok=True)
-        img_path = os.path.join(d, os.path.basename(foto.filename))
-        with open(img_path, "wb") as o:
-            shutil.copyfileobj(foto.file, o)
-    if not (nombre.strip() or img_path):
+    img_paths = _guardar_fotos_busqueda(foto, fotos)
+    if not (nombre.strip() or img_paths):
         raise HTTPException(400, "Dame el nombre del producto o una foto")
-    return buscar(image_path=img_path, nombre=nombre.strip(),
+    return buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
                   api_key=_load_env_key(), count=int(count),
                   anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
-                  foreplay_key=_load_foreplay_key())     # + ads ganadores de Foreplay al mismo pool
+                  foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
+                  image_paths=img_paths or None)         # multi-foto: ficha + jueces con más ángulos
 
 
 # ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
 
 @app.post("/api/creative-search")
 def creative_search(nombre: str = Form(""), count: int = Form(20),
-                          fp_count: int = Form(20), foto: UploadFile = File(None)):
+                          fp_count: int = Form(20), foto: UploadFile = File(None),
+                          fotos: list[UploadFile] = File([])):
     """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
-    /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo."""
+    /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo.
+    `fotos` acepta hasta 3 del MISMO producto (frente/lado/empaque) → ficha y jueces más precisos."""
     from pipeline.creative_search import buscar_creativos
-    img_path = None
-    if foto is not None and foto.filename:
-        d = os.path.join(UPLOAD_DIR, "tksearch")
-        os.makedirs(d, exist_ok=True)
-        img_path = os.path.join(d, os.path.basename(foto.filename))
-        with open(img_path, "wb") as o:
-            shutil.copyfileobj(foto.file, o)
+    img_paths = _guardar_fotos_busqueda(foto, fotos)
+    img_path = img_paths[0] if img_paths else None
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto o una foto")
     r = buscar_creativos(image_path=img_path, nombre=nombre.strip(),
                          gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
                          anthropic_key=_load_anthropic_key(),
-                         count=int(count), fp_count=int(fp_count))
+                         count=int(count), fp_count=int(fp_count),
+                         image_paths=img_paths or None)
     # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
     r["foto"] = os.path.basename(img_path) if img_path else ""
     return r

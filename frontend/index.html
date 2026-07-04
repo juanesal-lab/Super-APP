@@ -586,9 +586,9 @@
         MISMO producto en <b>🎵 TikTok</b> (links reales) y en <b>📚 Foreplay</b> (ads ganadores con
         video descargable), para que armes tus clips. Los de TikTok los copias y los bajas en
         📥 Descargar; los de Foreplay se ven y descargan aquí mismo.</p>
-      <input type="file" id="tkFoto" accept="image/*" class="hidden">
-      <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Foto del producto (opcional)</b>
-        <div class="s">o solo escribe el nombre abajo</div></label>
+      <input type="file" id="tkFoto" accept="image/*" multiple class="hidden">
+      <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Fotos del producto (hasta 3, opcional)</b>
+        <div class="s">frente / lado / empaque = búsqueda más precisa — o solo escribe el nombre abajo</div></label>
       <div class="autoOpts">
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
         <select id="tkCount"><option value="15">15 por fuente</option><option value="20" selected>20 por fuente</option><option value="30">30 por fuente</option></select>
@@ -599,14 +599,17 @@
     </div>
     <script>
       (function(){ const el=document.getElementById('tkFoto');
-        el.addEventListener('change',e=>{ const f=e.target.files[0]; window._tkFoto=f;
-          document.getElementById('tkFotoName').textContent = f?('📸 '+f.name):'📸 Foto del producto (opcional)'; }); })();
+        el.addEventListener('change',e=>{ const fs=[...e.target.files].slice(0,3);
+          window._tkFotos=fs; window._tkFoto=fs[0]||null;   // _tkFoto se conserva por compatibilidad
+          document.getElementById('tkFotoName').textContent =
+            fs.length>1?('📸 '+fs.length+' fotos'):(fs[0]?('📸 '+fs[0].name):'📸 Fotos del producto (hasta 3, opcional)'); }); })();
       function tkEsc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
       async function tkRun(){
         const nombre=document.getElementById('tkNombre').value.trim();
-        if(!nombre && !window._tkFoto){ alert('Escribe el nombre o sube una foto'); return; }
+        const fs=window._tkFotos||(window._tkFoto?[window._tkFoto]:[]);
+        if(!nombre && !fs.length){ alert('Escribe el nombre o sube una foto'); return; }
         const fd=new FormData();
-        if(window._tkFoto) fd.append('foto',window._tkFoto);
+        fs.slice(0,3).forEach(f=>fd.append('fotos',f));   // hasta 3 fotos del MISMO producto
         const cnt=document.getElementById('tkCount').value;
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
         document.getElementById('tkGo').disabled=true;

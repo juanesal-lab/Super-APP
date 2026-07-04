@@ -102,7 +102,7 @@ def generar_variaciones(arco_texto: str, product_desc: str, anthropic_key: str, 
                if con_escenas else "NO incluyas escenas (solo varío el hook/guion/copy)."))
     try:
         from anthropic import Anthropic
-        client = Anthropic(api_key=anthropic_key)
+        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=14000, system=_SISTEMA,
             tools=[_TOOL], tool_choice={"type": "tool", "name": "entregar_variaciones"},

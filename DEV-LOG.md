@@ -2207,3 +2207,11 @@ arranca desde cero (portada) y se pierde lo que había. Fix en frontend/index.ht
 - AVISO Juan: solo index.html — un <style> de 1 línea y un <script> nuevo al final que ENVUELVE
   (no reemplaza) homeEnter/fpRender/los polls. Si agregas una pestaña con job propio, suma su poll
   a la lista de nombres y queda con memoria gratis.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ⏱️ Fix: "Analizar conceptos" colgado 20+ minutos (Claude sin timeout)
+Jack quedó 20 min mirando "Claude analiza y crea 10 conceptos..." — la llamada al SDK de Anthropic
+NO tenía timeout: el default es 600s POR INTENTO × 2 reintentos ≈ hasta 30 min colgado si la red/API
+se pega. Fix: `Anthropic(api_key=..., timeout=120.0, max_retries=1)` en los 4 clientes
+(disruptive_images, creative_variator, tiktok_search juez, supervisor) → cualquier cuelgue muere en
+~2-4 min con el error visible en la UI (los 4 sitios ya capturaban excepción y reportaban).
+AVISO Juan: solo el constructor del cliente; prompts/flujo intactos.

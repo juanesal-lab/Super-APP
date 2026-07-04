@@ -218,7 +218,7 @@ def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
                   "ya mostrado).")
     try:
         from anthropic import Anthropic
-        client = Anthropic(api_key=anthropic_key)
+        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=16000, system=_SISTEMA,
             tools=[_TOOL], tool_choice={"type": "tool", "name": "entregar_creativos"},

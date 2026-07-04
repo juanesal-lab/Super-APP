@@ -57,7 +57,7 @@ def _get_client():
             from anthropic import Anthropic
         except Exception:
             return None
-        _client = Anthropic(api_key=key)
+        _client = Anthropic(api_key=key, timeout=120.0, max_retries=1)
     return _client
 
 

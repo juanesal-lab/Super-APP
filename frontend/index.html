@@ -1535,6 +1535,8 @@
     .disTipo span{display:block;font-size:11.5px;color:var(--muted);line-height:1.35}
     .disTipo.sel{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
     @media(max-width:640px){.disTipos{grid-template-columns:1fr}}
+    .disModelo{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12.5px}
+    .disModelo label{display:flex;align-items:center;gap:5px;cursor:pointer}
     .disOfertas label{display:flex;align-items:center;gap:5px;cursor:pointer}
     .disConceptos{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;margin-top:14px}
     .disConcepto{background:var(--card2);border:2px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:border-color .15s}
@@ -1620,7 +1622,13 @@
              <div class="ctit">"${c.titular||''}"</div>
              <div class="ccon">${desc}</div></div>`;
       });
-      h+='</div><button class="autoBtn" style="margin-top:14px" onclick="disGenerate()">🎨 Generar imágenes de los elegidos</button>';
+      h+=`</div>
+        <div class="disModelo">
+          <span style="font-weight:700;font-size:12.5px;color:var(--muted)">Modelo:</span>
+          <label><input type="radio" name="disModelo" value="rapida" checked> ⚡ Nano Banana 1 · rápida y barata (~$0.04)</label>
+          <label><input type="radio" name="disModelo" value="pro"> ✨ Nano Banana 2 · calidad pro (~$0.13)</label>
+        </div>
+        <button class="autoBtn" style="margin-top:12px" onclick="disGenerate()">🎨 Generar imágenes de los elegidos</button>`;
       box.innerHTML=h;
     }
     function disToggleAll(){
@@ -1635,7 +1643,9 @@
       prog.classList.remove('hidden'); document.getElementById('disBar').style.width='0%'; msg.textContent='Iniciando…';
       document.getElementById('disResult').innerHTML='';
       try{
+        const modelo=(document.querySelector('input[name="disModelo"]:checked')||{}).value||'rapida';
         const fd=new FormData(); fd.append('ctx_id',window._disCtx); fd.append('indices',JSON.stringify(sel));
+        fd.append('modelo',modelo);
         const r=await fetch('/api/disruptive-images',{method:'POST',body:fd}); const j=await r.json();
         if(j.job_id) disPoll(j.job_id); else msg.textContent=j.detail||'Error';
       }catch(e){ msg.textContent='Error: '+e; }

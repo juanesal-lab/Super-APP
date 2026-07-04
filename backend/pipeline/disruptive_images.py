@@ -572,10 +572,11 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
 
 
 def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,
-                           product_image_path: str | None = None,
+                           product_image_path: str | None = None, hd: bool = False,
                            progress: Callable[[str, int], None] | None = None) -> dict:
     """Paso 2 (full-prompt): para los conceptos ELEGIDOS genera el ad completo + verifica/regenera +
-    integra el PRODUCTO REAL en la escena (si hay foto). Nunca lanza."""
+    integra el PRODUCTO REAL en la escena (si hay foto). Nunca lanza.
+    `hd`: False = Nano Banana 1 (barata, ~$0.04); True = Nano Banana 2 pro (~$0.13)."""
     def rep(m, p):
         if progress:
             progress(m, int(p))
@@ -585,7 +586,8 @@ def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: s
         return {"ok": False, "error": "Falta la API key de Gemini para generar las imágenes."}
     n = len(variants)
     done = [0]
-    rep(f"Generando {n} ads completos con Google AI (ortografía + tu producto integrado)...", 8)
+    modelo = "Nano Banana 2 (calidad pro)" if hd else "Nano Banana 1 (rápida)"
+    rep(f"Generando {n} ads con {modelo} (ortografía + tu producto integrado)...", 8)
 
     def _one(item):
         i, v = item
@@ -593,7 +595,8 @@ def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: s
         try:
             v["imagen"] = generar_ad_fullprompt(v, out, gemini_key=gemini_key,
                                                 product_image_path=product_image_path,
-                                                integrar_producto=bool(product_image_path))
+                                                integrar_producto=bool(product_image_path), hd=hd)
+            v["hd"] = hd
         except Exception as e:  # noqa: BLE001
             v["imagen"] = None
             v["error"] = str(e)[:150]

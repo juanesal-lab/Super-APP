@@ -2685,3 +2685,18 @@ marco sin bordes, texto arriba limpio, producto en la esquina inferior izq SIN t
 de video intacto. La UI (.disCard img) ya mostraba ratio natural. py_compile OK.
 AVISO Jack: disruptive_images (_a_cuadrado→4:5 cover, _CIERRE, _SISTEMA, _integrar_producto_ia,
 editar_imagen_ia). El advertorial no cambió (ya era 4:5 nativo).
+
+### 2026-07-04 · Claude (juanesal-lab) · 🎛️ Ads imagen: elegir MODELO al generar (Nano Banana 1 barata / 2 pro)
+Pedido de Juan: poder elegir desde el arranque si el lote sale en la barata (Nano Banana 1) o la pro
+(Nano Banana 2), sin tener que ir imagen por imagen con el ✨ HD.
+- `disruptive_images.generar_ads_fullprompt(hd=False)`: pasa hd a generar_ad_fullprompt y marca
+  cada variante v["hd"]. El progreso dice qué modelo está usando.
+- `app.py`: /api/disruptive-images acepta `modelo` (rapida|pro) → hd → _run_disruptive_v2_job(hd);
+  guarda `_hd` en el ctx (persistido). regenerate-image y swap-concept reusan el modelo del lote
+  (v["hd"] o job["_hd"]) para no mezclar calidades sin querer.
+- UI: selector de radio "⚡ Nano Banana 1 (~$0.04) / ✨ Nano Banana 2 (~$0.13)" junto al botón
+  Generar. El botón ✨ HD por-imagen sigue existiendo (y ahora se marca solo "✅ Ya está en HD" si
+  el lote se generó en pro, porque v.hd viaja al front).
+Verificado: py_compile + node --check 14/14. AVISO Jack: disruptive_images (generar_ads_fullprompt
++hd), app.py (endpoint +modelo, _run_disruptive_v2_job +hd, regen/swap reusan _hd, persist _hd),
+index.html (selector disModelo + fd.append). Default sigue siendo la barata. Retro-compatible.

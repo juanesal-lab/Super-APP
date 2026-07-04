@@ -68,7 +68,7 @@ def _persist_disruptive(job_id: str):
     if not job:
         return
     data = {k: job.get(k) for k in ("status", "result", "created", "_image_path", "_precio",
-                                    "_ofertas", "_producto", "_page_text", "_tipo")}
+                                    "_ofertas", "_producto", "_page_text", "_tipo", "_hd")}
     try:
         d = os.path.join(WORK_DIR, job_id)
         os.makedirs(d, exist_ok=True)
@@ -1764,7 +1764,7 @@ def disruptive_angles(producto: str = Form(""), link: str = Form(""),
     return {"ctx_id": ctx_id, "conceptos": conceptos, "tipo": tipo}
 
 
-def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
+def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path, hd=False):
     job = JOBS[job_id]
 
     def progress(m, p):
@@ -1775,7 +1775,7 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
     # render se verifica y regenera dentro de generar_ads_fullprompt. (precio/ofertas ya van en el prompt.)
     try:
         r = generar_ads_fullprompt(conceptos, os.path.join(WORK_DIR, job_id), gemini_key=_load_env_key(),
-                                   product_image_path=image_path, progress=progress)
+                                   product_image_path=image_path, hd=hd, progress=progress)
         job["result"] = r
         job["status"] = "done" if r.get("ok") else "error"
         if not r.get("ok"):
@@ -1787,8 +1787,10 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
 
 
 @app.post("/api/disruptive-images")
-def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
-    """Paso 2: genera las imágenes (escena + texto compuesto) de los conceptos ELEGIDOS."""
+def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...),
+                      modelo: str = Form("rapida")):
+    """Paso 2: genera las imágenes de los conceptos ELEGIDOS.
+    modelo: 'rapida' = Nano Banana 1 (~$0.04) | 'pro' = Nano Banana 2 (~$0.13)."""
     import json as _json
     ctx = JOBS.get(ctx_id)
     if not ctx or not (ctx.get("result") or {}).get("variantes"):
@@ -1801,11 +1803,13 @@ def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
     elegidos = [dict(todos[i]) for i in idxs if 0 <= i < len(todos)]
     if not elegidos:
         raise HTTPException(400, "Elige al menos un concepto")
+    hd = str(modelo).lower() in ("pro", "hd", "2", "nano2", "nanobanana2")
+    ctx["_hd"] = hd          # el modelo elegido: regenerar/otro ángulo lo reusan
     ctx.update({"status": "running", "progress": 0, "message": "Iniciando...",
                 "result": {"variantes": elegidos}})
     threading.Thread(target=_run_disruptive_v2_job,
                      args=(ctx_id, elegidos, ctx.get("_precio", ""), ctx.get("_ofertas", []),
-                           ctx.get("_image_path")), daemon=True).start()
+                           ctx.get("_image_path"), hd), daemon=True).start()
     return {"job_id": ctx_id}
 
 
@@ -1819,17 +1823,19 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     if index < 0 or index >= len(variantes):
         raise HTTPException(400, "Índice fuera de rango")
     v = variantes[index]
+    hd = bool(v.get("hd") or job.get("_hd"))     # mismo modelo con el que se generó el lote
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     try:                              # full-prompt: ad completo + ortografía + producto integrado
         img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
                                     product_image_path=job.get("_image_path"),
-                                    integrar_producto=bool(job.get("_image_path")))
+                                    integrar_producto=bool(job.get("_image_path")), hd=hd)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo regenerar: {e}")
     if not img:
         raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
+    v["hd"] = hd
     _persist_disruptive(job_id)
     return {"imagen": img}
 
@@ -1952,17 +1958,19 @@ def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
     if not nuevos:
         raise HTTPException(502, "Claude no devolvió otro concepto (revisa la key de Claude)")
     nuevo = nuevos[0]
+    hd = bool(job.get("_hd"))     # mismo modelo del lote
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     try:
         img = generar_ad_fullprompt(nuevo, out, gemini_key=_load_env_key(),
                                     product_image_path=job.get("_image_path"),
-                                    integrar_producto=bool(job.get("_image_path")))
+                                    integrar_producto=bool(job.get("_image_path")), hd=hd)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo generar el nuevo ángulo: {e}")
     if not img:
         raise HTTPException(502, nuevo.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     nuevo["imagen"] = img
+    nuevo["hd"] = hd
     variantes[index] = nuevo   # reemplaza el concepto viejo por el nuevo
     _persist_disruptive(job_id)
     return {"variante": nuevo}

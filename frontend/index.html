@@ -1484,11 +1484,17 @@
 
   <div class="panel" id="p-disruptivo" style="display:none">
   <div class="autoHero">
-    <h2>🎨 <span>Ads de imagen disruptivos</span> — de cualquier producto</h2>
-    <p class="lead">Pega tu producto/link y la IA hace TODO: <b>Claude te da 10 conceptos disruptivos</b>, tú
-      eliges los que más te gusten, y <b>Nano Banana 2 (Google) dibuja el ad completo</b> — estilo
-      <b>video nativo</b> (no parece anuncio), fotorrealista y con el texto bien escrito. El producto lo
-      metes tú donde se vea bien.</p>
+    <h2>🎨 <span>Ads de imagen</span> — de cualquier producto</h2>
+    <p class="lead">Pega tu producto/link y la IA hace TODO: <b>Claude te da 10 conceptos</b>, tú
+      eliges los que más te gusten, y <b>Nano Banana 2 (Google) dibuja el ad completo</b>,
+      fotorrealista y con el texto bien escrito.</p>
+
+    <div class="disTipos">
+      <label class="disTipo sel"><input type="radio" name="disTipo" value="disruptivo" checked>
+        <b>💥 Disruptivo</b><span>Surreal, pattern-interrupt, "parece video nativo" (no parece anuncio)</span></label>
+      <label class="disTipo"><input type="radio" name="disTipo" value="advertorial">
+        <b>📰 Advertorial (noticia viral)</b><span>Foto lifestyle real + recuadro del producto + barra tipo "VIRAL". Necesita la foto de tu producto.</span></label>
+    </div>
 
     <textarea id="disProd" class="full" rows="2" placeholder="¿Qué es tu producto y qué dolor resuelve? Ej: MultiBalm, barra hidratante para el rostro (mujeres 40-60), glow y disimula ojeras."></textarea>
     <div class="prodGrid" style="margin-top:10px">
@@ -1522,6 +1528,13 @@
   <style>
     #disProd{font-size:14px;line-height:1.5;min-height:56px;resize:vertical}
     .disOfertas{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:12px;font-size:13px}
+    .disTipos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+    .disTipo{display:block;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;transition:.15s}
+    .disTipo input{display:none}
+    .disTipo b{display:block;font-size:14px;margin-bottom:3px}
+    .disTipo span{display:block;font-size:11.5px;color:var(--muted);line-height:1.35}
+    .disTipo.sel{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+    @media(max-width:640px){.disTipos{grid-template-columns:1fr}}
     .disOfertas label{display:flex;align-items:center;gap:5px;cursor:pointer}
     .disConceptos{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;margin-top:14px}
     .disConcepto{background:var(--card2);border:2px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:border-color .15s}
@@ -1557,6 +1570,14 @@
       const f=document.getElementById('disImg');
       f.addEventListener('change',e=>{ const x=e.target.files[0];
         document.getElementById('disImgName').textContent = x?'🖼️ '+x.name:'🖼️ Sube una foto de tu producto (opcional)'; });
+      // selector de tipo: marca visual + adapta el texto del botón y de la foto (advertorial la exige)
+      document.querySelectorAll('input[name="disTipo"]').forEach(r=>r.addEventListener('change',()=>{
+        document.querySelectorAll('.disTipo').forEach(l=>l.classList.toggle('sel', l.querySelector('input').checked));
+        const adv=document.querySelector('input[name="disTipo"]:checked').value==='advertorial';
+        document.getElementById('disGo').textContent = adv ? '🔍 Darme 10 advertorials (noticia viral)' : '🔍 Analizar y darme 10 conceptos';
+        const cur=document.getElementById('disImg').files[0];
+        if(!cur) document.getElementById('disImgName').textContent = adv ? '🖼️ Sube la foto de tu producto (OBLIGATORIA para el advertorial)' : '🖼️ Sube una foto de tu producto (opcional)';
+      }));
     })();
     function disOfertas(){ return [...document.querySelectorAll('.disOf:checked')].map(c=>c.value); }
     let disConceptos=[], disCacheBust=0;
@@ -1564,14 +1585,19 @@
       const prod=document.getElementById('disProd').value.trim(), link=document.getElementById('disLink').value.trim();
       const msg=document.getElementById('disMsg'), prog=document.getElementById('disProg');
       if(!prod && !link){ prog.classList.remove('hidden'); msg.textContent='Escribe tu producto o pega el link 👆'; return; }
+      const tipo=(document.querySelector('input[name="disTipo"]:checked')||{}).value||'disruptivo';
+      const img=document.getElementById('disImg').files[0];
+      if(tipo==='advertorial' && !img){ prog.classList.remove('hidden'); msg.textContent='📰 El advertorial necesita la FOTO de tu producto (se ve en la escena) 👇'; return; }
       const fd=new FormData();
       fd.append('producto',prod); fd.append('link',link);
       fd.append('precio', '');   // NUNCA se muestra precio (regla global del dueño)
       fd.append('ofertas',disOfertas().join(','));
-      const img=document.getElementById('disImg').files[0]; if(img) fd.append('product_image',img);
+      fd.append('tipo',tipo);
+      if(img) fd.append('product_image',img);
       document.getElementById('disGo').disabled=true;
       document.getElementById('disAngulos').innerHTML=''; document.getElementById('disResult').innerHTML='';
-      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='45%'; msg.textContent='🧠 Claude analiza y crea 10 conceptos disruptivos...';
+      prog.classList.remove('hidden'); document.getElementById('disBar').style.width='45%';
+      msg.textContent = tipo==='advertorial' ? '🧠 Claude crea 10 advertorials tipo noticia viral...' : '🧠 Claude analiza y crea 10 conceptos disruptivos...';
       try{
         const r=await fetch('/api/disruptive-angles',{method:'POST',body:fd}); const j=await r.json();
         document.getElementById('disGo').disabled=false;
@@ -1586,10 +1612,13 @@
         🎯 Elige los ángulos que quieras (o TODOS) — los que marques se generan:
         <button class="btn" style="padding:5px 12px;font-size:12.5px" onclick="disToggleAll()">✓ Seleccionar todas</button></div><div class="disConceptos">`;
       disConceptos.forEach((c,i)=>{
+        const adv=c.formato==='advertorial';
+        const etiqueta = adv ? (c.kicker||'VIRAL') : (c.mecanismo||c.formato||'');
+        const desc = adv ? (c.escena||'') : (c.concepto||'');
         h+=`<div class="disConcepto" data-i="${i}" onclick="this.classList.toggle('sel')">
-             <div class="cang">${i+1}. ${c.angulo||''} <span class="cmec">${c.formato||c.mecanismo||''}</span></div>
+             <div class="cang">${i+1}. ${c.angulo||''} <span class="cmec">${etiqueta}</span></div>
              <div class="ctit">"${c.titular||''}"</div>
-             <div class="ccon">${c.concepto||''}</div></div>`;
+             <div class="ccon">${desc}</div></div>`;
       });
       h+='</div><button class="autoBtn" style="margin-top:14px" onclick="disGenerate()">🎨 Generar imágenes de los elegidos</button>';
       box.innerHTML=h;
@@ -1630,18 +1659,19 @@
         const head=`<div class="disAng">${i+1}. ${v.angulo||''}</div><div class="disTit">"${v.titular||''}"</div>`;
         if(v.imagen){
           const u='/api/file?path='+enc(v.imagen);
+          const adv = v.formato==='advertorial';   // el producto YA va en la escena → sin botón de pegar
           const prodBtn = v.producto_integrado===false
             ? '⚠️ El producto no entró — reintentar'
             : (v.producto_integrado ? '🔁 Reubicar mi producto' : '➕ Poner mi producto');
           h+=`<div class="disCard"><img src="${u}${bust}" loading="lazy">
-               <div class="body">${head}<div class="disWhy">${v.concepto||''}</div></div>
+               <div class="body">${head}<div class="disWhy">${adv?(v.escena||''):(v.concepto||'')}</div></div>
                <div class="disActions">
                  <button class="disAct disRegen" onclick="disRegen(${i},this)">🔄 Regenerar</button>
                  <a class="disAct disDl" href="${u}" download="ad_${i+1}.png">⬇️ Descargar</a>
                  <button class="disAct disHD" style="grid-column:1/-1" onclick="disHD(${i},this)">${v.hd?'✅ Ya está en HD':'✨ Calidad HD (la que vayas a usar)'}</button>
                  <button class="disAct disSwap" style="grid-column:1/-1" onclick="disSwapConcept(${i},this)">🎲 Otro ángulo diferente</button>
                  <button class="disAct disEdit" style="grid-column:1/-1" onclick="disEditImg(${i},this)">✏️ Ajustar con instrucción</button>
-                 <button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">${prodBtn}</button>
+                 ${adv?'':`<button class="disAct disProd" style="grid-column:1/-1" onclick="disAddProd(${i},this)">${prodBtn}</button>`}
                </div></div>`;
         } else {
           h+=`<div class="disCard"><div class="body">${head}<div class="disWhy" style="color:var(--warn)">✗ No se generó la imagen</div></div>

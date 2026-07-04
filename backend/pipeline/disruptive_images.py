@@ -181,16 +181,108 @@ _CIERRE = (" Thick bold sans-serif fonts, high contrast, 1:1 perfectly SQUARE as
            "misspelled text, random logos, watermarks, nudity, low-resolution artifacts.")
 
 
+# ── ADVERTORIAL (formato NOTICIA VIRAL) — pedido de Juan 2026-07-04 ────────────────────────
+# Imagen que parece un ARTÍCULO/noticia viral: foto lifestyle real del producto EN USO arriba +
+# recuadro circular con el producto en mano + barra negra abajo con etiqueta tipo "VIRAL" y un
+# titular blanco en mayúsculas con UNA frase resaltada en amarillo entre comillas.
+_SISTEMA_ADV = """Eres DIRECTOR DE ARTE de ADVERTORIALS (publirreportajes) para dropshipping en \
+Colombia (pago contraentrega). Tu formato NO es un anuncio: es una imagen que PARECE una NOTICIA \
+VIRAL / artículo de revista digital, para que la gente baje la guardia y lea. El texto va \
+incrustado y bien escrito (el generador lo dibuja).
+
+⭐ EL MOLDE EXACTO (una imagen vertical 4:5 que parece captura de una nota viral):
+- ARRIBA (≈78% del alto): una FOTO LIFESTYLE fotorrealista y CREÍBLE — una persona REAL del \
+público objetivo USANDO/LLEVANDO el producto en un entorno cotidiano real (la entrada de su casa, \
+la calle, un parque, la cocina, la oficina), luz natural, look de foto de celular, NADA de estudio. \
+La persona se ve feliz/relajada/natural. El PRODUCTO se ve CLARO en uso.
+- RECUADRO CIRCULAR en una esquina superior (borde blanco grueso): un plano héroe del producto \
+sostenido en la mano (o primer plano limpio del producto). Es el clásico "inset" de las notas virales.
+- ABAJO (≈22%): una BARRA NEGRA sólida. Centrada, una etiquetita blanca (rectángulo o texto entre \
+líneas finas) con una palabra tipo "VIRAL" / "TENDENCIA" / "RECOMENDADO" en mayúsculas. Debajo, el \
+TITULAR en mayúsculas, sans-serif CONDENSADA y GRUESA, blanco, 2-3 líneas, con UNA frase resaltada \
+en AMARILLO y entre comillas simples (lo más emocional/coloquial).
+
+REGLA MADRE: debe parecer CONTENIDO EDITORIAL / NOTICIA, jamás un anuncio con banda de colores. El \
+titular es PERIODÍSTICO/CHISMOSO, no publicitario: "por qué todos están comprando…", "esto se volvió \
+viral y la gente no para de…", "lo que nadie te dijo sobre…", "dermatólogos recomiendan…".
+
+TITULARES (español colombiano, MAYÚSCULAS, gancho de nota viral). Cada uno con una frase 'destacado' \
+para pintar en amarillo entre comillas. Ej. (producto=tenis): titular "ESTOS TENIS SE VOLVIERON \
+VIRALES Y LA GENTE NO DEJA DE USARLOS POR LO 'CÓMODOS QUE SON'", destacado "CÓMODOS QUE SON".
+
+PROHIBIDO el PRECIO y cualquier cifra de dinero. Ofertas tipo 2x1 / envío gratis SÍ se pueden \
+mencionar como texto (no cifra). Cumplimiento Meta: nada de curas absolutas ni % médicos; \
+antes/después SOLO por lifestyle creíble, jamás clínico.
+
+Cada 'prompt' que entregues:
+- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza: "photorealistic vertical 4:5 image that looks \
+like a screenshot of a VIRAL NEWS ARTICLE (not an advertisement)". Describe la escena lifestyle real \
+con el producto EN USO + el recuadro circular con el producto en mano en la esquina superior + la \
+barra negra inferior con la etiqueta y el titular.
+- Di EXPLÍCITO qué texto va: la etiqueta (ej. "VIRAL"), el titular COMPLETO en español entre comillas, \
+y cuál frase va en AMARILLO. Textos LITERALES, cortos, bien escritos.
+- El producto se renderiza a partir de la foto de referencia del cliente (respeta forma/color/logo).
+- Termina SIEMPRE con: photorealistic, natural phone-camera lighting, believable real person, bottom \
+black bar with bold condensed uppercase white headline and one phrase in bright yellow, small "VIRAL" \
+style label, circular product inset with white border top corner, render all Spanish text crisply and \
+spelled EXACTLY. Avoid: extra fingers, deformed hands, garbled or misspelled text, studio look, \
+watermarks, nudity, low-resolution artifacts.
+
+Devuelve EXACTAMENTE {n} advertorials, TODOS distintos entre sí (ángulo, escena, persona, entorno, \
+titular)."""
+
+_TOOL_ADV = {
+    "name": "entregar_advertorials",
+    "description": "Entrega las variantes de imagen ADVERTORIAL (noticia viral).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "variantes": {
+                "type": "array",
+                "description": "Advertorials, cada uno con ángulo/escena/titular DISTINTO.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "angulo": {"type": "string", "description": "el ángulo/tema de la 'nota' (corto)"},
+                        "kicker": {"type": "string", "description": "etiqueta de la barra: VIRAL | TENDENCIA | RECOMENDADO | LO NUEVO"},
+                        "titular": {"type": "string", "description": "titular de la nota (español, MAYÚSCULAS, periodístico)"},
+                        "destacado": {"type": "string", "description": "la frase del titular que va en AMARILLO (entre comillas)"},
+                        "escena": {"type": "string", "description": "la foto lifestyle: quién, dónde, cómo usa el producto"},
+                        "por_que": {"type": "string", "description": "por qué frena el scroll y da credibilidad"},
+                        "prompt": {"type": "string", "description": "prompt de imagen en inglés (ver instrucciones)"},
+                    },
+                    "required": ["angulo", "kicker", "titular", "destacado", "escena", "prompt"],
+                },
+            }
+        },
+        "required": ["variantes"],
+    },
+}
+
+# Cierre de calidad del advertorial (4:5 vertical, no cuadrado).
+_CIERRE_ADV = (" Photorealistic vertical 4:5 aspect ratio, natural phone-camera lighting, believable "
+               "real everyday person and setting (NOT studio, NOT a polished ad). Bottom solid black "
+               "bar with a bold CONDENSED uppercase white headline (2-3 lines) and ONE phrase in bright "
+               "yellow inside single quotes; a small white 'VIRAL'-style label above it between thin "
+               "lines. A circular product inset with a thick white border in a top corner. Render ALL "
+               "Spanish text crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed "
+               "hands, garbled or misspelled text, studio look, random logos, watermarks, nudity, "
+               "low-resolution artifacts.")
+
+
 def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
                       ofertas: list[str] | None = None, precio: str = "",
                       mercado: str = "Colombia · español colombiano · pago contraentrega (COD)",
-                      evitar: list[str] | None = None, n: int = 10, plantillas_fijas: bool = True) -> list[dict]:
+                      evitar: list[str] | None = None, n: int = 10, plantillas_fijas: bool = True,
+                      tipo: str = "disruptivo") -> list[dict]:
     """Claude inventa N variantes full-prompt (concepto + copy + prompt rico). Devuelve [] si falla.
 
     `evitar`: titulares/ángulos YA mostrados que NO gustaron → Claude da cosas TOTALMENTE distintas.
-    `plantillas_fijas`: si True incluye las 2 plantillas ganadoras de primeras; si False, todo surreal."""
+    `plantillas_fijas`: si True incluye las 2 plantillas ganadoras de primeras; si False, todo surreal.
+    `tipo`: "disruptivo" (surreal, default) | "advertorial" (noticia viral con producto en uso)."""
     ofertas = [o for o in (ofertas or []) if o]
     evitar = [e for e in (evitar or []) if e and e.strip()]
+    adv = str(tipo).lower().startswith("advert")
     ctx = f"PRODUCTO: {producto}\nMERCADO: {mercado}\n"
     if page_text.strip():
         ctx += f"\nCONTEXTO DE LA PÁGINA DE VENTA (para entender dolor/beneficio real):\n{page_text[:2500]}\n"
@@ -209,24 +301,35 @@ def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
         ctx += ("\n🚫 YA SE MOSTRARON estos conceptos y NO gustaron. NO los repitas ni hagas variaciones de "
                 "ellos (ni el mismo dolor/escena con otras palabras). Dame ángulos, dolores, mecanismos y "
                 "escenas TOTALMENTE DIFERENTES a estos:\n" + "\n".join(f'- "{e}"' for e in evitar[:40]) + "\n")
-    if plantillas_fijas:
+    if adv:
+        pedido = (f"\nDame {n} ADVERTORIALS (noticia viral) para este producto, TODOS distintos entre "
+                  "sí (ángulo, escena, persona, entorno, titular). Español colombiano.")
+    elif plantillas_fijas:
         pedido = (f"\nInventa las {n} variantes: las 2 PRIMERAS son las plantillas FIJAS (no_compres, "
                   f"capturas) y de la 3 a la {n} surreales con los 6 motores, todas MUY distintas entre sí.")
     else:
         pedido = (f"\nEsta vez IGNORA la regla de las 2 plantillas fijas. Dame {n} conceptos TODOS surreales "
                   "y arriesgados, con mecanismos y escenas MUY distintos entre sí (y distintos a cualquiera "
                   "ya mostrado).")
+    sistema = (_SISTEMA_ADV.replace("{n}", str(n)) if adv else _SISTEMA)
+    tool = _TOOL_ADV if adv else _TOOL
+    tool_name = tool["name"]
     try:
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
-            model=_CLAUDE, max_tokens=16000, system=_SISTEMA,
-            tools=[_TOOL], tool_choice={"type": "tool", "name": "entregar_creativos"},
+            model=_CLAUDE, max_tokens=16000, system=sistema,
+            tools=[tool], tool_choice={"type": "tool", "name": tool_name},
             messages=[{"role": "user", "content": ctx + pedido}],
         )
         for block in resp.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == "entregar_creativos":
-                return list(block.input.get("variantes", []))
+            if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
+                variantes = list(block.input.get("variantes", []))
+                if adv:
+                    for v in variantes:      # marca el formato para la generación
+                        v["formato"] = "advertorial"
+                        v["apoyo"] = v.get("destacado", "")   # el destacado también se verifica
+                return variantes
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Conceptos (Claude) no disponibles: {e}")
     return []
@@ -418,6 +521,7 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
     prompt = variant.get("prompt", "")
     if not prompt:
         return None
+    es_adv = variant.get("formato") == "advertorial"
     textos = [variant.get("titular", ""), variant.get("apoyo", ""),
               variant.get("boton_cta", ""), variant.get("precio_cta", "")]
     errs: list = []
@@ -426,9 +530,12 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
         p = prompt if intento == 0 else (
             prompt + f" IMPORTANT (retry {intento}): make ABSOLUTELY every letter of the Spanish embedded "
             "text correct, complete and legible; do not misspell or repeat letters.")
-        # OJO: NO pasamos el producto como referencia -> el modelo NO lo dibuja; lo pegamos real después.
-        img = generar_imagen(p, gemini_key, out_path, product_image_path=None, errors=errs,
-                             model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT)
+        # ADVERTORIAL: el producto va EN la escena (persona usándolo + recuadro) → se pasa la foto
+        # real como referencia y se usa el cierre 4:5. DISRUPTIVO: escena SIN producto (se pega luego).
+        img = generar_imagen(p, gemini_key, out_path,
+                             product_image_path=product_image_path if es_adv else None,
+                             errors=errs, model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT,
+                             cierre=_CIERRE_ADV if es_adv else _CIERRE)
         if not img:
             if not got:
                 if errs:         # deja el motivo (tope de gasto, cuota, key...) para el UI
@@ -440,6 +547,9 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             break
     if not got:
         return None
+    if es_adv:
+        variant["producto_integrado"] = True     # el producto ya va renderizado en la escena
+        return out_path                           # advertorial es 4:5: NO se fuerza a cuadrado
     _a_cuadrado(out_path)
     if integrar_producto:            # 2ª pasada que integra el producto real en la escena
         res = _integrar_producto_ia(out_path, product_image_path, gemini_key,
@@ -506,24 +616,27 @@ def _error_amigable(msg: str) -> str:
 
 def generar_imagen(prompt: str, gemini_key: str, out_path: str,
                    product_image_path: str | None = None, tries: int = 4,
-                   errors: list | None = None, model: str | None = None) -> str | None:
+                   errors: list | None = None, model: str | None = None,
+                   cierre: str | None = None) -> str | None:
     """Nano Banana convierte el prompt en imagen (usa la foto del producto como referencia si hay).
 
     Reintenta ante errores transitorios de Google (500 INTERNAL / 503 / rate-limit) con backoff.
-    Si `errors` es una lista, guarda ahí el último error crudo (para dar mensaje amigable)."""
+    Si `errors` es una lista, guarda ahí el último error crudo (para dar mensaje amigable).
+    `cierre`: cola de calidad (por defecto la cuadrada 1:1; el advertorial pasa la 4:5)."""
     import time
     from google import genai
     from google.genai import types
+    cola = cierre if cierre is not None else _CIERRE
     client = genai.Client(api_key=gemini_key)
     if product_image_path and os.path.exists(product_image_path):
         with open(product_image_path, "rb") as f:
             pb = f.read()
         mime = "image/png" if product_image_path.lower().endswith(".png") else "image/jpeg"
         contents = ["Use the product shown in this reference image (respect its exact shape, color and "
-                    "label) placed into the following ad scene. " + prompt + _CIERRE,
+                    "label) placed into the following scene. " + prompt + cola,
                     types.Part.from_bytes(data=pb, mime_type=mime)]
     else:
-        contents = [prompt + _CIERRE]
+        contents = [prompt + cola]
 
     for attempt in range(tries):
         try:

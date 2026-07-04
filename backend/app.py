@@ -68,7 +68,7 @@ def _persist_disruptive(job_id: str):
     if not job:
         return
     data = {k: job.get(k) for k in ("status", "result", "created", "_image_path", "_precio",
-                                    "_ofertas", "_producto", "_page_text")}
+                                    "_ofertas", "_producto", "_page_text", "_tipo")}
     try:
         d = os.path.join(WORK_DIR, job_id)
         os.makedirs(d, exist_ok=True)
@@ -1726,11 +1726,15 @@ def last_project():
 @app.post("/api/disruptive-angles")
 def disruptive_angles(producto: str = Form(""), link: str = Form(""),
                             ofertas: str = Form(""), precio: str = Form(""),
+                            tipo: str = Form("disruptivo"),
                             product_image: UploadFile | None = File(None)):
-    """Paso 1: analiza producto/link → 6 conceptos disruptivos para que el usuario elija."""
+    """Paso 1: analiza producto/link → conceptos para elegir. tipo: disruptivo | advertorial."""
     precio = ""   # REGLA GLOBAL: NUNCA se muestra precio en ningún ad
+    tipo = "advertorial" if str(tipo).lower().startswith("advert") else "disruptivo"
     if not producto.strip() and not link.strip():
         raise HTTPException(400, "Escribe tu producto o pega el link de la página")
+    if tipo == "advertorial" and not (product_image and product_image.filename):
+        raise HTTPException(400, "El advertorial necesita la FOTO de tu producto (se ve en la escena).")
     ctx_id = uuid.uuid4().hex[:12]
     image_path = None
     if product_image and product_image.filename:
@@ -1747,14 +1751,17 @@ def disruptive_angles(producto: str = Form(""), link: str = Form(""),
         except Exception:  # noqa: BLE001
             page_text = ""
     conceptos = generar_conceptos(producto.strip() or link.strip(), _load_anthropic_key(),
-                                  page_text=page_text, ofertas=ofertas_list, precio=precio.strip())
+                                  page_text=page_text, ofertas=ofertas_list, precio=precio.strip(),
+                                  tipo=tipo)
     if not conceptos:
         raise HTTPException(502, "No se pudieron generar los conceptos (revisa la key de Claude)")
-    JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
+    JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos, "tipo": tipo},
+                    "created": time.time(),
                     "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list,
-                    "_producto": producto.strip() or link.strip(), "_page_text": page_text}
+                    "_producto": producto.strip() or link.strip(), "_page_text": page_text,
+                    "_tipo": tipo}
     _persist_disruptive(ctx_id)   # sobrevive reinicios del server
-    return {"ctx_id": ctx_id, "conceptos": conceptos}
+    return {"ctx_id": ctx_id, "conceptos": conceptos, "tipo": tipo}
 
 
 def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
@@ -1938,7 +1945,8 @@ def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
     evitar = [c.get("titular", "") for c in variantes if c.get("titular")]
     try:
         nuevos = generar_conceptos(producto, _load_anthropic_key(), page_text=job.get("_page_text", ""),
-                                   evitar=evitar, n=3, plantillas_fijas=False)
+                                   evitar=evitar, n=3, plantillas_fijas=False,
+                                   tipo=job.get("_tipo", "disruptivo"))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo pensar otro ángulo: {e}")
     if not nuevos:

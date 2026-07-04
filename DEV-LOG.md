@@ -2644,3 +2644,26 @@ Juan: al ver los videos, poder reemplazar el que no gusta SIN rehacer el lote, d
 - AVISO Jack: NUEVO regen.py; assemble (seed/hard_shift), guion_match (evitar), orchestrator
   (_regen en manifest + fix path_45/qa_aviso), app.py (_stash_regen/_load_regen/endpoint),
   index.html (fila regenerar + regenVersion + _job_id en renderResults). Retro-compatible.
+
+### 2026-07-04 · Claude (juanesal-lab) · 📰 NUEVO tipo de imagen: ADVERTORIAL (noticia viral)
+Pedido de Juan (con ejemplo): además del disruptivo, un formato tipo NOTICIA VIRAL — foto lifestyle
+real de una persona usando el producto + recuadro circular con el producto en mano + barra negra
+abajo con etiqueta "VIRAL" y titular en mayúsculas con una frase en amarillo entre comillas.
+- `disruptive_images.py`: NUEVO `_SISTEMA_ADV` + `_TOOL_ADV` (kicker/titular/destacado/escena) +
+  `_CIERRE_ADV` (4:5 vertical, no cuadrado). `generar_conceptos(tipo="advertorial")` usa ese
+  cerebro y marca cada variante `formato="advertorial"`. En `generar_ad_fullprompt`: el advertorial
+  se genera CON la foto real del producto como referencia (persona lo usa + recuadro), cierre 4:5,
+  NO se fuerza a cuadrado y NO hace la 2ª pasada de pegar producto (ya va renderizado).
+  `generar_imagen` acepta `cierre` (default 1:1; advertorial 4:5).
+- `app.py`: `/api/disruptive-angles` acepta `tipo` (exige foto para advertorial) → guarda `_tipo`
+  en el ctx (persistido) y lo respeta `disruptive-swap-concept`. Devuelve tipo al front.
+- UI: selector "💥 Disruptivo / 📰 Advertorial" arriba de la sección de imágenes; el advertorial
+  exige la foto (mensaje claro), adapta el texto del botón, muestra kicker+escena en los conceptos
+  y OCULTA el botón "poner/reubicar producto" (el producto ya va en la escena).
+- Probado REAL con Gemini: conceptos advertorial perfectos (titulares periodísticos con destacado
+  en amarillo) + imagen generada CLAVADA al ejemplo de Juan (foto lifestyle + recuadro del tenis
+  idéntico a la referencia + barra "VIRAL" + 'CÓMODOS QUE SON' en amarillo), ratio 0.81 (~4:5).
+  py_compile + node --check 14/14.
+- AVISO Jack: disruptive_images (advertorial: _SISTEMA_ADV/_TOOL_ADV/_CIERRE_ADV, generar_conceptos
+  +tipo, generar_ad_fullprompt rama es_adv, generar_imagen +cierre), app.py (endpoint +tipo,
+  swap respeta _tipo, persist _tipo), index.html (selector + render + botón condicional). Retro-compatible.

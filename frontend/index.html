@@ -590,8 +590,14 @@
       <input type="file" id="tkFoto" accept="image/*" multiple class="hidden">
       <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Fotos del producto (hasta 3, opcional)</b>
         <div class="s">frente / lado / empaque = búsqueda más precisa — o solo escribe el nombre abajo</div></label>
+      <textarea id="tkFotosUrl" class="full" rows="2" style="width:100%;margin:8px 0"
+        placeholder="🔗 …o pega URLs de imagen (una por línea, hasta 3)"></textarea>
+      <input type="file" id="tkVids" accept="video/*" multiple class="hidden">
+      <label class="autoDrop" for="tkVids"><b id="tkVidsName">🎥 Videos de tu producto (opcional)</b>
+        <div class="s">hasta 2 — saco fotos del video y la búsqueda sale más exacta</div></label>
       <div class="autoOpts">
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
+        <input type="text" id="tkLanding" class="full" placeholder="🔗 Link de tu landing (opcional — mejora los términos de búsqueda)">
         <select id="tkCount"><option value="15">15 por fuente</option><option value="20" selected>20 por fuente</option><option value="30">30 por fuente</option></select>
       </div>
       <button class="autoBtn" id="tkGo" onclick="tkRun()">🔍 Buscar creativos</button>
@@ -604,13 +610,24 @@
           window._tkFotos=fs; window._tkFoto=fs[0]||null;   // _tkFoto se conserva por compatibilidad
           document.getElementById('tkFotoName').textContent =
             fs.length>1?('📸 '+fs.length+' fotos'):(fs[0]?('📸 '+fs[0].name):'📸 Fotos del producto (hasta 3, opcional)'); }); })();
+      (function(){ const el=document.getElementById('tkVids');
+        el.addEventListener('change',e=>{ const vs=[...e.target.files].slice(0,2);
+          window._tkVids=vs;
+          document.getElementById('tkVidsName').textContent =
+            vs.length>1?('🎥 '+vs.length+' videos'):(vs[0]?('🎥 '+vs[0].name):'🎥 Videos de tu producto (opcional)'); }); })();
       function tkEsc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
       async function tkRun(){
         const nombre=document.getElementById('tkNombre').value.trim();
         const fs=window._tkFotos||(window._tkFoto?[window._tkFoto]:[]);
-        if(!nombre && !fs.length){ alert('Escribe el nombre o sube una foto'); return; }
+        const vs=window._tkVids||[];
+        const fu=document.getElementById('tkFotosUrl').value.trim();
+        if(!nombre && !fs.length && !vs.length && !fu){ alert('Escribe el nombre o sube una foto o un video'); return; }
         const fd=new FormData();
         fs.slice(0,3).forEach(f=>fd.append('fotos',f));   // hasta 3 fotos del MISMO producto
+        if(fu) fd.append('fotos_url',fu);                 // URLs de imagen pegadas (una por línea)
+        vs.slice(0,2).forEach(v=>fd.append('videos_ref',v));   // hasta 2 videos → frames como fotos extra
+        const landing=document.getElementById('tkLanding').value.trim();
+        if(landing) fd.append('landing',landing);         // página de venta → mejores términos
         const cnt=document.getElementById('tkCount').value;
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
         document.getElementById('tkGo').disabled=true;

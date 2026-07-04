@@ -145,19 +145,23 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
                      gemini_key: str | None = None, foreplay_key: str | None = None,
                      anthropic_key: str | None = None, count: int = 20,
                      fp_count: int = 20, fp_verify_max: int = _FP_VERIFY_MAX,
-                     image_paths: list[str] | None = None) -> dict:
+                     image_paths: list[str] | None = None,
+                     landing_text: str = "") -> dict:
     """Foto + nombre → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
 
-    `image_paths` (opcional): hasta 3 fotos del MISMO producto (frente/lado/empaque) → ficha más
-    completa; los jueces (TikTok y Foreplay) usan las 2 primeras como referencia.
+    `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
+    FRAMES de un video suyo — fotos primero) → ficha más completa; los jueces (TikTok y Foreplay)
+    usan las 2 primeras como referencia.
+    `landing_text` (opcional): texto de la página de venta → contexto para la ficha y los términos
+    (va dentro de la MISMA llamada de analizar_foto: cero llamadas extra).
     Devuelve {ok, keywords, desc, tiktok:{...igual que /api/tiktok-search...},
               foreplay:{ok, ads, n_confirmados, verificado, terminos, error?}}."""
     nombre = (nombre or "").strip()
     ref_bytes = None
-    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:3]
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:4]
     if paths:
         info = analizar_foto(paths[0], nombre, gemini_key,     # 1 sola llamada para AMBAS fuentes
-                             image_paths=paths)
+                             image_paths=paths, landing_text=landing_text)
         refs = []
         for p in paths[:2]:            # jueces: máximo 2 fotos de referencia (tope de costo)
             try:

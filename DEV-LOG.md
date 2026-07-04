@@ -2361,3 +2361,41 @@ Dos quejas de Juan:
 Verificado: py_compile OK, node --check 14/14 bloques OK. AVISO Jack: renderFiles cambió (filas con
 <img data-th>), bind() de Clonar tiene 2 líneas nuevas, helpers globales antes de addFiles. Nada
 de backend salvo scripts.py (prompt).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🎥 Buscar creativos ahora acepta VIDEOS del producto + 🔗 link de la landing
+Pedido de Jack ("que sean exactos los videos"): además de fotos y nombre, la búsqueda acepta:
+1. VIDEOS DE REFERENCIA: `videos_ref` (máx 2, tope 100MB c/u) en /api/tiktok-search y
+   /api/creative-search. app.py ganó _frames_de_videos: ffmpeg saca 2 frames nítidos por video
+   (25% y 60% de la duración, lado máx 1024) y entran como FOTOS de referencia extra a
+   analizar_foto (tope total 4 imágenes, fotos primero, frames después). CERO llamadas de IA
+   extra: los frames van dentro de la ÚNICA llamada de analizar_foto; los jueces siguen usando
+   máx las 2 primeras referencias.
+2. LANDING: `landing` (Form) en ambos endpoints → _texto_landing reusa hook_gen.fetch_page_text
+   (max 2500 chars) y el texto entra como contexto a analizar_foto (nombre exacto, beneficios,
+   sinónimos). Con guard: si la página describe OTRO producto distinto al de las imágenes, Gemini
+   la ignora (probado adrede con una landing equivocada: los términos NO se contaminaron).
+   Si la página no carga → "" y la búsqueda sigue normal.
+3. FOTOS POR URL: `fotos_url` (Form, una URL por línea, máx 3 combinadas con las subidas) en
+   ambos endpoints → _fotos_desde_urls las descarga (valida imagen por content-type/magic bytes,
+   tope 15MB, timeout 20s; la que falle se ignora) y entran al MISMO flujo que las fotos subidas.
+4. UI p-buscar: drop "🎥 Videos de tu producto (opcional)" (hasta 2) + textarea "🔗 …o pega URLs
+   de imagen" + campo "🔗 Link de tu landing (opcional)" → van en el FormData. Ahora también se
+   puede buscar SOLO con un video o SOLO con una URL de imagen.
+Firmas viejas intactas (params nuevos todos opcionales): analizar_foto(landing_text=""),
+buscar(landing_text=""), buscar_creativos(landing_text=""); tope de paths subió de 3 a 4.
+PRUEBA REAL (2 smokes en :8421, apagado al final; py_compile OK app/tiktok_search/creative_search
++ node --check 14/14 bloques):
+- /api/creative-search con foto repelente + 1 mp4 de 30s + landing equivocada de bee venom a
+  propósito: HTTP 200 en 2m07s; la ficha agarró rasgos que SOLO salen en el video ("texto 'Pest
+  (((Repeller)))' rojo", "punto plateado abajo" — la foto de landing no los muestra); términos
+  correctos ES+EN (repelente/pest, cero bee venom → el guard anti-landing-equivocada funcionó);
+  TikTok 6/6 confirmados (US/SG/GB, sin CO) + Foreplay 5/5.
+- /api/tiktok-search SOLO con fotos_url (una portada pública del repelente): 5/5 confirmados en
+  1m32s, keywords "repelente ultrasonico plagas", sin CO; el helper rechazó a propósito una URL
+  de página HTML y un texto suelto.
+AVISO Juan: _guardar_fotos_busqueda quedó igual; lo nuevo es _frames_de_videos + _fotos_desde_urls
++ _texto_landing en app.py. En tiktok_search/creative_search solo cambió el cap de imágenes (3→4)
+y el param opcional landing_text — tus llamadas viejas siguen idénticas. No toqué
+offer_banner/auto_studio. OJO: tu server :8420 quedó SIN reiniciar (tienes trabajo sin commitear
+en la carpeta principal — app.py/orchestrator/tiktok_search/index.html — y no quise pisarlo ni
+matarte el server con código a medias); cuando cierres, haz pull y ./run.sh para que esto quede vivo.

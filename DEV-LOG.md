@@ -2031,3 +2031,20 @@ de turno y la tipografía con la vibra de cada marca. Las secciones de adentro q
 - AVISO Juan: NO toqué tus hCards/hSteps/homeEnter ni el resto del home — solo el escenario (#hStage),
   el <script> del 3D (reemplazado) y tintes a var() en tu CSS del home. Si quieres cambiar los carros
   o los colores: array GARAJE en el script "EL GARAJE DE JACK" + assets/garage/.
+
+### 2026-07-03 · Claude (jackingshop1-cell) · 🎥 Garaje del home ahora en VIDEO 3D (Veo): la cámara ORBITA cada carro
+Jack: "necesito que sea 3d y como animado". Hecho con la key de Gemini que ya tenemos (Veo 3.1 fast,
+image-to-video desde las fotos de estudio del garaje):
+- 4 videos de 8s (cámara orbitando el carro quieto en el estudio negro, estilo comercial de lujo) →
+  post en ffmpeg: sin audio, LOOP PING-PONG (ida+vuelta = jamás se nota el corte), 1280w crf26 →
+  assets/garage/*_orbit.mp4 (1-2MB c/u). Las .webp quedan de POSTER/fallback.
+- frontend: los <img> del showroom ahora son <video autoplay muted loop playsinline> con crossfade;
+  `cargar()` espera loadeddata con red de seguridad de 1.6s (nunca se cuelga esperando);
+  prefers-reduced-motion → se queda con la FOTO (no carga video). Preload por fetch.
+- Verificado visual en :8421: dos capturas separadas 3s muestran ángulos DISTINTOS del Porsche
+  (el orbital corre de verdad). JS 13/13 node --check.
+- Costo: 4 llamadas a Veo 3.1 fast (8s c/u) a la cuenta de Gemini de Jack — autorizado por él
+  (primero intentamos Higgsfield, prefirió Veo por usar el API que ya tenemos; en Higgsfield solo
+  se subieron fotos, 0 créditos gastados).
+- AVISO Juan: solo cambió el bloque del garaje en index.html + 4 mp4 nuevos en assets/garage.
+  El array GARAJE ahora lleva `vid:` + `src:` (poster) por carro.

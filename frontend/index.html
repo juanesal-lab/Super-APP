@@ -227,8 +227,8 @@
   <div id="hStage">
     <div id="hHalo"></div>
     <div id="hCarFloat">
-      <img id="hCarA" class="hCarImg" alt="">
-      <img id="hCarB" class="hCarImg" alt="">
+      <video id="hCarA" class="hCarImg" autoplay muted loop playsinline preload="auto"></video>
+      <video id="hCarB" class="hCarImg" autoplay muted loop playsinline preload="none"></video>
     </div>
     <div id="hCarName"><span class="eyebrow">Tu garaje</span><b id="hCarMarca"></b><span id="hCarModelo"></span></div>
   </div>
@@ -331,16 +331,16 @@
 (function(){
   // Cada carro: imagen de estudio (assets/garage), paleta y tipografía con la vibra de la marca
   const GARAJE=[
-    {src:'/assets/garage/porsche.webp', marca:'Porsche', modelo:'911 GT3 RS',
+    {vid:'/assets/garage/porsche_orbit.mp4', src:'/assets/garage/porsche.webp', marca:'Porsche', modelo:'911 GT3 RS',
      acc:'#e63329', acc2:'#f2efe9',
      font:"'Helvetica Neue',Helvetica,Arial,sans-serif", fw:800, fst:'normal', ls:'-.02em', up:false},
-    {src:'/assets/garage/ducati.webp', marca:'Ducati', modelo:'Panigale V4',
+    {vid:'/assets/garage/ducati_orbit.mp4', src:'/assets/garage/ducati.webp', marca:'Ducati', modelo:'Panigale V4',
      acc:'#d0021b', acc2:'#f0ede8',
      font:"'Avenir Next','Helvetica Neue',Helvetica,sans-serif", fw:900, fst:'italic', ls:'.01em', up:false},
-    {src:'/assets/garage/lambo.webp', marca:'Lamborghini', modelo:'Huracán STO',
+    {vid:'/assets/garage/lambo_orbit.mp4', src:'/assets/garage/lambo.webp', marca:'Lamborghini', modelo:'Huracán STO',
      acc:'#aab1bc', acc2:'#eceef2',
      font:"'Futura','Avenir Next Condensed','Arial Narrow',sans-serif", fw:700, fst:'normal', ls:'.07em', up:true},
-    {src:'/assets/garage/rolls.webp', marca:'Rolls-Royce', modelo:'Phantom Drophead',
+    {vid:'/assets/garage/rolls_orbit.mp4', src:'/assets/garage/rolls.webp', marca:'Rolls-Royce', modelo:'Phantom Drophead',
      acc:'#d6cfc0', acc2:'#f4f0e7',
      font:"'Didot','Bodoni 72',Georgia,serif", fw:500, fst:'normal', ls:'.05em', up:false},
   ];
@@ -349,7 +349,7 @@
   const h2=document.getElementById('hGreetTxt');
   const marcaEl=document.getElementById('hCarMarca'), modeloEl=document.getElementById('hCarModelo');
   if(!(home&&stage&&A&&B)) return;
-  GARAJE.forEach(c=>{ const i=new Image(); i.src=c.src; });   // precarga: cambios sin parpadeo
+  GARAJE.forEach(c=>{ const i=new Image(); i.src=c.src; fetch(c.vid).catch(()=>{}); });   // precarga foto + video: cambios sin parpadeo
 
   function vestir(c){
     home.style.setProperty('--hacc', c.acc);
@@ -364,17 +364,27 @@
     if(modeloEl) modeloEl.textContent=c.modelo;
   }
 
+  const quietito=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function cargar(el, c){                     // video orbital; si el usuario pide quietud, solo la foto
+    el.poster=c.src;
+    if(quietito){ el.removeAttribute('src'); el.load(); return Promise.resolve(); }
+    return new Promise(res=>{
+      let ya=false; const listo=()=>{ if(ya) return; ya=true; el.play().catch(()=>{}); res(); };
+      el.addEventListener('loadeddata', listo, {once:true});
+      setTimeout(listo, 1600);                // red de seguridad: nunca se queda esperando
+      el.src=c.vid; el.load();
+    });
+  }
   let gi=0, imgs=[A,B], cur=0, girando=false;
-  A.src=GARAJE[0].src; A.classList.add('on'); vestir(GARAJE[0]);
+  cargar(A, GARAJE[0]); A.classList.add('on'); vestir(GARAJE[0]);
   function girar(){
-    if(girando) return;                       // atómico: imagen y tema SIEMPRE del mismo carro
+    if(girando) return;                       // atómico: video y tema SIEMPRE del mismo carro
     girando=true;
     gi=(gi+1)%GARAJE.length;
     const c=GARAJE[gi], show=imgs[1-cur], hide=imgs[cur];
-    show.src=c.src;
-    (show.decode ? show.decode().catch(()=>{}) : Promise.resolve()).then(()=>{
+    cargar(show, c).then(()=>{
       show.classList.add('on'); hide.classList.remove('on'); cur=1-cur; vestir(c);
-      setTimeout(()=>{ girando=false; }, 250);
+      setTimeout(()=>{ girando=false; hide.pause&&hide.pause(); }, 1300);
     });
   }
   const quieto=matchMedia('(prefers-reduced-motion: reduce)').matches;

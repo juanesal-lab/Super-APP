@@ -106,13 +106,20 @@ def _norm_ad(a: dict) -> dict:
 def buscar_ads(query: str = "", *, api_key: str, live: bool | None = None,
                languages: str = "", niches: str = "", video_only: bool = True,
                running_min_days: int | None = None, video_max_seconds: int | None = None,
-               cursor: str = "") -> dict:
-    """Busca ads en /api/discovery/ads. Devuelve {ok, ads:[...], cursor, error}."""
+               cursor: str = "", limit: int | None = None, order: str = "") -> dict:
+    """Busca ads en /api/discovery/ads. Devuelve {ok, ads:[...], cursor, error}.
+
+    `limit`: tamaño de página (el default del API es ~10; acepta hasta 100 — clave para no
+    quedarse corto). `order`: "newest" | "oldest" | "longest_running" (ganadores primero)."""
     if not api_key:
         return {"ok": False, "error": "Falta la API key de Foreplay", "ads": []}
     params: dict = {}
     if query.strip():
         params["query"] = query.strip()
+    if limit:
+        params["limit"] = max(1, min(int(limit), 100))
+    if order.strip():
+        params["order"] = order.strip()
     if live is not None:
         params["live"] = "true" if live else "false"
     if languages.strip():

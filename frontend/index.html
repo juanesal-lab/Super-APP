@@ -1901,62 +1901,98 @@
   </div><!-- /p-descargar -->
 
   <div class="panel" id="p-foreplay" style="display:none">
-  <div class="autoHero">
-    <h2>🔥 <span>Foreplay</span> — ads ganadores probados</h2>
-    <p class="lead">Busca en la biblioteca de <b>+100M ads reales</b> de Meta/TikTok. Filtra por idioma y
-      cuánto llevan corriendo (más días = más ganador), elige los que te gusten y <b>córtalos en clips</b>
-      en una pasada. <span id="fpCredits" class="fpCred"></span></p>
-
+  <!-- 🔥 FOREPLAY estilo Discovery: masonry + scroll infinito + modo PRODUCTO EXACTO por foto -->
+  <div class="fpTop">
+    <div class="fpTitleRow">
+      <div class="fpTitle">🔥 <b>Foreplay</b> <span class="fpSub">Discovery</span></div>
+      <span id="fpCredits" class="fpCred"></span>
+    </div>
     <div class="fpSearchRow">
-      <input type="text" id="fpQuery" class="full" placeholder="¿Qué buscas? (ej. crema arrugas, drenaje linfático, gel reductor)" onkeydown="if(event.key==='Enter')fpSearch()">
+      <input type="text" id="fpQuery" class="full" placeholder="Busca palabras CORTAS (dan más resultados): faja · toallas tela · gel reductor…" onkeydown="if(event.key==='Enter')fpSearch()">
       <button class="autoBtn" id="fpGo" style="margin:0;width:auto;white-space:nowrap" onclick="fpSearch()">🔎 Buscar</button>
     </div>
+
+    <input type="file" id="fpFoto" accept="image/*" class="hidden">
+    <label class="fpPhotoDrop" for="fpFoto">
+      <b id="fpFotoTxt">📸 PRODUCTO EXACTO — sube la foto de tu producto y te traigo TODOS sus creativos</b>
+      <span class="s">la IA saca todos los términos de búsqueda (ES+EN), pide páginas completas y CONFIRMA con visión que sea el mismo producto</span>
+    </label>
+
     <div class="fpFilters">
-      <select id="fpLang"><option value="spanish">🇪🇸 Español</option><option value="">🌐 Cualquier idioma</option><option value="english">🇬🇧 Inglés</option><option value="portuguese">🇧🇷 Portugués</option></select>
-      <label><input type="checkbox" id="fpLive" checked> Solo activos ahora</label>
+      <select id="fpLang" title="Idioma de los ads">
+        <option value="">🌐 Cualquier idioma</option>
+        <option value="spanish">🇪🇸 Español</option>
+        <option value="english">🇬🇧 Inglés</option>
+        <option value="portuguese">🇧🇷 Portugués</option>
+      </select>
+      <select id="fpOrder" title="Orden de los resultados">
+        <option value="longest_running">🔥 Más días corriendo (ganadores)</option>
+        <option value="newest">🆕 Más nuevos</option>
+        <option value="oldest">📜 Más viejos</option>
+      </select>
+      <label><input type="checkbox" id="fpLive"> Solo activos ahora</label>
       <label><input type="checkbox" id="fpVid" checked> Solo con video</label>
-      <label>Mín. días corriendo <input type="number" id="fpDays" min="0" value="0" style="width:60px"></label>
+      <label>Mín. días <input type="number" id="fpDays" min="0" value="0" style="width:56px"></label>
       <span id="fpSearchMsg" class="fpCred" style="color:var(--muted);font-weight:500"></span>
     </div>
-
-    <div id="fpActions" class="fpActions hidden">
-      <span id="fpSelCount" class="fpCred"></span>
-      <select id="fpAspect"><option value="1:1">1:1 cuadrado</option><option value="9:16">9:16 vertical</option><option value="4:5">4:5</option></select>
-      <button class="autoBtn" style="margin:0;width:auto" onclick="fpCut()">✂️ Cortar seleccionados en clips</button>
-    </div>
-
-    <div class="autoProg hidden" id="fpProg">
-      <div class="autoBarWrap"><div class="autoBar" id="fpBar"></div></div>
-      <div class="autoMsg" id="fpMsg">Iniciando…</div>
-    </div>
-
-    <div id="fpResults"></div>
-    <div id="fpClipsResult" style="margin-top:16px"></div>
   </div>
 
+  <div id="fpActions" class="fpActions hidden">
+    <span id="fpSelCount" class="fpCred"></span>
+    <select id="fpAspect"><option value="1:1">1:1 cuadrado</option><option value="9:16">9:16 vertical</option><option value="4:5">4:5</option></select>
+    <button class="autoBtn" style="margin:0;width:auto" onclick="fpCut()">✂️ Cortar seleccionados en clips</button>
+  </div>
+
+  <div class="autoProg hidden" id="fpProg">
+    <div class="autoBarWrap"><div class="autoBar" id="fpBar"></div></div>
+    <div class="autoMsg" id="fpMsg">Iniciando…</div>
+  </div>
+
+  <div id="fpMeta" class="fpMeta"></div>
+  <div id="fpResults" class="fpMasonry"></div>
+  <div id="fpSentinel" style="height:1px"></div>
+  <div id="fpClipsResult" style="margin-top:16px"></div>
+
   <style>
-    .fpSearchRow{display:flex;gap:10px;margin:4px 0 10px}
-    .fpFilters{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:13px;color:var(--muted)}
+    .fpTop{background:linear-gradient(160deg,#16141a,#1b1712);border:1px solid var(--line);
+      border-radius:18px;padding:18px 18px 14px;margin-bottom:14px}
+    .fpTitleRow{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .fpTitle{font-size:19px;font-weight:800}
+    .fpTitle .fpSub{color:var(--muted);font-weight:600;font-size:13px;letter-spacing:.18em;text-transform:uppercase;margin-left:6px}
+    .fpSearchRow{display:flex;gap:10px;margin:0 0 10px}
+    .fpPhotoDrop{display:block;border:2px dashed rgba(212,175,55,.45);border-radius:12px;padding:13px 16px;
+      cursor:pointer;transition:.2s;background:rgba(212,175,55,.05);margin-bottom:12px}
+    .fpPhotoDrop:hover{border-color:var(--accent);background:rgba(212,175,55,.1)}
+    .fpPhotoDrop b{font-size:13.5px}
+    .fpPhotoDrop .s{display:block;color:var(--muted);font-size:11.5px;margin-top:3px}
+    .fpFilters{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
     .fpFilters select,.fpFilters input[type=number]{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:13px}
     .fpFilters label{display:flex;align-items:center;gap:6px}
     .fpCred{color:var(--accent2);font-weight:700}
-    .fpActions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 0;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:12px}
+    .fpMeta{color:var(--muted);font-size:13px;font-weight:600;margin:2px 2px 10px}
+    .fpMeta b{color:var(--txt)} .fpMeta .ok{color:#4ade80}
+    .fpActions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:12px 14px;background:var(--card2);border:1px solid var(--accent);border-radius:12px;position:sticky;top:8px;z-index:5}
     .fpActions.hidden{display:none}
-    .fpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:8px}
-    .fpCard{background:var(--card2);border:2px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;transition:.15s;display:flex;flex-direction:column}
-    .fpCard:hover{border-color:var(--accent2)}
+    /* masonry real (columnas) como el Discovery de Foreplay */
+    .fpMasonry{columns:5 210px;column-gap:13px}
+    .fpCard{break-inside:avoid;margin:0 0 13px;background:#17151b;border:2px solid #262129;border-radius:14px;
+      overflow:hidden;cursor:pointer;transition:transform .18s, border-color .18s, box-shadow .18s;display:block}
+    .fpCard:hover{border-color:var(--accent2);transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.45)}
     .fpCard.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
-    .fpThumbWrap{position:relative;aspect-ratio:1/1;background:#000}
-    .fpThumb{width:100%;height:100%;object-fit:cover;display:block}
-    .fpBadge{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px}
-    .fpBadge.win{background:var(--accent);color:var(--ink)}
+    .fpThumbWrap{position:relative;background:#000;min-height:90px}
+    .fpThumb{width:100%;height:auto;display:block}
+    .fpBadge{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.75);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px}
+    .fpBadge.win{background:#22c55e;color:#03140a}
+    .fpVerif{position:absolute;left:8px;top:8px;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px;background:#22c55e;color:#03140a}
+    .fpVerif.no{background:rgba(0,0,0,.68);color:#fbbf24}
     .fpCheck{position:absolute;right:8px;top:8px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--ink);display:none;align-items:center;justify-content:center;font-weight:900;font-size:14px}
     .fpCard.sel .fpCheck{display:flex}
-    .fpBody{padding:10px;display:flex;flex-direction:column;flex:1}
-    .fpName{font-weight:800;font-size:13.5px;margin-bottom:4px}
-    .fpDesc{color:var(--muted);font-size:12px;line-height:1.4;max-height:51px;overflow:hidden;flex:1}
-    .fpLink{display:inline-block;margin-top:8px;color:var(--accent2);font-size:11.5px;font-weight:600;text-decoration:none}
-    .fpLink:hover{text-decoration:underline}
+    .fpBody{padding:10px 11px 11px}
+    .fpBrandRow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+    .fpAvatar{width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#111}
+    .fpName{font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .fpPlats{margin-left:auto;color:var(--muted);font-size:10.5px;letter-spacing:.06em;flex:none}
+    .fpDesc{color:var(--muted);font-size:11.5px;line-height:1.45;max-height:33px;overflow:hidden}
     .fpBtns{display:flex;gap:6px;margin-top:9px}
     .fpBtn{flex:1;text-align:center;background:var(--card);border:1px solid var(--line);color:var(--txt);
       border-radius:8px;padding:6px 4px;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:none;
@@ -1964,74 +2000,148 @@
     .fpBtn:hover{border-color:var(--accent);color:var(--accent)}
     .fpBtn.dob{background:var(--gold);color:var(--ink);border:0}
     .fpBtn.dob:hover{filter:brightness(1.08);color:var(--ink)}
+    .fpLink{display:inline-block;margin-top:7px;color:var(--accent2);font-size:11px;font-weight:600;text-decoration:none}
+    .fpLink:hover{text-decoration:underline}
+    .fpCargando{color:var(--muted);text-align:center;padding:18px;font-size:13px}
   </style>
 
   <script>
-    let _fpAds=[], _fpSel=new Set(), _fpCursor='';
+    let _fpAds=[], _fpSel=new Set(), _fpCursor='', _fpModo='buscar', _fpBusy=false, _fpConf=0, _fpCrudo=0;
+    const _fpAvatarCols=['#f2c14e','#7dd3fc','#f9a8d4','#86efac','#fca5a5','#c4b5fd','#fdba74'];
     function fpEsc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
     async function fpUsage(){
       try{ const j=await (await fetch('/api/foreplay-usage')).json();
         const el=document.getElementById('fpCredits');
-        if(j.ok){ const rem=(j.remaining!=null)?j.remaining.toLocaleString('es'):'?'; el.textContent='· '+rem+' créditos'; }
+        if(j.ok){ const rem=(j.remaining!=null)?j.remaining.toLocaleString('es'):'?'; el.textContent=rem+' créditos'; }
         else el.textContent='';
       }catch(e){}
     }
+    function fpMeta(extra){
+      const m=document.getElementById('fpMeta');
+      if(!_fpAds.length){ m.textContent=''; return; }
+      let h='<b>'+_fpAds.length+'</b> ads cargados';
+      if(_fpModo==='producto'){ h='<b>'+_fpCrudo+'</b> ads del producto · <span class="ok">✅ '+_fpConf+' confirmados</span> (primero) · el resto ⚠️ sin verificar'; }
+      else if(_fpCursor){ h+=' · desliza para cargar más'; }
+      m.innerHTML=h+(extra||'');
+    }
     async function fpSearch(more){
-      const q=document.getElementById('fpQuery').value.trim();
+      if(_fpBusy) return; _fpBusy=true;
+      if(!more){ _fpModo='buscar'; _fpAds=[]; _fpSel.clear(); _fpCursor=''; fpRender(); }
       const msg=document.getElementById('fpSearchMsg');
       const fd=new FormData();
-      fd.append('query',q);
+      fd.append('query',document.getElementById('fpQuery').value.trim());
       fd.append('languages',document.getElementById('fpLang').value);
       fd.append('live',document.getElementById('fpLive').checked);
       fd.append('video_only',document.getElementById('fpVid').checked);
       fd.append('running_min_days',document.getElementById('fpDays').value||0);
+      fd.append('limit','50');
+      fd.append('order',document.getElementById('fpOrder').value);
       if(more&&_fpCursor) fd.append('cursor',_fpCursor);
       document.getElementById('fpGo').disabled=true;
-      msg.textContent='Buscando ganadores…';
+      msg.textContent=more?'Cargando más…':'Buscando…';
       try{
         const r=await fetch('/api/foreplay-search',{method:'POST',body:fd});
         const j=await r.json();
         if(!r.ok){ msg.innerHTML='<span style="color:var(--warn)">'+fpEsc(j.detail||'Error')+'</span>'; return; }
-        if(!more){ _fpAds=[]; _fpSel.clear(); }
         _fpAds=_fpAds.concat(j.ads||[]);
         _fpCursor=j.cursor||'';
-        msg.textContent=_fpAds.length?(_fpAds.length+' ads encontrados'):'Sin resultados — prueba otra búsqueda';
+        msg.textContent=_fpAds.length?'':'Sin resultados — prueba términos más cortos';
         fpRender(); fpUsage();
       }catch(e){ msg.textContent='Error: '+e; }
-      finally{ document.getElementById('fpGo').disabled=false; }
+      finally{ document.getElementById('fpGo').disabled=false; _fpBusy=false; }
+    }
+    // 📸 PRODUCTO EXACTO: foto → job con progreso → todos los creativos confirmados primero
+    document.getElementById('fpFoto').addEventListener('change', async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      document.getElementById('fpFotoTxt').textContent='📸 '+f.name+' — buscando TODOS sus creativos…';
+      const fd=new FormData();
+      fd.append('foto',f);
+      fd.append('nombre',document.getElementById('fpQuery').value.trim());
+      fd.append('solo_activos',document.getElementById('fpLive').checked);
+      const prog=document.getElementById('fpProg');
+      prog.classList.remove('hidden');
+      document.getElementById('fpBar').style.width='0%';
+      document.getElementById('fpMsg').textContent='Subiendo la foto…';
+      try{
+        const r=await fetch('/api/foreplay-producto',{method:'POST',body:fd});
+        const j=await r.json();
+        if(!r.ok) throw (j.detail||'Error');
+        fpProductoPoll(j.job_id);
+      }catch(err){ document.getElementById('fpMsg').textContent='Error: '+err; }
+      finally{ e.target.value=''; }
+    });
+    async function fpProductoPoll(id){
+      let j;
+      try{ const r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>fpProductoPoll(id),2500); return; }
+      document.getElementById('fpBar').style.width=(j.progress||0)+'%';
+      document.getElementById('fpMsg').textContent=j.message||'';
+      if(j.status==='running'){ setTimeout(()=>fpProductoPoll(id),1300); return; }
+      document.getElementById('fpProg').classList.add('hidden');
+      document.getElementById('fpFotoTxt').textContent='📸 PRODUCTO EXACTO — sube la foto de tu producto y te traigo TODOS sus creativos';
+      if(j.status==='error'){ document.getElementById('fpSearchMsg').innerHTML='<span style="color:var(--warn)">'+fpEsc(j.message||'Error')+'</span>'; return; }
+      const res=j.result||{};
+      _fpModo='producto'; _fpAds=res.ads||[]; _fpSel.clear(); _fpCursor='';
+      _fpConf=res.n_confirmados||0; _fpCrudo=res.total_crudo||_fpAds.length;
+      document.getElementById('fpSearchMsg').textContent='términos: '+(res.terminos||[]).join(' · ');
+      fpRender(); fpUsage();
+    }
+    function fpCard(a,i){
+      const badge=a.dias>=1?`<span class="fpBadge win">● ${a.dias} día${a.dias!==1?'s':''}</span>`
+                           :(a.corriendo?`<span class="fpBadge">${fpEsc(a.corriendo)}</span>`:'');
+      const verif=_fpModo==='producto'?(a.verificado_producto?'<span class="fpVerif">✅ tu producto</span>'
+                                                            :'<span class="fpVerif no">⚠️ revisar</span>'):'';
+      const nombre=fpEsc(a.name)||'—';
+      const av=_fpAvatarCols[(nombre.charCodeAt(0)||65)%_fpAvatarCols.length];
+      const plats=(a.publisher_platform||[]).map(p=>p[0]).join(' ').toUpperCase();
+      return `<div class="fpCard${_fpSel.has(i)?' sel':''}" onclick="fpToggle(${i})">
+        <div class="fpThumbWrap">
+          <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
+          ${badge}${verif}<span class="fpCheck">✓</span></div>
+        <div class="fpBody">
+          <div class="fpBrandRow"><span class="fpAvatar" style="background:${av}">${nombre[0]?nombre[0].toUpperCase():'A'}</span>
+            <span class="fpName">${nombre}</span><span class="fpPlats">${fpEsc(plats)}</span></div>
+          <div class="fpDesc">${fpEsc((a.headline||a.description||'').slice(0,110))}</div>
+          <div class="fpBtns" onclick="event.stopPropagation()">
+            <button class="fpBtn" onclick="fpPlay(${i},this)">▶️ Ver</button>
+            <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar">⬇️</a>
+            <button class="fpBtn dob" onclick="fpDoblar(${i})">🎙️ Doblar</button>
+          </div>
+          <a class="fpLink" href="${fpEsc(a.foreplay_url)||'#'}" target="_blank" onclick="event.stopPropagation()">ver en Foreplay ↗</a>
+        </div></div>`;
     }
     function fpRender(){
       const box=document.getElementById('fpResults');
-      let h='<div class="fpGrid">';
-      _fpAds.forEach((a,i)=>{
-        const badge=a.dias>=1?`<span class="fpBadge win">🔥 ${fpEsc(a.corriendo)}</span>`
-                             :(a.corriendo?`<span class="fpBadge">${fpEsc(a.corriendo)}</span>`:'');
-        h+=`<div class="fpCard${_fpSel.has(i)?' sel':''}" onclick="fpToggle(${i})">
-          <div class="fpThumbWrap">
-            <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
-            ${badge}<span class="fpCheck">✓</span></div>
-          <div class="fpBody"><div class="fpName">${fpEsc(a.name)||'—'}</div>
-            <div class="fpDesc">${fpEsc((a.description||'').slice(0,120))}</div>
-            <div class="fpBtns" onclick="event.stopPropagation()">
-              <button class="fpBtn" onclick="fpPlay(${i},this)">▶️ Ver</button>
-              <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar">⬇️</a>
-              <button class="fpBtn dob" onclick="fpDoblar(${i})">🎙️ Doblar</button>
-            </div>
-            <a class="fpLink" href="${fpEsc(a.foreplay_url)||'#'}" target="_blank" onclick="event.stopPropagation()">ver en Foreplay ↗</a>
-          </div></div>`;
-      });
-      h+='</div>';
-      if(_fpCursor && _fpAds.length) h+='<button class="btn sec" style="margin:16px auto 0;display:block" onclick="fpSearch(true)">➕ Ver más resultados</button>';
+      // modo producto: DOS bloques (confirmados arriba, luego el resto) — la masonry por columnas
+      // mezclaría el orden y los ✅ quedarían regados
+      if(_fpModo==='producto'){
+        const conf=[], resto=[];
+        _fpAds.forEach((a,i)=>(a.verificado_producto?conf:resto).push([a,i]));
+        let h='';
+        if(conf.length){ h+='<div class="fpMeta" style="margin-top:2px">✅ <b>TU PRODUCTO confirmado</b> ('+conf.length+')</div><div class="fpMasonry">'+conf.map(([a,i])=>fpCard(a,i)).join('')+'</div>'; }
+        if(resto.length){ h+='<div class="fpMeta" style="margin-top:14px">⚠️ <b>Relacionados sin verificar</b> ('+resto.length+') — mismos términos, revísalos</div><div class="fpMasonry">'+resto.map(([a,i])=>fpCard(a,i)).join('')+'</div>'; }
+        box.classList.remove('fpMasonry');
+        box.innerHTML=h;
+        fpMeta(); fpActions();
+        return;
+      }
+      box.classList.add('fpMasonry');
+      let h='';
+      _fpAds.forEach((a,i)=>{ h+=fpCard(a,i); });
       box.innerHTML=h;
-      fpActions();
+      fpMeta(); fpActions();
     }
+    // scroll infinito: al acercarse al final carga la siguiente página sola
+    new IntersectionObserver(es=>{
+      if(es[0].isIntersecting && _fpModo==='buscar' && _fpCursor && _fpAds.length && !_fpBusy) fpSearch(true);
+    },{rootMargin:'900px'}).observe(document.getElementById('fpSentinel'));
     function fpToggle(i){ _fpSel.has(i)?_fpSel.delete(i):_fpSel.add(i); fpRender(); }
-    function fpPlay(i, btn){   // reproducir el video dentro de la card
+    function fpPlay(i, btn){
       const v=_fpAds[i].video; if(!v) return;
       const w=btn.closest('.fpCard').querySelector('.fpThumbWrap');
       w.innerHTML='<video class="fpThumb" src="/api/foreplay-video?url='+encodeURIComponent(v)+'" controls autoplay playsinline></video>';
     }
-    function fpDoblar(i){       // llevar este creativo a la sección Doblar, ya cargado
+    function fpDoblar(i){
       const a=_fpAds[i]; if(!a.video){ alert('Este ad no tiene video'); return; }
       window._dubForeplayUrl=a.video; window._dubForeplayName=a.name||'Creativo de Foreplay';
       window.dubFile=null;

@@ -274,3 +274,131 @@ def buscar_mas(fuente: str, nombre: str = "", terminos: list[str] | None = None,
     for c in items:
         c.pop("_cover_bytes", None)
     return {"ok": True, "items": items, "terminos": terms}
+
+
+# ══ 📚 FOREPLAY PROFUNDO: todos los creativos del PRODUCTO EXACTO (foto → términos → páginas) ═════
+
+def foreplay_producto(image_path: str | None = None, nombre: str = "",
+                      foreplay_key: str | None = None, gemini_key: str | None = None,
+                      *, max_terms: int = 8, paginas_por_termino: int = 2,
+                      verify_max: int = 60, max_ads: int = 400,
+                      solo_video: bool = True, solo_activos: bool = False,
+                      progress=None) -> dict:
+    """El modo "producto exacto" de la pestaña Foreplay: foto (y/o nombre) → Gemini saca TODOS los
+    términos de búsqueda del producto (ES+EN) → se busca CADA término en Foreplay con página GRANDE
+    (limit=100, orden = más días corriendo) y hasta `paginas_por_termino` páginas → dedup → el juez
+    visual confirma cuáles son el MISMO producto (tope `verify_max` thumbnails; el resto queda con
+    badge "sin verificar" — nunca se inventa). Devuelve {ok, ads, n_confirmados, terminos,
+    total_crudo, verificado, error?}. Costo: 1 Gemini (foto) + ~max_terms×páginas créditos Foreplay
+    + hasta verify_max llamadas flash (baratas)."""
+    def report(m, p):
+        if progress:
+            progress(m, p)
+
+    if not foreplay_key:
+        return {"ok": False, "error": "Falta la API key de Foreplay (ponla en 🔑 Claves)", "ads": []}
+
+    # 1) Foto → ficha + términos (una sola llamada). Sin foto → expandir el nombre (gratis).
+    ref_bytes = None
+    if image_path and os.path.exists(image_path):
+        report("📸 Analizando la foto del producto (ficha + términos)...", 8)
+        info = analizar_foto(image_path, nombre, gemini_key)
+        try:
+            with open(image_path, "rb") as f:
+                ref_bytes = f.read()
+        except Exception:  # noqa: BLE001
+            ref_bytes = None
+    else:
+        info = {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
+    terms = _terminos_foreplay(info, max_terms=max_terms)
+    if not terms:
+        return {"ok": False, "error": "Dame el nombre del producto o una foto", "ads": []}
+
+    # 2) Cada término con página grande + orden ganador + paginación (en paralelo por término)
+    report(f"📚 Buscando en Foreplay con {len(terms)} términos ({paginas_por_termino} páginas c/u)...", 22)
+    vivos = True if solo_activos else None
+
+    def _termino(t: str) -> list[dict]:
+        out, cursor = [], ""
+        for _ in range(max(1, paginas_por_termino)):
+            r = fp.buscar_ads(t, api_key=foreplay_key, live=vivos, languages="",
+                              video_only=solo_video, cursor=cursor,
+                              limit=100, order="longest_running")
+            if not r.get("ok"):
+                break
+            out += r.get("ads") or []
+            cursor = r.get("cursor") or ""
+            if not cursor:
+                break
+        return out
+
+    ads: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(terms))) as ex:
+        for lote in ex.map(_termino, terms):
+            for a in lote:
+                k = str(a.get("id") or a.get("video") or a.get("foreplay_url") or "")
+                if k and k not in ads:
+                    ads[k] = a
+    # Relevancia TEXTUAL primero (lección de la búsqueda TikTok): ordenar solo por días llena el
+    # tope del juez de mega-ads genéricos que matchean flojo (ej. media brands con 1000 días) y el
+    # producto REAL nunca se verifica. Palabras significativas de los términos → score por ad.
+    stop = {"para", "con", "anti", "las", "los", "del", "que", "the", "and", "for"}
+    palabras = {w for t in terms for w in t.lower().split() if len(w) >= 4 and w not in stop}
+
+    def _rel(a: dict) -> int:
+        txt = " ".join(str(a.get(k) or "") for k in ("name", "headline", "description")).lower()
+        return sum(1 for w in palabras if w in txt)
+
+    for a in ads.values():
+        a["_rel"] = _rel(a)
+    ad_list = sorted(ads.values(), key=lambda a: (a["_rel"], a.get("dias", 0)), reverse=True)
+    relevantes = [a for a in ad_list if a["_rel"] > 0]
+    if len(relevantes) >= 30:      # hay suficiente señal → el ruido de 0 relevancia se descarta
+        ad_list = relevantes
+    total_crudo = len(ad_list)
+    if not ad_list:
+        return {"ok": True, "ads": [], "n_confirmados": 0, "terminos": terms,
+                "total_crudo": 0, "verificado": False}
+
+    # 3) Juez visual sobre los thumbnails de los MÁS RELEVANTES — mismo juez de TikTok
+    verificado = bool(ref_bytes and gemini_key)
+    if verificado:
+        report(f"👁️ Verificando el producto en {min(verify_max, len(ad_list))} ads (los más relevantes)...", 55)
+        ref_desc = str(info.get("desc") or "")
+        pool, fuera = ad_list[:verify_max], ad_list[verify_max:]
+        confirmados, sin_verificar = [], []
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_verificar, {"cover": a.get("thumbnail") or "",
+                                           "title": (a.get("name") or a.get("headline") or "")[:120]},
+                              ref_bytes, ref_desc, gemini_key): a for a in pool}
+            hechos = 0
+            for fut in as_completed(futs):
+                v, a = fut.result(), futs[fut]
+                hechos += 1
+                if hechos % 10 == 0:
+                    report(f"👁️ Verificando... {hechos}/{len(pool)}", 55 + int(35 * hechos / len(pool)))
+                if v is None:
+                    a["verificado_producto"] = False
+                    sin_verificar.append(a)
+                elif v.get("match"):
+                    a["verificado_producto"] = True
+                    confirmados.append(a)
+                # match=False → otro producto: descartado
+        for a in fuera:
+            a["verificado_producto"] = False
+        confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
+        sin_verificar.sort(key=lambda a: (a.get("_rel", 0), a.get("dias", 0)), reverse=True)
+        fuera.sort(key=lambda a: (a.get("_rel", 0), a.get("dias", 0)), reverse=True)
+        ad_list = confirmados + sin_verificar + fuera
+    else:
+        for a in ad_list:
+            a["verificado_producto"] = False
+
+    ad_list = ad_list[:max_ads]
+    for a in ad_list:
+        a.pop("_cover_bytes", None)
+        a.pop("_rel", None)
+    n_conf = sum(1 for a in ad_list if a.get("verificado_producto"))
+    report("✅ Listo", 100)
+    return {"ok": True, "ads": ad_list, "n_confirmados": n_conf, "terminos": terms,
+            "total_crudo": total_crudo, "verificado": verificado}

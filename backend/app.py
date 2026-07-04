@@ -1187,11 +1187,58 @@ def foreplay_video(url: str, dl: int = 0):
         raise HTTPException(502, "Error cargando el video")
 
 
+def _run_foreplay_producto_job(job_id: str, image_path: str | None, nombre: str,
+                               solo_activos: bool):
+    from pipeline.creative_search import foreplay_producto
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        r = foreplay_producto(image_path=image_path, nombre=nombre,
+                              foreplay_key=_load_foreplay_key(), gemini_key=_load_env_key(),
+                              solo_activos=solo_activos, progress=progress)
+        job["result"] = r
+        job["status"] = "done" if r.get("ok") else "error"
+        if not r.get("ok"):
+            job["message"] = r.get("error", "Error")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/foreplay-producto")
+async def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(False),
+                                foto: UploadFile | None = File(None)):
+    """📸 Producto exacto: foto y/o nombre → TODOS los creativos de ESE producto en Foreplay
+    (todos los términos, páginas grandes, juez visual). Job en background con progreso."""
+    if not _load_foreplay_key():
+        raise HTTPException(400, "Falta la API key de Foreplay (ponla en 🔑 Claves)")
+    image_path = None
+    job_id = uuid.uuid4().hex[:12]
+    if foto is not None and foto.filename:
+        d = os.path.join(UPLOAD_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        image_path = os.path.join(d, "producto_" + os.path.basename(foto.filename))
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(foto.file, f)
+    if not (nombre.strip() or image_path):
+        raise HTTPException(400, "Dame el nombre del producto o su foto")
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_foreplay_producto_job,
+                     args=(job_id, image_path, nombre.strip(), bool(solo_activos)),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
 @app.post("/api/foreplay-search")
 def foreplay_search(query: str = Form(""), live: bool = Form(True),
                     languages: str = Form(""), niches: str = Form(""),
                     video_only: bool = Form(True), running_min_days: int = Form(0),
-                    video_max_seconds: int = Form(0), cursor: str = Form("")):
+                    video_max_seconds: int = Form(0), cursor: str = Form(""),
+                    limit: int = Form(0), order: str = Form("")):
     """Busca ads ganadores en Foreplay (+100M) por keyword/idioma/nicho."""
     key = _load_foreplay_key()
     if not key:
@@ -1199,7 +1246,9 @@ def foreplay_search(query: str = Form(""), live: bool = Form(True),
     r = fp.buscar_ads(query, api_key=key, live=live, languages=languages, niches=niches,
                       video_only=video_only,
                       running_min_days=running_min_days or None,
-                      video_max_seconds=video_max_seconds or None, cursor=cursor)
+                      video_max_seconds=video_max_seconds or None, cursor=cursor,
+                      limit=limit or None,
+                      order=order if order in ("newest", "oldest", "longest_running") else "")
     if not r.get("ok"):
         raise HTTPException(502, r.get("error", "No se pudo buscar en Foreplay"))
     return r

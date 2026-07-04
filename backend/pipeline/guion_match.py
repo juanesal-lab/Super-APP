@@ -246,7 +246,15 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
             tope_slot = 1.2 if (primera and len(orden) < 3) else (2.2 if ultima or fi >= n_frases - 2 else 1.7)
             i = _mejor(str(fr.get("fase", "producto")), tope_slot)
             if i is None:
-                break                        # pool agotado: el tpad sostiene el último frame
+                # pool agotado: REPETIR el clip menos usado (fuente distinta si se puede) es
+                # mucho mejor que dejar un hueco congelado (quejas de Jack: imagen pegada ~1s
+                # varias veces por video). La repetición queda lejos en el tiempo.
+                ult = selected[orden[-1]].source_index if orden else None
+                cands = sorted((j for j in fases_por_idx if selected[j].duration() >= _SLOT_MIN),
+                               key=lambda j: (usage.get(j, 0), selected[j].source_index == ult))
+                if not cands:
+                    break
+                i = cands[0]
             nat = selected[i].duration()
             dur = min(nat, tope_slot, restante)
             # que no quede una colita imposible de llenar (<_SLOT_MIN): mejor absorberla ya

@@ -1290,6 +1290,10 @@
     <details class="prodAdv">
       <summary>⚙️ Avanzado — ¿ya tienes los links de ganadores?</summary>
       <input type="text" id="prodUrl" class="full" style="margin:10px 0" placeholder="🔗 Link de tu producto (opcional — tu página o AliExpress)">
+      <input type="file" id="prodLocal" accept="video/*" multiple class="hidden">
+      <label class="autoDrop" for="prodLocal" style="margin:10px 0;padding:14px">
+        <b id="prodLocalName">📁 …o elige los videos ganadores de tu computador (Descargas)</b>
+        <div class="s">puedes combinar: archivos + links</div></label>
       <textarea id="prodUrls" class="full" rows="4" spellcheck="false"
         placeholder="Pega links de TikTok (uno por línea) y me salto la búsqueda automática:&#10;https://www.tiktok.com/@usuario/video/123..."></textarea>
     </details>
@@ -1326,13 +1330,20 @@
       });
     })();
     window._prodScout='';   // mensaje del scout, para no perderlo al pintar resultados
+    (function(){ const el=document.getElementById('prodLocal'); if(!el) return;
+      el.addEventListener('change',e=>{ window._prodLocal=Array.from(e.target.files);
+        document.getElementById('prodLocalName').textContent=e.target.files.length
+          ?('📁 '+e.target.files.length+' video(s) de tu computador')
+          :'📁 …o elige los videos ganadores de tu computador (Descargas)'; });
+    })();
     async function prodRun(){
       const nombre=document.getElementById('prodDesc').value.trim();
       const manual=document.getElementById('prodUrls').value.trim();
+      const locales=(window._prodLocal||[]).length;
       const img=document.getElementById('prodImg').files[0];
       const msg=document.getElementById('prodMsg'), prog=document.getElementById('prodProg');
       const meta=document.getElementById('prodMeta'), go=document.getElementById('prodGo');
-      if(!manual && !nombre && !img){
+      if(!manual && !locales && !nombre && !img){
         prog.classList.remove('hidden'); msg.textContent='Escribe el nombre del producto o sube su imagen 👆'; return;
       }
       go.disabled=true;
@@ -1343,7 +1354,8 @@
       msg.textContent='Iniciando…';
       try{
         let links=manual;
-        if(!links){
+        if(!links && locales){ links=''; }        // solo archivos locales: sin scout
+        else if(!links){
           // FASE 1 · SCOUT: buscar creativos ganadores en TikTok (endpoint del amigo)
           msg.textContent='🔎 Buscando creativos ganadores en TikTok...';
           const sf=new FormData();
@@ -1377,6 +1389,7 @@
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
         fd.append('caption_size',document.getElementById('prodCapSize').value);
         fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
+        (window._prodLocal||[]).forEach(f=>fd.append('winner_files',f));
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();

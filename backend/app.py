@@ -1043,6 +1043,7 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
     try:
         result = producto_a_clips(
             winner_urls, os.path.join(WORK_DIR, job_id),
+            archivos_locales=settings.get("archivos_locales") or [],
             product_url=product_url, image_path=image_path,
             product_desc=product_desc, settings=settings,
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(), progress=progress,
@@ -1075,11 +1076,13 @@ def producto_clips(
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
     vo_guiones: int = Form(0),
+    winner_files: list[UploadFile] = File([]),
 ):
-    """Semi-auto: pega links de ganadores + tu producto → descarga + clips en una pasada."""
+    """Semi-auto: links de ganadores Y/O videos locales + tu producto → clips en una pasada."""
     links = [u.strip() for u in winner_urls.replace(",", "\n").splitlines() if u.strip()]
-    if not links:
-        raise HTTPException(400, "Pega al menos un link de un creativo ganador")
+    locales: list[str] = []
+    if not links and not any(f and f.filename for f in (winner_files or [])):
+        raise HTTPException(400, "Pega al menos un link o elige videos de tu computador")
 
     job_id = uuid.uuid4().hex[:12]
     image_path = None
@@ -1089,6 +1092,13 @@ def producto_clips(
         image_path = os.path.join(up, "producto_" + os.path.basename(product_image.filename))
         with open(image_path, "wb") as f:
             shutil.copyfileobj(product_image.file, f)
+    for wf in (winner_files or []):
+        if wf and wf.filename:
+            d = os.path.join(UPLOAD_DIR, job_id); os.makedirs(d, exist_ok=True)
+            p = os.path.join(d, "gan_" + os.path.basename(wf.filename))
+            with open(p, "wb") as f:
+                shutil.copyfileobj(wf.file, f)
+            locales.append(p)
 
     settings = {
         "aspect": aspect,
@@ -1109,6 +1119,7 @@ def producto_clips(
         # Control de costo de ElevenLabs: cuántas narraciones distintas (0 = una por versión).
         # El selector manda 8 (una por video) → equivale al comportamiento por defecto.
         "vo_guiones": vo_guiones if vo_guiones in (2, 4) else 0,
+        "archivos_locales": locales,
     }
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}

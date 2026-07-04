@@ -194,6 +194,7 @@ def describir_producto(product_url: str, image_path: str | None, gemini_key: str
 
 
 def producto_a_clips(winner_urls: list[str], work_dir: str, *,
+                     archivos_locales: list[str] | None = None,
                      product_url: str = "", image_path: str | None = None,
                      product_desc: str = "", settings: dict | None = None,
                      gemini_key: str | None = None, eleven_key: str | None = None,
@@ -211,6 +212,8 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
     dl = download_urls(winner_urls, src_dir,
                        progress=lambda m, p: report(m, 3 + p * 0.25))
     paths = [d["path"] for d in dl if d.get("ok") and d.get("path")]
+    import os as _os
+    paths += [p for p in (archivos_locales or []) if p and _os.path.exists(p)]  # 📁 de Descargas
     n_fail = sum(1 for d in dl if not d.get("ok"))
     if not paths:
         return {"ok": False,

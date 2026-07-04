@@ -2263,3 +2263,18 @@ imágenes deben ser 1:1 cuadradas SIEMPRE".
 - AVISO Juan: en tu disruptive_images.py — _CIERRE/prompt a 1:1, editar_imagen_ia con errors=
   opcional, _a_cuadrado nueva aplicada en 3 puntos; en app.py tu /api/disruptive-hd refina la actual
   y disruptive_add_product usa _IMG_MODEL_DRAFT. Tu flujo de lote borrador+HD sigue igual.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🧊 Fix clips CONGELADOS + 📁 Mi producto acepta videos locales
+(1) Jack: "los creativos se quedan congelados" (file (45).mp4: 6 tramos pegados de ~1s, medidos con
+diff de frames). CAUSA: en guion_match.plan_montaje, con el pool agotado (cada clip se usa 1 vez) las
+frases restantes quedaban SIN video → el tpad sostenía el último frame en cada hueco. FIX: pool
+agotado → se REPITE el clip menos usado (prefiriendo otra fuente) en vez de congelar. OJO Juan: tu
+regla "jamás repetir clip en la versión" se relaja SOLO como último recurso vs congelarse — con pool
+suficiente nada cambia. Probado $0: pool de 3 clips vs guion de 24s → antes huecos, ahora 24.0/24.0s
+cubiertos.
+(2) "déjame seleccionar de Descargas": Mi producto ahora tiene 📁 selector de videos locales junto a
+los links (combinables). producto_a_clips(+archivos_locales=), endpoint winner_files: File([]),
+validación acepta solo-archivos (salta el scout). 
+(3) PENDIENTE: Jack reporta ~20 min por corrida de Cortar clips — falta PERFILAR una corrida con
+este build (los congelados de hoy también alargaban: huecos → más regeneraciones?). Próxima sesión:
+cronometrar por etapa con los mtimes del work dir.

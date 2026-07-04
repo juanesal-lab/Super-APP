@@ -165,13 +165,18 @@ def etiquetar_frases(frases_por_version: list[list[dict]], gemini_key: str | Non
 
 
 def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
-                 usage: dict[int, int]) -> tuple[list[int], list[float]] | None:
+                 usage: dict[int, int], *, version_i: int = 0, n_versiones: int = 1,
+                 hook_srcs: set[int] | None = None) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
       si el clip no alcanza, se encadena otro dentro de la misma frase.
-    - JAMÁS se repite un clip dentro de la versión (regla dura de Juan); `usage` balancea
-      entre versiones (se prefiere el clip menos usado por las demás).
+    - JAMÁS se repite un clip dentro de la versión (regla dura de Juan).
+    - DIVERSIDAD ENTRE VERSIONES (queja real de Juan: "los mismos clips en todos los anuncios"):
+      (1) `usage` castiga clips ya usados por otras versiones; (2) BUCKETS: el pool se reparte
+      por ranking entre las N versiones y cada una prefiere SU tajada (como el plan clásico
+      disjunto); (3) el GANCHO rota de FUENTE: una versión no abre con la misma fuente con la
+      que ya abrió otra (`hook_srcs`, compartido y mutado aquí).
     - Primera frase (hook): planos cortos (ritmo de ráfaga). Última: planos calmados.
     """
     if not frases or not fases_por_idx:
@@ -179,6 +184,11 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     usados: set[int] = set()
     orden: list[int] = []
     caps: list[float] = []
+    hook_srcs = hook_srcs if hook_srcs is not None else set()
+
+    # bucket por ranking de score: la versión v "posee" los clips en las posiciones v, v+N, v+2N...
+    ranking = sorted(fases_por_idx, key=lambda i: -selected[i].score)
+    bucket = {i: (pos % max(1, n_versiones)) for pos, i in enumerate(ranking)}
 
     # REGLA DE VARIEDAD (bug real 2026-07-03): sin esto, un video-fuente con muchos segmentos
     # de la misma fase (ej. un testimonio hablando quieto 40s) llenaba 15 slots SEGUIDOS →
@@ -193,11 +203,16 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
             else:
                 break
 
+        es_hook = not orden                       # primer plano de la versión
+
         def _ordenar(pool: list[int]) -> list[int]:
-            pool.sort(key=lambda i: (selected[i].source_index == prev_src,   # fuente distinta 1º
-                                     usage.get(i, 0),
-                                     -min(selected[i].duration(), tope),
-                                     -selected[i].score))
+            pool.sort(key=lambda i: (
+                selected[i].source_index in hook_srcs if es_hook else False,  # gancho: fuente NUEVA
+                selected[i].source_index == prev_src,       # fuente distinta al plano anterior 1º
+                usage.get(i, 0),                            # menos usado por OTRAS versiones
+                bucket.get(i, 0) != version_i,              # su propia tajada del pool primero
+                -min(selected[i].duration(), tope),
+                -selected[i].score))
             return pool
 
         candidato_misma_fuente: int | None = None
@@ -241,6 +256,8 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                 dur = min(nat, max(_SLOT_MIN, restante))
             usados.add(i)
             usage[i] = usage.get(i, 0) + 1
+            if not orden:                          # fuente del gancho: que no la repita otra versión
+                hook_srcs.add(selected[i].source_index)
             orden.append(i)
             caps.append(round(dur, 3))
             restante -= dur

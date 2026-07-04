@@ -2216,6 +2216,20 @@ se pega. Fix: `Anthropic(api_key=..., timeout=120.0, max_retries=1)` en los 4 cl
 ~2-4 min con el error visible en la UI (los 4 sitios ya capturaban excepción y reportaban).
 AVISO Juan: solo el constructor del cliente; prompts/flujo intactos.
 
+### 2026-07-04 · Claude (juanesal-lab) · 🎨 Diversidad ENTRE versiones en el montaje por guion
+Queja de Juan (con screenshot): las 8 versiones salían con LOS MISMOS clips (A y B abrían con el
+mismo testimonio). El plan por guion balanceaba clips sueltos (usage) pero perdió la diversidad
+entre versiones que tenía el plan clásico (buckets disjuntos + gancho rotado). En plan_montaje:
+- GANCHO ROTA DE FUENTE: `hook_srcs` compartido entre versiones (lo muta el plan) — una versión
+  no puede abrir con la fuente con la que ya abrió otra (primer criterio del sort en el 1er slot).
+- BUCKETS por ranking: el pool se reparte v, v+N, v+2N... y cada versión prefiere SU tajada
+  (criterio nuevo tras usage).
+- `usage` sigue castigando clips usados por otras versiones (ya existía).
+Firma: plan_montaje(..., version_i, n_versiones, hook_srcs) — opcionales, retro-compatible.
+Probado (10 fuentes × 6 segmentos, 4 versiones con guiones iguales): ganchos de 4 fuentes
+DISTINTAS, solapamiento entre versiones 0-2 clips de ~10 (antes casi 100%), cada versión usa
+7-9 fuentes. py_compile OK. AVISO Jack: orchestrator pasa los params nuevos; nada más cambió.
+
 ### 2026-07-04 · Claude (jackingshop1-cell) · 🚀 Fix RAÍZ de la lentitud: 15 endpoints congelaban TODA la app
 Jack: "se me demora mucho la app en darme cosas, mucho". Causa: 15 handlers declarados `async def`
 SIN ningún await adentro — corren EN el event loop de uvicorn, así que mientras uno trabaja

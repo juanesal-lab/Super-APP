@@ -2549,3 +2549,30 @@ CTA exacto, 63-68 palabras (presupuesto 63), y la calidad se nota: especificidad
 3 niveles de consciencia distintos, ancla sin cifras, cero tics. py_compile ok ambos.
 - AVISO Jack: NO toqué el flujo/parseo (mismo schema angulo/texto/fases y tool entregar_variaciones)
   ni el congelón (vi tu fix ebe9029 del xfade — quedó intacto). Solo prompts + framework.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 📸 ADS IMAGEN REALISTAS (calibrado con 724 ads validados) + 🎯 "5 más así" + 🔗 fotos por link
+Jack: "las imágenes se ven muy irreales → CPC altísimos; básate en 1000+ estáticos con 30+ días en USA/EU".
+- INVESTIGACIÓN REAL: 724 ads estáticos únicos bajados de Foreplay (30+ días corriendo; 321 llevan 3+ AÑOS),
+  56 revisados visualmente uno a uno + metadata completa. Costo: 1.677 créditos Foreplay (quedan ~5.150).
+  Hallazgo central: CERO CGI/porcelana/botones de play falsos entre los longevos — realidad fotográfica pura.
+  Destilado en assets/ads-estaticos-validados.md (12 arquetipos validados + lista negra + doctrina).
+- disruptive_images.py REESCRITO: doctrina "concepto audaz, ejecución FOTOGRAFIABLE" (si no se puede
+  fotografiar con actores/utilería en una tarde → se reescribe), 8 motores psicológicos, 12 arquetipos
+  (el campo `formato` ahora es el arquetipo — la UI lo muestra tal cual), campo NUEVO `escena_real`
+  (obligatorio: lugar/quién/utilería/luz), _CIERRE anti-CGI (piel real con poros, cámara de celular,
+  prohibido play falso). Las 2 plantillas fijas (no_compres/capturas) intactas.
+  PROBADO E2E REAL: 10/10 variantes con 8 arquetipos distintos, lista negra limpia, y UNA imagen generada
+  (draft $0.04) del veneno de abeja: macro real de ojo de 55 años, piel con poros, luz de ventana — otra
+  liga vs los ejemplos que dolían. OJO: el draft sigue con typos en texto CHICO (conocido; el flujo pro
+  + _verificar_ortografia lo cubre).
+- 🎯 "5 MÁS ASÍ": el botón por card ahora trae 5 y los pinta en SU PROPIA SECCIÓN «🎯 Más como: [título]»
+  debajo del grupo (los índices viven en el mismo array → ▶️/📋/🔄 intactos). tkPaint verificado en
+  navegador con estado simulado, sin errores.
+- 🔗 FOTOS POR LINK en Buscar creativos: pega hasta 3 links (Enter) con chips de preview; backend
+  `fotos_url` en /api/tiktok-search y /api/creative-search → _bajar_foto_url valida por bytes mágicos,
+  convierte WEBP/GIF→JPG, y si pegan el link de la PÁGINA pesca la og:image sola (probado real: imagen
+  directa ✓, página Shopify ✓, redirect ✓; Wikimedia no — su WAF pide bot registrado, irrelevante).
+- AVISO Juan: en disruptive_images SOLO toqué _SISTEMA/_TOOL/_CIERRE y el pedido de plantillas_fijas=False
+  — tu pipeline de render/ortografía/recorte quedó intacto. En index.html: tkPaint (grupos + secciones),
+  tkTkCard/tkFpCard (título del 🎯), el IIFE de fotos y tkRun. Pendiente chiquito: mirar el look real de
+  chips y secciones en la primera búsqueda con APIs (el pintado simulado ya pasó).

@@ -250,6 +250,12 @@ def render_versions(
     if not fases_pool:
         fases_pool = [_fase_heur(selected[i]) for i in pool_idx]
     fases_por_idx = dict(zip(pool_idx, fases_pool))
+    # TODO el pool disponible para el montaje por guion (no solo el top-60 de Gemini): los
+    # demás clips entran con fase heurística → más material = menos clips repetidos entre
+    # versiones (queja de Juan: "es como el mismo video, solo cambia el guion").
+    for _i in range(len(selected)):
+        if _i not in fases_por_idx:
+            fases_por_idx[_i] = _fase_heur(selected[_i])
 
     version_orders = plan_variations(selected, target_seconds=plan_seconds)
 
@@ -259,6 +265,7 @@ def render_versions(
     # corte cae en el límite de frase. Si algo falta (sin voz/timings), la versión conserva
     # su plan clásico — nunca rompe.
     version_caps: dict[str, list[float]] = {}
+    frases_por_nombre: dict[str, list[dict]] = {}   # frases del guion por versión (para los SFX)
     vos_pv = list(version_vos or [])
     if not vos_pv and voiceover_path and word_timings:
         vos_pv = [(voiceover_path, word_timings)] * len(version_orders)
@@ -274,13 +281,26 @@ def render_versions(
             guion_match.etiquetar_frases([f for f in frases_pv if f], gemini_key, product_desc)
             usage: dict[int, int] = {}
             hook_srcs: set[int] = set()           # cada versión abre con una FUENTE distinta
+            # TOPE DURO de reuso entre versiones: un clip solo puede salir en ~su cuota justa
+            # (slots totales / clips disponibles). Con material de sobra la cuota es 1 → versiones
+            # con clips 100% distintos; con poco material sube lo mínimo necesario.
+            import math
+            slots_est = sum(max(1, round((f[-1]["fin"] - f[0]["inicio"]) / 1.4))
+                            for f in frases_pv if f)
+            max_usos = max(1, math.ceil(slots_est / max(1, len(fases_por_idx))))
+            if max_usos > 3:      # material escaso: las versiones van a compartir clips sí o sí
+                report(f"⚠️ Hay {len(fases_por_idx)} clips para ~{slots_est} espacios: las "
+                       "versiones van a repetir material entre sí. Sube MÁS videos para "
+                       "versiones realmente distintas.", 51)
             nuevos = []
             for v_i, ((name, order), frases) in enumerate(zip(version_orders, frases_pv)):
                 plan_g = (guion_match.plan_montaje(selected, fases_por_idx, frases, usage,
                                                    version_i=v_i,
                                                    n_versiones=len(version_orders),
-                                                   hook_srcs=hook_srcs)
+                                                   hook_srcs=hook_srcs, max_usos=max_usos)
                           if frases else None)
+                if frases:
+                    frases_por_nombre[name] = frases
                 if plan_g:
                     nuevos.append((name, plan_g[0]))
                     version_caps[name] = plan_g[1]
@@ -486,12 +506,18 @@ def render_versions(
         if not vo_path or not os.path.exists(vo_path):
             return
         vo_out = v["path"].replace(".mp4", "_vo.mp4")
+        # fases del guion → el mezclador sabe dónde está el DOLOR (sin SFX), el producto
+        # (chime protagonista) y la OFERTA/CTA (cha-ching)
+        fr = frases_por_nombre.get(v.get("name") or "")
+        phases_mix = ([{"etiqueta": str(f.get("fase", "")).upper(),
+                        "inicio_s": f["inicio"], "fin_s": f["fin"]} for f in fr] if fr else None)
         try:
             # SFX ya no dependen del toggle "efectos": el plan pro (pro_mix) los pone SUTILES
             # y solo donde tocan; "efectos" sigue mandando en lo VISUAL (punch/zoom fuerte).
             add_voiceover_and_sfx(v["path"], vo_path, vo_out,
                                   sfx_paths=sfx_paths,
-                                  cut_times=_cut_times(v), music_path=music_path)
+                                  cut_times=_cut_times(v), music_path=music_path,
+                                  phases=phases_mix)
             v["path"] = vo_out
             v["voiceover"] = True
         except Exception:

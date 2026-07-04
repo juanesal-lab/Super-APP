@@ -2383,3 +2383,24 @@ voz, música, subtítulos, edición, export, QA, schemas, stack). Absorción:
   de video. Grande: módulo GENERACIÓN 100% IA (4º módulo; specs §12-14 del manual).
 - AVISO Jack: voiceover.py (+acelerar), producto_clips._tts, app._run_scripts_job (acelera tras
   TTS), scripts.py (2 reglas nuevas en el prompt). py_compile OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🎨 Diversidad entre versiones v2 (tope duro de reuso) + 💰 cha-ching en la oferta
+Juan reporta que las versiones seguían compartiendo clips ("el mismo video, solo cambia el guion").
+Causas encontradas y arregladas:
+1. `fases_por_idx` solo cubría el top-60 clasificado por Gemini → ahora TODO el pool de `selected`
+   entra al montaje por guion (el resto con fase heurística) = más material disponible.
+2. TOPE DURO de reuso entre versiones: `max_usos = ceil(slots_totales / clips_disponibles)`
+   (calculado en orchestrator con las frases reales). plan_montaje lo aplica en DOS PASADAS:
+   la 1ª respeta el tope en TODAS las fases; solo si el pool entero se agotó bajo el tope, la
+   2ª relaja. (El primer intento relajaba por-fase y el tope no servía: un clip salía en 7/8.)
+3. Desempate DISTINTO por versión ((i*131+v*977)%13) tras el rinde cuantizado a 0.5s → versiones
+   con material equivalente eligen clips distintos sin sacrificar cobertura de la voz.
+4. Aviso honesto si el material es escaso (max_usos>3): "sube MÁS videos".
+Medido: 80 clips/8 versiones → solape 1.1 de 11 slots (usos máx = tope 2 ✓); 40 clips → 2.9 ✓;
+16 clips → inevitable (física), con aviso.
+💰 SFX nuevos al banco con ElevenLabs (~$0.10): cash_register.mp3 + notification_pop.mp3.
+pro_mix: familia "caja" + cha-ching PROTAGONISTA en el arranque del CTA/oferta (medido en ref 72:
+el SFX más fuerte cae sobre el "50% OFF"); el orchestrator ahora pasa las FASES del guion al
+mezclador (frases_por_nombre → phases): DOLOR sin SFX, SOLUCIÓN chime, CTA caja. Probado.
+AVISO Jack: guion_match._mejor reestructurado (2 pasadas), plan_montaje(+max_usos), orchestrator
+(fases completas + phases al mixer + aviso), pro_mix (_familia caja + t_cta). py_compile OK.

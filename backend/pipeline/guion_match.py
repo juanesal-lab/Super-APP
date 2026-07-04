@@ -166,7 +166,8 @@ def etiquetar_frases(frases_por_version: list[list[dict]], gemini_key: str | Non
 
 def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                  usage: dict[int, int], *, version_i: int = 0, n_versiones: int = 1,
-                 hook_srcs: set[int] | None = None) -> tuple[list[int], list[float]] | None:
+                 hook_srcs: set[int] | None = None,
+                 max_usos: int = 99) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
@@ -211,31 +212,40 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                 selected[i].source_index == prev_src,       # fuente distinta al plano anterior 1º
                 usage.get(i, 0),                            # menos usado por OTRAS versiones
                 bucket.get(i, 0) != version_i,              # su propia tajada del pool primero
-                -min(selected[i].duration(), tope),
+                -round(min(selected[i].duration(), tope) * 2) / 2,   # que rinda (en pasos de 0.5s)
+                (i * 131 + version_i * 977) % 13,           # desempate DISTINTO por versión
                 -selected[i].score))
             return pool
 
-        candidato_misma_fuente: int | None = None
-        for f in _PREFERENCIA.get(fase, list(FASES)):
-            pool = [i for i, ff in fases_por_idx.items() if ff == f and i not in usados]
-            if not pool:
-                continue
-            pool = _ordenar(pool)
-            pick = pool[0]
-            if selected[pick].source_index != prev_src:
-                return pick
-            # toda esta fase es de la misma fuente: guarda el mejor y prueba la fase vecina
-            if candidato_misma_fuente is None:
-                candidato_misma_fuente = pick
-        sobrantes = _ordenar([i for i in fases_por_idx if i not in usados])
-        if sobrantes and selected[sobrantes[0]].source_index != prev_src:
-            # no había fuente distinta en ninguna fase preferida, pero sí en el resto del pool
-            if candidato_misma_fuente is None or racha >= 2:
+        # DOS PASADAS por el tope de reuso entre versiones (queja de Juan: "el mismo video,
+        # solo cambia el guion"): la 1ª respeta el tope en TODAS las fases; solo si el pool
+        # entero quedó agotado bajo el tope, la 2ª lo relaja. (Antes se relajaba por-fase y el
+        # tope no servía: un clip salía en 7 de 8 versiones.)
+        for relajar in (False, True):
+            def _cabe(i: int) -> bool:
+                return i not in usados and (relajar or usage.get(i, 0) < max_usos)
+
+            candidato_misma_fuente: int | None = None
+            for f in _PREFERENCIA.get(fase, list(FASES)):
+                pool = [i for i, ff in fases_por_idx.items() if ff == f and _cabe(i)]
+                if not pool:
+                    continue
+                pool = _ordenar(pool)
+                pick = pool[0]
+                if selected[pick].source_index != prev_src:
+                    return pick
+                # toda esta fase es de la misma fuente: guarda el mejor y prueba la fase vecina
+                if candidato_misma_fuente is None:
+                    candidato_misma_fuente = pick
+            sobrantes = _ordenar([i for i in fases_por_idx if _cabe(i)])
+            if sobrantes and selected[sobrantes[0]].source_index != prev_src:
+                # no había fuente distinta en ninguna fase preferida, pero sí en el resto del pool
+                if candidato_misma_fuente is None or racha >= 2:
+                    return sobrantes[0]
+            if candidato_misma_fuente is not None and racha < 2:
+                return candidato_misma_fuente      # se permite UNA repetición de fuente, no racha
+            if sobrantes:
                 return sobrantes[0]
-        if candidato_misma_fuente is not None and racha < 2:
-            return candidato_misma_fuente          # se permite UNA repetición de fuente, no racha
-        if sobrantes:
-            return sobrantes[0]
         return None
 
     n_frases = len(frases)

@@ -42,13 +42,15 @@ def _dur_audio(path: str) -> float:
 
 def _familia(nombre: str) -> str:
     n = os.path.basename(nombre).lower()
+    if any(k in n for k in ("cash", "register", "caja", "chaching", "ching")):
+        return "caja"          # cha-ching: el SFX más fuerte medido (va en la OFERTA)
     if any(k in n for k in ("whoosh", "swoosh")):
         return "whoosh"
     if any(k in n for k in ("ding", "sparkle", "chime")):
         return "brillo"
     if any(k in n for k in ("boom", "impact", "bass")):
         return "golpe"
-    if any(k in n for k in ("pop", "click")):
+    if any(k in n for k in ("pop", "click", "notification")):
         return "pop"
     if "riser" in n:
         return "riser"
@@ -88,16 +90,19 @@ def plan_sfx(cut_times: list[float], dur: float, sfx_paths: list[str],
     def _jitter(db: float) -> float:
         return db + random.uniform(-1.5, 1.5)
 
-    # rangos de DOLOR (ahí no se celebra: sin SFX) y momento del producto (SOLUCIÓN)
+    # rangos de DOLOR (ahí no se celebra: sin SFX), momento del producto (SOLUCIÓN) y CTA/oferta
     dolor: list[tuple[float, float]] = []
     t_producto = dur * 0.35
+    t_cta = None
     if phases:
         for ph in phases:
             etq = str(ph.get("etiqueta", "")).upper()
-            if "DOLOR" in etq:
+            if "DOLOR" in etq or "PROBLEMA" in etq:
                 dolor.append((float(ph.get("inicio_s", 0)), float(ph.get("fin_s", 0))))
             if "SOLUC" in etq:
                 t_producto = float(ph.get("inicio_s", dur * 0.35))
+            if "CTA" in etq and t_cta is None:
+                t_cta = float(ph.get("inicio_s", 0))
 
     def _en_dolor(t: float) -> bool:
         return any(a <= t <= b for a, b in dolor)
@@ -108,6 +113,12 @@ def plan_sfx(cut_times: list[float], dur: float, sfx_paths: list[str],
     # 2) protagonista: brillo en el momento del producto (regla 8)
     if 1.0 < t_producto < dur - 1.5:
         eventos.append({"t": t_producto, "path": _pick(brillos), "db": SFX_DB_PROTA, "pre_ms": 0})
+
+    # 2b) cha-ching en la OFERTA (arranque del CTA) — medido en la ref 72: el SFX más fuerte
+    # del video cae sobre el "50% OFF + ENVÍO GRATIS". Solo si hay sample de la familia caja.
+    cajas = por_familia.get("caja")
+    if cajas and t_cta and 1.0 < t_cta < dur - 0.8:
+        eventos.append({"t": t_cta, "path": _pick(cajas), "db": SFX_DB_PROTA, "pre_ms": 0})
 
     # 3) whooshes en ~la mitad de los cortes, sutiles/medios alternados, 150ms antes (reglas 6/9)
     cortes = [t for t in sorted(cut_times or []) if 0.6 < t < dur - 0.6 and not _en_dolor(t)]

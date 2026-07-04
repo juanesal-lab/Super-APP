@@ -2241,3 +2241,25 @@ disruptive_angles, disruptive_images) → FastAPI los corre en su threadpool (~4
 queda libre. PROBADO: con una búsqueda TikTok corriendo, el home respondió en 0.04s (antes esperaba).
 AVISO Juan: regla de la casa a partir de hoy — handler SIN await = `def` a secas; `async def` solo
 si de verdad hace await. Cero cambios de lógica/firmas, solo la palabra async.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🖼️ Ads imagen: HD ya NO pierde el producto + TODO 1:1 SIEMPRE
+Quejas de Jack: (1) "✨ HD quita el producto" → tocaba re-pagar la integración; (2) "todas las
+imágenes deben ser 1:1 cuadradas SIEMPRE".
+- CAUSA de (1): /api/disruptive-hd RE-DIBUJABA desde el prompt (otra escena) y re-intentaba la 2ª
+  pasada del producto; además el modelo PRO (gemini-3-pro-image-preview) está SIN CUOTA (429
+  RESOURCE_EXHAUSTED medido hoy) → la integración moría en silencio y el ad quedaba limpio.
+  FIX: si la imagen YA existe, HD la REFINA TAL CUAL con editar_imagen_ia (misma escena, mismo
+  producto, mismos ajustes de ✏️); si falla, la imagen queda INTACTA y el error sale amigable
+  (_error_amigable — ahora editar_imagen_ia reporta errors= en vez de tragarse el 429). El botón
+  "➕ Poner mi producto" ahora usa el modelo BARATO (draft) — funciona aunque el PRO esté sin cuota
+  y cuesta ~3x menos; el PRO queda solo para HD.
+- FIX de (2): prompts pasados de "4:5 vertical" a "1:1 SQUARE" (base sale 1024×1024 ✓) + como los
+  EDITS de Nano Banana a veces ignoran el aspecto (medido: devolvía 832×1248), nueva _a_cuadrado():
+  re-encuadre LOCAL determinista a 1:1 con fondo difuminado estilo IG ($0, nunca recorta producto/
+  texto) aplicado tras generar/integrar/editar. Los ads viejos 4:5 quedan cuadrados al próximo edit/HD.
+- PROBADO real (~$0.12 en draft): base 1024×1024 ✓ → producto integrado con draft ✓ (2 unidades,
+  ondas, sombra) → edit no-cuadrado re-encuadrado a 1248×1248 ✓ mirado con ojos. El refine HD queda
+  pendiente de que la cuota PRO reinicie (mañana) — con cuota agotada el botón ahora DICE el motivo.
+- AVISO Juan: en tu disruptive_images.py — _CIERRE/prompt a 1:1, editar_imagen_ia con errors=
+  opcional, _a_cuadrado nueva aplicada en 3 puntos; en app.py tu /api/disruptive-hd refina la actual
+  y disruptive_add_product usa _IMG_MODEL_DRAFT. Tu flujo de lote borrador+HD sigue igual.

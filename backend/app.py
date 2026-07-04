@@ -30,7 +30,7 @@ from pipeline.downloader import download_urls
 from pipeline.producto_clips import producto_a_clips
 from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
                                         generar_ad_fullprompt, _integrar_producto_ia,
-                                        editar_imagen_ia)
+                                        editar_imagen_ia, _error_amigable, _IMG_MODEL_DRAFT)
 from pipeline import foreplay_search as fp
 from pipeline.hook_variator import variar_hook
 from pipeline.creative_variator import generar_variaciones
@@ -1532,16 +1532,31 @@ def disruptive_hd(job_id: str = Form(...), index: int = Form(...)):
     if index < 0 or index >= len(variantes):
         raise HTTPException(400, "Índice fuera de rango")
     v = variantes[index]
-    out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    try:
-        img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
-                                    product_image_path=job.get("_image_path"),
-                                    integrar_producto=bool(job.get("_image_path")), hd=True)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(500, f"No se pudo renderizar en HD: {e}")
-    if not img:
-        raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
+    # Si la imagen YA existe (con el producto puesto y/o ajustes), HD la REFINA TAL CUAL —
+    # misma escena, mismo producto, mismos ajustes — con el modelo PRO. Antes se re-dibujaba
+    # desde el prompt: salía OTRA escena y si la 2ª pasada del producto fallaba, lo perdía.
+    if v.get("imagen") and os.path.exists(v["imagen"]):
+        errs: list = []
+        img = editar_imagen_ia(v["imagen"], (
+            "Recrea esta MISMA imagen absolutamente idéntica pero en máxima calidad HD "
+            "fotorrealista: más nitidez, mejor iluminación y texturas. NO cambies NADA del "
+            "contenido: misma composición, mismo producto, mismos textos en español letra por "
+            "letra, mismos colores. Entrégala en formato CUADRADO 1:1 exacto (si no lo es, "
+            "extiende el fondo con coherencia — sin deformar nada)."), _load_env_key(), errors=errs)
+        if not img:
+            raise HTTPException(502, "HD no salió (tu imagen quedó intacta): "
+                                + (_error_amigable(errs[0]) if errs else "reintenta en un momento"))
+    else:
+        out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        try:
+            img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
+                                        product_image_path=job.get("_image_path"),
+                                        integrar_producto=bool(job.get("_image_path")), hd=True)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(500, f"No se pudo renderizar en HD: {e}")
+        if not img:
+            raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
     v["hd"] = True
     _persist_disruptive(job_id)
@@ -1564,7 +1579,9 @@ def disruptive_add_product(job_id: str = Form(...), index: int = Form(...)):
     if not (prod and os.path.exists(prod)):
         raise HTTPException(400, "No subiste foto del producto en el paso 1")
     try:
-        res = _integrar_producto_ia(v["imagen"], prod, _load_env_key())
+        # modelo BARATO para poner el producto (el PRO se reserva para el botón HD y a veces
+        # está sin cuota — con el barato el botón funciona siempre y cuesta ~3x menos)
+        res = _integrar_producto_ia(v["imagen"], prod, _load_env_key(), model=_IMG_MODEL_DRAFT)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo poner el producto: {e}")
     if not res:   # bloqueo/cuota/sin imagen → el ad quedó intacto; avisa de verdad

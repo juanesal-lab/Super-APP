@@ -113,7 +113,7 @@ más específica. El 'prompt' DEBE poner en escena dolor_visual Y solucion_visua
 protagonista y la solución como giro visible.
 
 Cada 'prompt' que entregues:
-- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic vertical 4:5
+- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic square 1:1
   screenshot of an authentic organic social video" (o post) — NO "advertisement". Describe la escena surreal
   a pantalla completa + sujeto + emoción + el chrome nativo (center translucent play button, progress bar
   "0:08 / 2:04", small volume/fullscreen icons) + el titular como caption blanco sobre el video.
@@ -175,7 +175,7 @@ _TOOL = {
 }
 
 # Cola de calidad que se pega al final de cada prompt de imagen.
-_CIERRE = (" Thick bold sans-serif fonts, high contrast, 4:5 vertical aspect ratio, looks like an authentic "
+_CIERRE = (" Thick bold sans-serif fonts, high contrast, 1:1 perfectly SQUARE aspect ratio, looks like an authentic "
            "organic social-media video screenshot (NOT a polished advertisement), render all embedded text "
            "crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed hands, garbled or "
            "misspelled text, random logos, watermarks, nudity, low-resolution artifacts.")
@@ -296,6 +296,25 @@ def _recortar_producto(img: "Image.Image", umbral: int = 244) -> "Image.Image":
     return out.crop(bbox) if bbox else out
 
 
+def _a_cuadrado(img_path: str) -> None:
+    """Regla de la casa: TODO ad sale 1:1. Si una edición de Nano Banana devuelve otro formato
+    (el modelo a veces ignora la instrucción), se re-encuadra LOCAL a cuadrado con fondo difuminado
+    (estilo IG) — nunca se recorta producto ni texto. $0 y determinista."""
+    try:
+        from PIL import ImageFilter, ImageEnhance
+        im = Image.open(img_path).convert("RGB")
+        w, h = im.size
+        if w == h:
+            return
+        lado = max(w, h)
+        fondo = im.resize((lado, lado)).filter(ImageFilter.GaussianBlur(42))
+        fondo = ImageEnhance.Brightness(fondo).enhance(0.62)
+        fondo.paste(im, ((lado - w) // 2, (lado - h) // 2))
+        fondo.save(img_path)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_key: str,
                           model: str | None = None) -> str | None:
     """2ª pasada: Nano Banana 2 mete el PRODUCTO REAL integrado en la escena (con luz y sombra reales,
@@ -331,7 +350,7 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
             "progress bar or button. Keep the product's shape, colors and label IDENTICAL to the reference — do "
             "NOT redesign it, do NOT add any logo, watermark or extra text on it. Change NOTHING else in the "
             "image: keep all existing captions, the video player, progress bar and the CTA button exactly as "
-            "they are. Output only the edited first image.")
+            "they are. Output only the edited first image, keeping EXACTLY the same 1:1 SQUARE aspect ratio and framing as the first image — do NOT crop, extend or change the canvas.")
         r = client.models.generate_content(
             model=model or _IMG_MODEL,
             contents=[prompt,
@@ -341,6 +360,7 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
             if getattr(p, "inline_data", None):
                 with open(ad_path, "wb") as f:
                     f.write(p.inline_data.data)
+                _a_cuadrado(ad_path)
                 return ad_path
     except Exception:  # noqa: BLE001
         pass
@@ -352,7 +372,8 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
     return None                    # no se pudo integrar → el ad queda intacto (sin producto)
 
 
-def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str) -> str | None:
+def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str,
+                     errors: list | None = None) -> str | None:
     """Edición DIRIGIDA: aplica la instrucción del usuario a la imagen ya generada (Nano Banana 2),
     cambiando SOLO lo pedido y conservando todo lo demás. Devuelve la ruta o None si no se pudo."""
     if not (instruccion.strip() and gemini_key and os.path.exists(img_path)):
@@ -369,7 +390,8 @@ def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str) -> str | 
             "chrome, and all existing Spanish text (unless the instruction says to change it). "
             f"User instruction (Spanish): \"{instruccion.strip()}\". "
             "If the instruction adds or modifies Spanish text, render it crisply and spelled EXACTLY. "
-            "Output only the edited image.")
+            "Output only the edited image, keeping EXACTLY the same aspect ratio and canvas as the "
+            "input image (if the input is 1:1 square, the output MUST be 1:1 square).")
         r = client.models.generate_content(
             model=_IMG_MODEL,
             contents=[prompt, types.Part.from_bytes(data=ib, mime_type="image/png")])
@@ -377,9 +399,11 @@ def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str) -> str | 
             if getattr(p, "inline_data", None):
                 with open(img_path, "wb") as f:
                     f.write(p.inline_data.data)
+                _a_cuadrado(img_path)
                 return img_path
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        if errors is not None:
+            errors[:] = [str(e)]
     return None
 
 
@@ -416,6 +440,7 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             break
     if not got:
         return None
+    _a_cuadrado(out_path)
     if integrar_producto:            # 2ª pasada que integra el producto real en la escena
         res = _integrar_producto_ia(out_path, product_image_path, gemini_key,
                                     model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT)

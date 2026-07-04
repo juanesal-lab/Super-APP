@@ -423,6 +423,7 @@
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
+    <button data-p="p-radar">📡 Radar</button>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
   </nav>
@@ -521,7 +522,8 @@
       const fileEl=document.getElementById('autoFile'), drop=document.getElementById('autoDrop');
       function pick(files){ const arr=Array.from(files||[]); if(!arr.length) return; window._autoFiles=arr;
         document.getElementById('autoName').textContent = arr.length===1 ? '🎬 '+arr[0].name : `🎬 ${arr.length} videos elegidos`;
-        document.getElementById('autoGo').disabled=false; }
+        document.getElementById('autoGo').disabled=false;
+        if(typeof vthumbStripAfter==='function') vthumbStripAfter(drop, 'autoFileThumbs', arr); }
       fileEl.addEventListener('change',e=>pick(e.target.files));
       ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
       ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
@@ -877,6 +879,8 @@
           document.getElementById(nameId).textContent = fs.length
             ? (multi ? `${label} (${fs.length})` : '🏆 '+fs[0].name) : label;
           if(inputId==='clWinner') document.getElementById('clGo').disabled=!fs.length;
+          const lbl=document.getElementById(nameId).closest('label');   // preview de lo elegido
+          if(lbl && typeof vthumbStripAfter==='function') vthumbStripAfter(lbl, inputId+'Thumbs', fs);
         });
       }
       bind('clWinner','clWinnerName','🏆 Elige el creativo GANADOR a clonar',false);
@@ -968,6 +972,8 @@
     document.getElementById('vhWinner').addEventListener('change',e=>{
       const f=e.target.files[0]; window._vhWinner=f||null;
       document.getElementById('vhWinnerName').textContent=f?('🏆 '+f.name):'🏆 Tu creativo GANADOR';
+      const lbl=document.getElementById('vhWinnerName').closest('label');
+      if(lbl && typeof vthumbStripAfter==='function') vthumbStripAfter(lbl, 'vhWinnerThumbs', f?[f]:[]);
     });
     function vhEsc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
     async function vhRun(){
@@ -1045,6 +1051,15 @@
     }
   </script>
   </div><!-- /p-varhook -->
+
+  <div class="panel" id="p-radar" style="display:none">
+  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">📡 Radar Ganadores</h2>
+  <p class="sub" style="margin-bottom:10px">Spy tool propio: productos ganadores detectados en la Meta Ad Library de 11 países,
+    con disponibilidad en Dropi 🟦 y oportunidades Europa→Colombia 🟢. Se actualiza solo cada mañana (7:30am).
+    <a href="/radar" target="_blank" style="color:var(--gold);font-weight:600">Abrir en pestaña completa ↗</a></p>
+  <iframe id="radarFrame" title="Radar Ganadores"
+    style="width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#0d0d0d"></iframe>
+  </div>
 
   <div class="panel" id="p-config" style="display:none">
   <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
@@ -1155,7 +1170,7 @@
     <div class="row">
       <div class="opt">
         <label class="lbl">Duración total objetivo: <span class="val" id="durVal">15s</span></label>
-        <input type="range" id="dur" min="6" max="40" value="15" step="1">
+        <input type="range" id="dur" min="6" max="40" value="22" step="1">
       </div>
       <div class="opt">
         <label class="lbl">Formato de salida</label>
@@ -1164,6 +1179,13 @@
           <option value="1:1">1:1 cuadrado · Landing page</option>
           <option value="4:5">4:5 vertical · Feed Meta</option>
           <option value="16:9">16:9 horizontal</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label class="lbl">Destino (safe zone de subtítulos)</label>
+        <select id="destino" title="Meta Reels tapa el 35% inferior con su UI: los subtítulos suben y además sale un cut 4:5 extra por versión" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+          <option value="tiktok">🎵 TikTok / orgánico (subtítulos abajo)</option>
+          <option value="meta">📘 Meta Ads (subtítulos más arriba + cut 4:5)</option>
         </select>
       </div>
       <div class="opt">
@@ -1270,9 +1292,14 @@
       </select>
       <select id="prodDur">
         <option value="10">Duración objetivo: 10s</option>
-        <option value="15" selected>Duración objetivo: 15s</option>
-        <option value="20">Duración objetivo: 20s</option>
+        <option value="15">Duración objetivo: 15s</option>
+        <option value="20" selected>Duración objetivo: 20s (sweet spot frío)</option>
+        <option value="25">Duración objetivo: 25s</option>
         <option value="30">Duración objetivo: 30s</option>
+      </select>
+      <select id="prodDestino" title="Meta Reels tapa el 35% inferior: los subtítulos suben y sale un cut 4:5 extra">
+        <option value="tiktok">Destino: 🎵 TikTok</option>
+        <option value="meta">Destino: 📘 Meta Ads (+cut 4:5)</option>
       </select>
     </div>
     <div class="autoChk">
@@ -1396,6 +1423,7 @@
         fd.append('product_desc',nombre);
         fd.append('aspect',document.getElementById('prodAspect').value);
         fd.append('target_seconds',document.getElementById('prodDur').value);
+        fd.append('destino',document.getElementById('prodDestino').value);
         fd.append('blur_captions',document.getElementById('prodBlur').checked);
         fd.append('musica',document.getElementById('prodMusica').checked);
         fd.append('bajar_volumen',document.getElementById('prodBajarVol').checked);
@@ -2331,6 +2359,10 @@ document.querySelectorAll('#tabs button').forEach(b=>{
     const panel = document.getElementById(b.dataset.p);
     if(panel) panel.style.display='';
     b.classList.add('active');
+    if(b.dataset.p==='p-radar'){ // el dashboard (~2.5MB) se carga solo al entrar por primera vez
+      const f=document.getElementById('radarFrame');
+      if(f && !f.getAttribute('src')) f.src='/radar';
+    }
     window.scrollTo({top:0,behavior:'smooth'});
   };
 });
@@ -2401,6 +2433,55 @@ fileInput.onchange = e=>addFiles(e.target.files);
 drop.addEventListener("drop",e=>addFiles(e.dataTransfer.files));
 
 let linkVids = [];   // videos BAJADOS de TikTok (rutas en el servidor); se cortan al dar "Generar clips"
+
+// === PREVIEW de videos subidos: miniatura de un frame (pedido de Juan 2026-07-04) ===
+const _vthumbCache = new Map();
+function vthumbInto(img, file){          // file: File local o string con ruta (/api/file?path=...)
+  const key = (typeof file === 'string') ? file : (file.name + '|' + file.size);
+  if(_vthumbCache.has(key)){ img.src = _vthumbCache.get(key); return; }
+  const src = (typeof file === 'string') ? file : URL.createObjectURL(file);
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.src = src;
+  let done = false;
+  const fin = u => { if(done) return; done = true;
+    if(typeof file !== 'string'){ try{ URL.revokeObjectURL(src); }catch(e){} }
+    v.removeAttribute('src'); try{ v.load(); }catch(e){}
+    if(u){ _vthumbCache.set(key, u); img.src = u; } };
+  const draw = ()=>{ try{
+      const w = 160, h = Math.max(90, Math.round(w * (v.videoHeight||16) / (v.videoWidth||9)));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(v, 0, 0, w, h);
+      fin(c.toDataURL('image/jpeg', 0.72));
+    }catch(e){ fin(null); } };
+  v.onloadeddata = ()=>{ try{ v.currentTime = Math.min(0.8, (v.duration||2) * 0.2); }catch(e){ draw(); } };
+  v.onseeked = draw;
+  v.onerror = ()=>fin(null);
+  setTimeout(()=>fin(null), 9000);
+}
+function vthumbStrip(cont, files){       // tira de miniaturas (videos e imágenes) en un contenedor
+  cont.innerHTML = '';
+  Array.from(files || []).slice(0, 24).forEach(f=>{
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:inline-block;margin:6px 8px 0 0;text-align:center;max-width:92px;vertical-align:top';
+    const img = document.createElement('img');
+    img.style.cssText = 'width:88px;height:112px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#111;display:block';
+    const cap = document.createElement('div');
+    cap.style.cssText = 'font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px;max-width:88px';
+    cap.textContent = (typeof f === 'string') ? decodeURIComponent((f.split('=').pop()||'').split('/').pop()) : f.name;
+    cap.title = cap.textContent;
+    wrap.appendChild(img); wrap.appendChild(cap); cont.appendChild(wrap);
+    if(typeof f !== 'string' && f.type && f.type.startsWith('image')){   // fotos: preview directa
+      const u = URL.createObjectURL(f); img.src = u; img.onload = ()=>{ try{ URL.revokeObjectURL(u); }catch(e){} };
+    } else vthumbInto(img, f);
+  });
+}
+function vthumbStripAfter(anchorEl, stripId, files){   // crea/reusa la tira justo después de un elemento
+  let strip = document.getElementById(stripId);
+  if(!strip){ strip = document.createElement('div'); strip.id = stripId;
+    anchorEl.parentElement.insertBefore(strip, anchorEl.nextSibling); }
+  vthumbStrip(strip, files);
+}
+
 function addFiles(list){
   for(const f of list){ if(f.type.startsWith("video")) files.push(f); }
   renderFiles();
@@ -2408,16 +2489,19 @@ function addFiles(list){
 function renderFiles(){
   const el = document.getElementById("fileList");
   el.innerHTML = "";
+  const TH = 'width:56px;height:72px;object-fit:cover;border-radius:6px;background:#111;border:1px solid var(--line);flex:none';
   files.forEach((f,i)=>{
     const d = document.createElement("div"); d.className="file";
-    d.innerHTML = `🎬 <span>${f.name}</span> <span style="color:var(--muted)">${(f.size/1e6).toFixed(1)} MB</span><span class="x" data-f="${i}">×</span>`;
+    d.innerHTML = `<img data-th style="${TH}"> <span>${f.name}</span> <span style="color:var(--muted)">${(f.size/1e6).toFixed(1)} MB</span><span class="x" data-f="${i}">×</span>`;
     el.appendChild(d);
+    vthumbInto(d.querySelector('[data-th]'), f);
   });
   linkVids.forEach((v,i)=>{
     const d = document.createElement("div"); d.className="file";
     const tag = v.broll ? `🎭 B-roll (${v.fase==="resultado"?"resultado":v.fase==="funcionamiento"?"uso":"dolor"})` : "de TikTok";
-    d.innerHTML = `📥 <span>${v.name}</span> <span style="color:var(--muted)">${tag}</span><span class="x" data-l="${i}">×</span>`;
+    d.innerHTML = `<img data-th style="${TH}"> <span>${v.name}</span> <span style="color:var(--muted)">${tag}</span><span class="x" data-l="${i}">×</span>`;
     el.appendChild(d);
+    vthumbInto(d.querySelector('[data-th]'), '/api/file?path=' + enc(v.path));
   });
   el.querySelectorAll(".x[data-f]").forEach(x=>x.onclick=()=>{files.splice(+x.dataset.f,1);renderFiles();});
   el.querySelectorAll(".x[data-l]").forEach(x=>x.onclick=()=>{linkVids.splice(+x.dataset.l,1);renderFiles();});
@@ -2435,6 +2519,8 @@ refInput.onchange = e=>{
   refFile = e.target.files[0] || null;
   document.getElementById("refName").textContent =
     refFile ? ("📐 "+refFile.name) : "Clonar estructura de un ad ganador";
+  const lbl = document.getElementById("refName").closest("label");
+  if(lbl && typeof vthumbStripAfter==='function') vthumbStripAfter(lbl, 'refInputThumbs', refFile?[refFile]:[]);
 };
 
 // --- Process ---
@@ -2465,6 +2551,7 @@ function buildForm(){
   fd.append("caption_style", document.getElementById("capStyle").value);
   fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
+  fd.append("destino", document.getElementById("destino").value);
   return fd;
 }
 
@@ -2644,6 +2731,8 @@ function renderResults(res, rootId){
       <div class="body">
         <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
+        ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
           <select id="res${i}">
             <option value="2160">4K · 2160</option>

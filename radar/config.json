@@ -1,0 +1,279 @@
+{
+  "countries_activos": [
+    "CO",
+    "ES",
+    "MX",
+    "EC",
+    "PE",
+    "CL",
+    "PA",
+    "GT",
+    "IT",
+    "FR",
+    "DE"
+  ],
+  "paginas_por_keyword": 1,
+  "nichos": {
+    "automotriz": {
+      "CO": [
+        "accesorios para carro",
+        "limpieza carro",
+        "organizador carro"
+      ],
+      "ES": [
+        "accesorios coche"
+      ],
+      "MX": [
+        "accesorios coche"
+      ],
+      "EC": [
+        "accesorios carro"
+      ],
+      "PE": [
+        "accesorios auto"
+      ],
+      "CL": [
+        "accesorios auto"
+      ],
+      "IT": [
+        "accessori auto"
+      ],
+      "FR": [
+        "accessoires voiture"
+      ],
+      "DE": [
+        "auto zubehör"
+      ]
+    },
+    "hogar_decoracion": {
+      "CO": [
+        "alfombra",
+        "decoracion hogar",
+        "iluminacion led",
+        "cortinas"
+      ],
+      "ES": [
+        "alfombra",
+        "decoración hogar"
+      ]
+    },
+    "cocina": {
+      "CO": [
+        "organizador cocina",
+        "utensilios cocina",
+        "freidora"
+      ],
+      "ES": [
+        "organizador cocina",
+        "utensilios cocina"
+      ],
+      "MX": [
+        "organizador cocina"
+      ],
+      "EC": [
+        "organizador cocina"
+      ],
+      "PE": [
+        "organizador cocina"
+      ],
+      "CL": [
+        "organizador cocina"
+      ],
+      "PA": [
+        "organizador cocina"
+      ],
+      "GT": [
+        "organizador cocina"
+      ]
+    },
+    "limpieza": {
+      "CO": [
+        "limpieza hogar",
+        "quitamanchas",
+        "trapeador",
+        "manguera presion"
+      ],
+      "ES": [
+        "limpieza hogar",
+        "quitamanchas"
+      ],
+      "MX": [
+        "limpieza hogar"
+      ],
+      "EC": [
+        "limpieza hogar"
+      ],
+      "PE": [
+        "limpieza hogar"
+      ],
+      "CL": [
+        "limpieza hogar"
+      ],
+      "IT": [
+        "pulizia casa"
+      ],
+      "FR": [
+        "nettoyage maison"
+      ],
+      "DE": [
+        "haushalt reinigung"
+      ]
+    },
+    "belleza_cuidado": {
+      "CO": [
+        "cuidado de la piel",
+        "crecimiento cabello",
+        "maquillaje",
+        "depilacion"
+      ],
+      "ES": [
+        "cuidado de la piel",
+        "crecimiento cabello"
+      ]
+    },
+    "salud_bienestar": {
+      "CO": [
+        "dolor de espalda",
+        "corrector postura",
+        "dormir mejor",
+        "hongos uñas",
+        "masajeador"
+      ],
+      "ES": [
+        "dolor de espalda",
+        "corrector postura",
+        "masajeador"
+      ],
+      "MX": [
+        "dolor de espalda"
+      ],
+      "EC": [
+        "dolor de espalda"
+      ],
+      "PE": [
+        "dolor de espalda"
+      ],
+      "CL": [
+        "dolor de espalda"
+      ],
+      "IT": [
+        "mal di schiena"
+      ],
+      "FR": [
+        "mal de dos"
+      ],
+      "DE": [
+        "rückenschmerzen"
+      ]
+    },
+    "fitness_deporte": {
+      "CO": [
+        "ejercicio en casa",
+        "faja reductora",
+        "rodillera"
+      ],
+      "ES": [
+        "ejercicio en casa",
+        "faja reductora"
+      ]
+    },
+    "mascotas": {
+      "CO": [
+        "accesorios perros",
+        "juguete gato",
+        "cepillo mascotas"
+      ],
+      "ES": [
+        "accesorios perros"
+      ]
+    },
+    "bebes_ninos": {
+      "CO": [
+        "accesorios bebe",
+        "juguete didactico",
+        "seguridad bebe"
+      ],
+      "ES": [
+        "accesorios bebe",
+        "juguete didactico"
+      ]
+    },
+    "tecnologia_gadgets": {
+      "CO": [
+        "audifonos inalambricos",
+        "smartwatch",
+        "camara seguridad",
+        "proyector",
+        "gadget"
+      ],
+      "ES": [
+        "smartwatch",
+        "proyector",
+        "gadget"
+      ]
+    },
+    "moda_accesorios": {
+      "CO": [
+        "zapatos ortopedicos",
+        "reloj hombre",
+        "gafas de sol",
+        "bolso dama"
+      ],
+      "ES": [
+        "zapatos ortopedicos",
+        "gafas de sol"
+      ]
+    },
+    "descubrimiento_cod": {
+      "CO": [
+        "pago contra entrega",
+        "paga al recibir",
+        "envio gratis a toda colombia",
+        "50% de descuento hoy"
+      ],
+      "ES": [
+        "envio gratis",
+        "oferta por tiempo limitado"
+      ],
+      "MX": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "EC": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "PE": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "CL": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "PA": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "GT": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "IT": [
+        "spedizione gratuita"
+      ],
+      "FR": [
+        "livraison gratuite"
+      ],
+      "DE": [
+        "kostenloser versand"
+      ]
+    }
+  },
+  "paginas_vigiladas": {
+    "CO": [],
+    "ES": []
+  },
+  "max_competidores_co": 2,
+  "paises_eu": ["ES", "IT", "FR", "DE"]
+}

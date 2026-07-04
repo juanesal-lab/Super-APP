@@ -194,6 +194,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             blur_captions=settings.get("blur_captions", False),
             text_mode=settings.get("text_mode", "tapar"),
             caption_pos=settings.get("caption_pos", "abajo"),
+            destino=settings.get("destino", "tiktok"),
             gemini_key=_load_env_key(),
             broll_fases=settings.get("broll_fases"),
             progress=progress,
@@ -216,6 +217,10 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
 # Assets estáticos del frontend (ej. /assets/garage/*.webp del home)
 from fastapi.staticfiles import StaticFiles
 app.mount("/assets", StaticFiles(directory=os.path.join(BASE, "assets")), name="assets")
+
+# 📡 Radar Ganadores (spy tool) — módulo en radar/, endpoints en backend/radar_api.py
+from radar_api import router as radar_router
+app.include_router(radar_router)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -345,6 +350,7 @@ def process(
     text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
     banner_oferta: bool = Form(False),
+    destino: str = Form("tiktok"),
 ):
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
@@ -384,6 +390,7 @@ def process(
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "broll_fases": broll_fases,
+        "destino": destino if destino in ("tiktok", "meta") else "tiktok",
     }
     threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
@@ -771,6 +778,7 @@ def scripts(
     oferta_2x1: bool = Form(False),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
+    destino: str = Form("tiktok"),
     reference_ad: UploadFile | None = File(None),
 ):
     job_id, paths = _save_uploads(files or [])
@@ -799,6 +807,7 @@ def scripts(
         "effects": bool(effects), "blur_captions": bool(blur_captions),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
+        "destino": destino if destino in ("tiktok", "meta") else "tiktok",
         "use_music": bool(use_music), "captions": bool(use_captions),
         "oferta_2x1": bool(oferta_2x1),
         "caption_style": caption_style, "caption_size": caption_size,
@@ -827,6 +836,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
         # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan)
         chosen = [(scripts * (N_VERSIONS // max(1, len(scripts)) + 1))[i] for i in range(N_VERSIONS)]
         version_vos = []
+        from pipeline.voiceover import acelerar as _acelerar_vo
         for i, txt in enumerate(chosen):
             progress(f"Generando voz {i + 1}/{N_VERSIONS} con ElevenLabs...", 12 + i * 4)
             vp = os.path.join(wd, f"vo_{i}.mp3")
@@ -834,6 +844,8 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
                 wt = synthesize_with_timestamps(key, txt, voice_key, vp)
             else:
                 synthesize(key, txt, voice_key, vp); wt = None
+            # Manual Maestro §6: locución 1.1-1.2× = más enérgica y retiene mejor
+            wt = _acelerar_vo(vp, wt, factor=1.12) or wt
             version_vos.append((vp, wt))
         # Efectos de transicion: samples REALES (los del usuario en assets/sfx/ o los del set)
         sfx_paths = list_sfx() if s.get("effects") else []
@@ -859,6 +871,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             hook_pos=s["hook_pos"], auto_hook=s["auto_hook"], page_url=s["page_url"],
             product_desc=s["product_desc"], gemini_key=_load_env_key(),
             version_vos=version_vos, effects=s.get("effects", False), sfx_paths=sfx_paths,
+            destino=s.get("destino", "tiktok"),
             music_path=music_path,
             blur_captions=s.get("blur_captions", False), text_mode=s.get("text_mode", "tapar"),
             caption_pos=s.get("caption_pos", "abajo"),
@@ -1145,6 +1158,7 @@ def producto_clips(
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
     vo_guiones: int = Form(0),
+    destino: str = Form("tiktok"),
     winner_files: list[UploadFile] = File([]),
 ):
     """Semi-auto: links de ganadores Y/O videos locales + tu producto → clips en una pasada."""
@@ -1173,6 +1187,7 @@ def producto_clips(
         "aspect": aspect,
         "target_seconds": float(target_seconds),
         "max_clip": min(5.0, max(1.0, float(max_clip))),
+        "destino": destino if destino in ("tiktok", "meta") else "tiktok",
         "blur_captions": bool(blur_captions),
         "text_mode": text_mode,
         "use_gemini": True,

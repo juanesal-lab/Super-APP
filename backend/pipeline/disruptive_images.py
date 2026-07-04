@@ -113,10 +113,12 @@ más específica. El 'prompt' DEBE poner en escena dolor_visual Y solucion_visua
 protagonista y la solución como giro visible.
 
 Cada 'prompt' que entregues:
-- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic square 1:1
-  screenshot of an authentic organic social video" (o post) — NO "advertisement". Describe la escena surreal
-  a pantalla completa + sujeto + emoción + el chrome nativo (center translucent play button, progress bar
-  "0:08 / 2:04", small volume/fullscreen icons) + el titular como caption blanco sobre el video.
+- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic VERTICAL 4:5
+  screenshot of an authentic organic social video" (o post) — NO "advertisement". La escena LLENA todo el
+  marco vertical (sin bordes ni márgenes). Describe la escena surreal a pantalla completa + sujeto + emoción
+  + el chrome nativo (center translucent play button, progress bar "0:08 / 2:04", small volume/fullscreen
+  icons) + el titular como caption blanco sobre el video. DEJA el tercio inferior IZQUIERDO LIMPIO y VACÍO
+  (sin texto, sin sujeto, sin botón ahí) — es el espacio donde luego se pega el producto sin taparlo.
 - Di EXPLÍCITO: "no product or bottle anywhere in the image, keep the lower-left area clean and empty".
 - Los TEXTOS incrustados van LITERALES en español (colombiano, tuteo), entre comillas, CORTOS. SIN precio.
 - Termina SIEMPRE con: thick sans-serif fonts, high contrast, render all embedded text crisply and spelled
@@ -175,7 +177,12 @@ _TOOL = {
 }
 
 # Cola de calidad que se pega al final de cada prompt de imagen.
-_CIERRE = (" Thick bold sans-serif fonts, high contrast, 1:1 perfectly SQUARE aspect ratio, looks like an authentic "
+# 4:5 vertical (formato nativo de feed/stories): el modelo componía en vertical y el 1:1 forzado
+# le metía bordes borrosos y espacios en blanco (queja de Juan). Ahora TODO el marco se usa.
+# El tercio inferior IZQUIERDO queda LIMPIO (sin texto ni sujeto) para pegar el producto sin taparlo.
+_CIERRE = (" Thick bold sans-serif fonts, high contrast, VERTICAL 4:5 aspect ratio filling the WHOLE frame "
+           "edge to edge (no borders, no blurred bars, no empty margins). Keep the BOTTOM-LEFT area clean and "
+           "empty (no text, no subject, no button there) to leave room for the product. Looks like an authentic "
            "organic social-media video screenshot (NOT a polished advertisement), render all embedded text "
            "crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed hands, garbled or "
            "misspelled text, random logos, watermarks, nudity, low-resolution artifacts.")
@@ -400,20 +407,25 @@ def _recortar_producto(img: "Image.Image", umbral: int = 244) -> "Image.Image":
 
 
 def _a_cuadrado(img_path: str) -> None:
-    """Regla de la casa: TODO ad sale 1:1. Si una edición de Nano Banana devuelve otro formato
-    (el modelo a veces ignora la instrucción), se re-encuadra LOCAL a cuadrado con fondo difuminado
-    (estilo IG) — nunca se recorta producto ni texto. $0 y determinista."""
+    """Reencuadra a 4:5 vertical LLENANDO todo el marco (cover: escala para cubrir y recorta al
+    centro) — SIN bordes borrosos ni espacios en blanco (la queja de Juan). Si ya es ~4:5 no toca
+    casi nada; solo recorta el sobrante. $0 y determinista."""
     try:
-        from PIL import ImageFilter, ImageEnhance
         im = Image.open(img_path).convert("RGB")
         w, h = im.size
-        if w == h:
+        target = 4 / 5                      # ancho/alto objetivo
+        cur = w / h
+        if abs(cur - target) < 0.02:
             return
-        lado = max(w, h)
-        fondo = im.resize((lado, lado)).filter(ImageFilter.GaussianBlur(42))
-        fondo = ImageEnhance.Brightness(fondo).enhance(0.62)
-        fondo.paste(im, ((lado - w) // 2, (lado - h) // 2))
-        fondo.save(img_path)
+        if cur > target:                    # muy ancha → recorta los lados
+            nw = int(round(h * target))
+            x = (w - nw) // 2
+            im = im.crop((x, 0, x + nw, h))
+        else:                               # muy alta → recorta arriba/abajo (poco, centrado)
+            nh = int(round(w / target))
+            y = (h - nh) // 2
+            im = im.crop((0, y, w, y + nh))
+        im.save(img_path)
     except Exception:  # noqa: BLE001
         pass
 
@@ -440,20 +452,20 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
             prod_b = f.read()
         prompt = (
             "Edit the FIRST image (a social-media ad / video screenshot). Take the EXACT product from the SECOND "
-            "image and INTEGRATE it into the composition so the viewer instantly understands THIS product is the "
-            "solution being shown. FIRST analyze the layout and choose the most natural spot for THIS design: if "
-            "the layout has an obviously clean/empty reserved zone (an empty side panel, blank corner or cleared "
-            "area), place the product THERE at a size that fills that zone naturally (up to ~30% of the image "
-            "width, clearly visible); otherwise place it smaller (~20% of the width) resting on a real flat "
-            "surface in the LOWER part of the scene — a table, counter, floor, sink or shelf edge. Always "
-            "integrate it with matching lighting, perspective and a soft realistic contact shadow, as if it had "
-            "really been photographed there. If this exact product ALREADY appears in the scene, relocate or "
-            "refine that single instance instead of adding another — the final image must contain the product "
-            "exactly ONCE. STRICT RULES: never place it over a person, face, hands, or over any text, caption, "
-            "progress bar or button. Keep the product's shape, colors and label IDENTICAL to the reference — do "
-            "NOT redesign it, do NOT add any logo, watermark or extra text on it. Change NOTHING else in the "
-            "image: keep all existing captions, the video player, progress bar and the CTA button exactly as "
-            "they are. Output only the edited first image, keeping EXACTLY the same 1:1 SQUARE aspect ratio and framing as the first image — do NOT crop, extend or change the canvas.")
+            "image and place it as a SMALL product in the composition so the viewer sees THIS is the product. "
+            "PLACEMENT (critical): put it in the BOTTOM-LEFT CORNER of the frame, SMALL — about 20-24% of the "
+            "image width, tucked into the corner. If the bottom-left already has text or a subject, use the "
+            "bottom-right corner instead — whichever corner is the emptiest. It must rest naturally against the "
+            "background with matching lighting and a soft contact shadow, as if photographed there. "
+            "HARD RULES (do not break): the product must NEVER overlap or cover any TEXT, headline, caption, "
+            "button, progress bar, face, eyes or hands — if it would overlap any of those, make it SMALLER and "
+            "move it further into the empty corner. Keep at least a small margin from every text element. The "
+            "final image must contain this product EXACTLY ONCE (if it already appears, just refine that one, "
+            "don't add another). Keep the product's shape, colors and label IDENTICAL to the reference — do NOT "
+            "redesign it, do NOT add any logo, watermark or extra text on it. Change NOTHING else: keep all "
+            "existing text, captions, the video player, progress bar and the CTA button exactly as they are, in "
+            "the same positions. Output only the edited first image, keeping EXACTLY the same VERTICAL 4:5 aspect "
+            "ratio and framing as the first image — do NOT crop, extend or change the canvas.")
         r = client.models.generate_content(
             model=model or _IMG_MODEL,
             contents=[prompt,
@@ -494,7 +506,7 @@ def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str,
             f"User instruction (Spanish): \"{instruccion.strip()}\". "
             "If the instruction adds or modifies Spanish text, render it crisply and spelled EXACTLY. "
             "Output only the edited image, keeping EXACTLY the same aspect ratio and canvas as the "
-            "input image (if the input is 1:1 square, the output MUST be 1:1 square).")
+            "input image (do NOT change the vertical 4:5 framing, do NOT add borders or margins).")
         r = client.models.generate_content(
             model=_IMG_MODEL,
             contents=[prompt, types.Part.from_bytes(data=ib, mime_type="image/png")])

@@ -2667,3 +2667,21 @@ abajo con etiqueta "VIRAL" y titular en mayúsculas con una frase en amarillo en
 - AVISO Jack: disruptive_images (advertorial: _SISTEMA_ADV/_TOOL_ADV/_CIERRE_ADV, generar_conceptos
   +tipo, generar_ad_fullprompt rama es_adv, generar_imagen +cierre), app.py (endpoint +tipo,
   swap respeta _tipo, persist _tipo), index.html (selector + render + botón condicional). Retro-compatible.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🖼️ FIX ads imagen disruptivos: 4:5 sin bordes borrosos + producto en esquina sin tapar texto
+Juan (con screenshots): los disruptivos salían "corridos" (bordes difuminados), el producto TAPABA
+el texto y quedaban espacios en blanco. Dos causas:
+1. `_a_cuadrado` forzaba 1:1 con FONDO BLUR (el modelo componía en vertical → barras borrosas +
+   espacio muerto). Reescrita: reencuadra a 4:5 vertical con COVER (escala para cubrir + recorta al
+   centro el sobrante) — sin bordes, sin blur, todo el marco usado. `_CIERRE` y `_SISTEMA` ahora
+   piden "VERTICAL 4:5 filling the whole frame" + tercio inferior IZQUIERDO limpio para el producto.
+   editar_imagen_ia también actualizado a 4:5.
+2. `_integrar_producto_ia` ponía el producto hasta 30% del ancho en "zona reservada" → aterrizaba
+   sobre el titular. Ahora: producto PEQUEÑO (20-24%) anclado a la ESQUINA inferior (izq, o der si
+   la izq tiene texto), regla DURA de no solapar NINGÚN texto/botón/cara/barra (si solaparía → más
+   pequeño y más a la esquina), 4:5.
+Probado REAL con Gemini: concepto surreal (cara=mapa de carreteras), 4:5 (ratio 0.81) llenando el
+marco sin bordes, texto arriba limpio, producto en la esquina inferior izq SIN tapar nada, chrome
+de video intacto. La UI (.disCard img) ya mostraba ratio natural. py_compile OK.
+AVISO Jack: disruptive_images (_a_cuadrado→4:5 cover, _CIERRE, _SISTEMA, _integrar_producto_ia,
+editar_imagen_ia). El advertorial no cambió (ya era 4:5 nativo).

@@ -371,3 +371,55 @@ en metáfora o en 3ª persona. Equivalencias listas:
 - "pierde X kilos en Y días" → "muchos empiezan a notar la diferencia en pocas semanas" (reporte, no promesa)
 - nada de "antes/después" corporal explícito en el guion; insinuar con la reacción de otros ("¿qué hiciste?")
 - prohibido precio/cifras de dinero (regla de Juan) — el 2x1 se dice "pides uno y te llevas otro gratis"
+
+
+## ⭐⭐ FRAMEWORK v3 — calibrado con 246 videos REALES de +1M vistas (nichos COD, 2026-07)
+
+Dataset propio: 246 videos únicos de TikTok con +1M de plays (mediana 3.37M; 83 con +5M; 24% LATAM incl. CO) en nichos COD/dropshipping, cruzado con benchmarks de retención 2026. **Donde el v3 contradiga al v2 o a las fórmulas viejas, MANDA EL v3.**
+
+### 1. DOS FORMATOS GANADORES (y el valle a evitar)
+- **Demo cruda de 12-18s**: donde viven los +50M ("Best kitchen gadget", 9s → 56M). Hook VISUAL en el segundo 0; la voz mete solo 1-2 frases de asombro. Los +5M duran mediana 17s: el video se explica solo.
+- **Storytime/POV de 35-59s**: el mejor ratio de engagement de todo el dataset (5.03% likes/plays). Arco completo con personaje.
+- **Ojo con el rango 20-34s**: es el peor bucket ORGÁNICO (1.94%) porque suele ser "historia recortada" o "demo estirada". PERO para AD PAGADO con conversión, 21-34s sigue siendo el rango correcto para manejar UNA objeción (research 2026). Regla práctica: a 25-30s el guion es demo + UNA objeción manejada + cierre — jamás 7 fases a la carrera.
+
+### 2. LOS HOOKS QUE DOMINAN HOY (cita textual del dataset)
+| Familia | Ejemplo real +1M | Resultado |
+|---|---|---|
+| Regalo a familiar | "Le compré la paila a mi mamá" (CO) | 3.3M, **15.0% likes/plays (récord del dataset)** |
+| Pregunta relatable | "te pasa? no olvides seguirme" | 14.9M, 10.1% |
+| Secreto/revelación | "Este es el secreto para tener piel perfecta!" (MX) | 4.3M, 10.8% |
+| Plata concreta | "No es divertido pero me genera 107€ la hora" | 6.9M, 9.6% |
+| Confesión + "¿te ha pasado?" | "Soy Mau y compré un case-microscopio que no sé ni cuándo usaré 😂 ¿TE HA PASADO?" | 7.1M, 8.3% |
+| Unboxing | "unboxing my new BT21 soap dispenser" | 13.9M mediana, 8.6% |
+| Social proof | "TikTok me hizo comprar esto" | 7.7M mediana |
+| Imperativo | "lo necesitas" | 5.6M, 6.9% |
+| Resultado-primero | "#ad My neck, upper back, and traps feel like new!!" | 39.7M |
+
+Fórmulas 2026 que complementan (research): reverse-sell ("NO compres esto… a menos que…"), responder un comentario negativo real en pantalla, y "3 razones por las que este [producto] se volvió viral".
+**Regla: el hook se elige por CALCE con la categoría (REGLA #1 de siempre) — 2-3 familias por lote de guiones, NO un hook distinto forzado por guion.**
+
+### 3. FAMILIAR COMO PERSONAJE (la palanca emocional #1)
+"Se lo compré a mi mamá / mi esposo no creía" convierte una demo en historia: 4.4% de ratio vs 2.4% del gadget mostrado en frío. Si el producto es de hogar/cocina/regalo, al menos UN guion del lote lleva familiar como personaje.
+
+### 4. PRODUCTOS DE DOLOR/VERGÜENZA (callos, hongos, espalda, olores — el core COD)
+- Acumulan vistas enormes (back pain: 6.4M mediana) con ratio de likes bajísimo (0.6-1.9%): nadie da like en público. NO se miden por likes — se miden por retención y CTR.
+- El guion ganador es testimonio en 1ª persona + resultado inmediato, 10-24s ("Finally a massager that actually works" → 24M). NO educación larga, NO mecanismo extendido.
+
+### 5. RETENCIÓN (benchmarks 2026)
+- 73% de los video-ads mueren antes del segundo 3 "porque parecen anuncios". El PAYOFF del hook llega ANTES del segundo 3 (no la promesa del payoff). Arranque en caliente sigue vigente: a mitad de pensamiento, jamás "Hola".
+- **Segunda fuga: segundos 5-10** — ocurre cuando el guion pivotea del hook a una LISTA DE FEATURES. Después del hook viene dolor con detalle cotidiano o historia; la ficha técnica mata el hold rate.
+- Pattern interrupt cada 3-5s VARIANDO el intervalo (3s→5s→2.5s; intervalos idénticos se vuelven predecibles). El guion debe dejar esos puntos de corte: una idea nueva cada 3-5s.
+- El hook de un ad pagado CALIFICA al comprador (nombra audiencia, problema o resultado). Hook rate alto + conversión baja = atención vacía.
+- Caption: máx ~40 caracteres + 4 hashtags (los +5M usan 39 chars). Los números concretos van en la VOZ y el texto en pantalla, no en el caption. Emoji y MAYÚSCULAS no mueven la aguja.
+
+### 6. QUÉ CAMBIA vs v2 (resolución de contradicciones)
+1. **Staccato DEROGADO como regla base.** Regla única de ritmo: frases conversacionales COMPLETAS de alguien contándole algo a un amigo + golpes cortos SOLO en la ráfaga del problema o del producto. El telegrama continuo queda prohibido.
+2. **"No te voy a mentir": máx 1 por LOTE (no 1 por guion)** y siempre concediendo algo negativo real primero ("no hace milagros de un día para otro"). Sin la concesión es un tic de plantilla.
+3. **Modismos: máx 1 por guion** y solo donde calce. La voz de Juan es ritmo y actitud, no léxico repartido. "Es físico y ya" SOLO en productos mecánicos.
+4. **Ancla de cierre SIN cifras** (cierra el conflicto del precio prohibido): "menos de lo que ya gastaste en cremas que no pasan de la superficie", "una fracción de una sola cita del especialista". La comparación de valor se queda; la cifra de dinero sigue prohibida.
+5. **"Hasta que probé esto" (Plantilla A) pasa a LISTA NEGRA** — la transición más quemada del direct response. Alternativas: "Resulta que…", "Lo que nadie me dijo fue…", o corte directo al producto en acción.
+6. **Especificidad situacional, no inventada**: si el producto no trae specs verificables, el detalle concreto va del lado del DOLOR ("la uña que escondes en la piscina"), que nunca es falso. Inventar "7 minutos al día" o "luz azul" = queja o baneo.
+7. **Hooks por CALCE de categoría, no por cuota de variedad** (derogado "12 hooks distintos, uno por guion"): 2-3 familias que matan para ESA categoría + variar el NIVEL DE CONSCIENCIA del avatar (no sabe que existe solución / ya probó de todo y desconfía / está comparando).
+8. **Serialización y CTA de comentario como re-engagement** ("Gadget #317" → 22.9M; "comenta para más info" es el estándar CO): van ANTES del CTA COD obligatorio, no lo reemplazan.
+9. **Colombia premia comunidad y tono positivo/motivacional** (research LATAM): el dolor se agita, pero el cierre deja al espectador ARRIBA, no regañado. Y "pagas al recibir" DENTRO del video sube conversión 200-300% en CO — el CTA obligatorio ya lo cubre.
+10. **No traducir/copiar guiones de USA**: caso documentado de 3M views → 40k al traducir. Los patrones de este banco son en español y de LATAM; úsalos, no adaptes virales gringos.

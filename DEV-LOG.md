@@ -2487,3 +2487,28 @@ roto en el medio → video=15.37 audio=15.33 (antes: video moría en el clip rot
 _LOOK_DIST 10→16 (misma creadora con otra ropa/luz daba 12-20 bits y el guard no la veía).
 AVISO Jack: assemble (concat_clips_xfade blindada + _video_stream_dur + verificación en
 build_variations), guion_match (_LOOK_DIST). py_compile OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🎙️ GUIONES v3: calibrados con 246 videos REALES de +1M vistas (workflow de 6 agentes)
+Juan: "no me convencen los guiones — pon N agentes, mira miles de videos de +1M y que queden perfectos".
+**INVESTIGACIÓN**: (1) sweep GRATIS con nuestro buscar_tiktok: 34 queries en los nichos COD → 246
+videos únicos de +1M plays (mediana 3.4M, 83 con +5M, 24% LATAM) con título/plays/likes/dur/región;
+(2) research web de retención/hooks 2026; (3) crítica adversarial del sistema actual. Síntesis +
+2 JUECES (reglas contra el código real y calidad con guiones simulados) antes de tocar nada.
+**assets/guion-framework.md — NUEVA sección FRAMEWORK v3** (manda sobre v2 donde contradiga):
+familias de hooks que dominan HOY con citas textuales del dataset (regalo a familiar = 15% likes/plays
+récord; pregunta relatable; secreto; plata concreta; unboxing; social proof), dos formatos ganadores
+(demo cruda 12-18s / storytime 35-59s, valle 20-34s), productos de dolor/vergüenza se miden por
+retención no likes, re-enganche 5-10s (la lista de features mata el hold), staccato DEROGADO como
+regla base, "no te voy a mentir" máx 1/lote, ancla de cierre SIN cifras, lista negra de transiciones
+quemadas ("hasta que probé esto"), PROHIBIDO inventar specs (la especificidad va del lado del DOLOR).
+**scripts.py (9 cambios quirúrgicos al prompt)**: autoridad v3>v2 + framework[:30000] (con v3 el .md
+mide 25.7k — el [:22000] lo truncaba); hooks por 2-3 FAMILIAS que calzan con la categoría + variar
+NIVEL DE CONSCIENCIA del avatar (no sabe / ya probó / comparando); presupuesto por beat (CTA=17
+palabras exactas); few-shot completo de guion perfecto; tope de modismos; re-enganche solo ≥30s.
+**creative_variator.py (3 cambios)**: mismas familias/reglas para los hooks de variaciones (estaba
+enseñando el staccato que scripts ya prohibía — divergencia real detectada por los agentes).
+**VALIDADO con generación REAL** (producto láser hongos, 25s, n=3): 3/3 parsean, fases completas,
+CTA exacto, 63-68 palabras (presupuesto 63), y la calidad se nota: especificidad de dolor real,
+3 niveles de consciencia distintos, ancla sin cifras, cero tics. py_compile ok ambos.
+- AVISO Jack: NO toqué el flujo/parseo (mismo schema angulo/texto/fases y tool entregar_variaciones)
+  ni el congelón (vi tu fix ebe9029 del xfade — quedó intacto). Solo prompts + framework.

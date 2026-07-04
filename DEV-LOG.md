@@ -2307,3 +2307,13 @@ creativo, diseño calcado de su referencia; safe_top_y con Gemini para no tapar 
   tras la música en _run_job. UI: checkbox junto a "🟦 Textos del proveedor".
 - Regla de oro intacta: oferta SIN cifras de precio.
 AVISO Juan: cero cambios en offer_banner/auto_studio; solo el hook en _run_job + Form + checkbox.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ⏸️ Plan "búsqueda 30/30": sesión cortada ANTES de implementar (sigue pendiente)
+Jack pidió cerrar YA. La sesión alcanzó solo la lectura de contexto (DEV-LOG, tiktok_search.py,
+creative_search.py, endpoints y pestaña 🔍 Buscar creativos) — CERO cambios de código, nada a medias,
+nada que revertir. El plan 30/30 completo (multi-foto ≤3 en /api/tiktok-search y /api/creative-search,
+cuentas vendedoras vía tikwm api/user/posts de los confirmados, toggle "solo confirmados" + mensaje
+honesto, modo exigente) queda TAL CUAL en la entrada 📋 del 2026-07-04 para la próxima sesión.
+Verificado antes de cerrar: py_compile ok (app.py, tiktok_search.py, creative_search.py) y
+node --check 14/14 bloques de index.html — el repo queda sano e idéntico a origin/main.
+AVISO Juan: no toqué nada tuyo ni nada en general; esta entrada es solo la traza del corte.

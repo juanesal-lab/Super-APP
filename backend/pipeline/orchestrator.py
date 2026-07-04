@@ -273,9 +273,13 @@ def render_versions(
             report("Montaje por guion: eligiendo el mejor clip para cada frase...", 51)
             guion_match.etiquetar_frases([f for f in frases_pv if f], gemini_key, product_desc)
             usage: dict[int, int] = {}
+            hook_srcs: set[int] = set()           # cada versión abre con una FUENTE distinta
             nuevos = []
-            for (name, order), frases in zip(version_orders, frases_pv):
-                plan_g = (guion_match.plan_montaje(selected, fases_por_idx, frases, usage)
+            for v_i, ((name, order), frases) in enumerate(zip(version_orders, frases_pv)):
+                plan_g = (guion_match.plan_montaje(selected, fases_por_idx, frases, usage,
+                                                   version_i=v_i,
+                                                   n_versiones=len(version_orders),
+                                                   hook_srcs=hook_srcs)
                           if frases else None)
                 if plan_g:
                     nuevos.append((name, plan_g[0]))

@@ -2215,3 +2215,15 @@ se pega. Fix: `Anthropic(api_key=..., timeout=120.0, max_retries=1)` en los 4 cl
 (disruptive_images, creative_variator, tiktok_search juez, supervisor) → cualquier cuelgue muere en
 ~2-4 min con el error visible en la UI (los 4 sitios ya capturaban excepción y reportaban).
 AVISO Juan: solo el constructor del cliente; prompts/flujo intactos.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🚀 Fix RAÍZ de la lentitud: 15 endpoints congelaban TODA la app
+Jack: "se me demora mucho la app en darme cosas, mucho". Causa: 15 handlers declarados `async def`
+SIN ningún await adentro — corren EN el event loop de uvicorn, así que mientras uno trabaja
+(disruptive-angles ~2 min de Claude inline, creative-search ~1-2 min, uploads grandes de clone/swap)
+TODO el server queda congelado: miniaturas, /api/status de otros jobs, todas las pestañas.
+FIX: `async def` → `def` en los 15 (process, fetch_links, auto, tiktok_search, creative_search,
+creative_more, clone, scripts, swap, dub, download_videos, producto_clips, foreplay_producto_api,
+disruptive_angles, disruptive_images) → FastAPI los corre en su threadpool (~40 hilos) y el loop
+queda libre. PROBADO: con una búsqueda TikTok corriendo, el home respondió en 0.04s (antes esperaba).
+AVISO Juan: regla de la casa a partir de hoy — handler SIN await = `def` a secas; `async def` solo
+si de verdad hace await. Cero cambios de lógica/firmas, solo la palabra async.

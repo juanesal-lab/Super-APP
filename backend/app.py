@@ -297,7 +297,7 @@ def _safe_link_paths(link_paths: list[str]) -> list[str]:
 
 
 @app.post("/api/process")
-async def process(
+def process(
     files: list[UploadFile] = File(None),
     link_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
@@ -357,7 +357,7 @@ async def process(
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
 
 @app.post("/api/fetch-links")
-async def fetch_links(links: str = Form("")):
+def fetch_links(links: str = Form("")):
     """Baja videos de TikTok al servidor y devuelve sus rutas (para cortarlos luego con /api/process,
     después de que el usuario configure los ajustes). NO corta nada aquí."""
     urls = [u for u in links.split() if u.startswith("http")]
@@ -441,7 +441,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
 
 
 @app.post("/api/auto")
-async def auto(
+def auto(
     files: list[UploadFile] = File(...),
     product_desc: str = Form(""),
     voz: str = Form("juan_carlos"),
@@ -474,7 +474,7 @@ async def auto(
 # ---- BUSCAR CREATIVOS EN TIKTOK (foto + nombre -> links reales) ----
 
 @app.post("/api/tiktok-search")
-async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
+def tiktok_search(nombre: str = Form(""), count: int = Form(20),
                         foto: UploadFile = File(None)):
     from pipeline.tiktok_search import buscar
     img_path = None
@@ -495,7 +495,7 @@ async def tiktok_search(nombre: str = Form(""), count: int = Form(20),
 # ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
 
 @app.post("/api/creative-search")
-async def creative_search(nombre: str = Form(""), count: int = Form(20),
+def creative_search(nombre: str = Form(""), count: int = Form(20),
                           fp_count: int = Form(20), foto: UploadFile = File(None)):
     """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
     /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo."""
@@ -519,7 +519,7 @@ async def creative_search(nombre: str = Form(""), count: int = Form(20),
 
 
 @app.post("/api/creative-more")
-async def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
+def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
                         desc: str = Form(""), terminos: str = Form(""), angulo: str = Form(""),
                         excluir: str = Form(""), n: int = Form(1), foto: str = Form("")):
     """n creativos NUEVOS para una fuente: 🔄 cambiar (n=1, sin angulo) o 🎯 más con ese ángulo
@@ -572,7 +572,7 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
 
 
 @app.post("/api/clone")
-async def clone(
+def clone(
     winner: UploadFile = File(...),
     photos: list[UploadFile] = File([]),
     videos: list[UploadFile] = File([]),
@@ -683,7 +683,7 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
 
 
 @app.post("/api/scripts")
-async def scripts(
+def scripts(
     files: list[UploadFile] = File(None),
     link_paths: list[str] = Form([]),
     target_seconds: float = Form(15.0),
@@ -897,7 +897,7 @@ def _run_swap_job(job_id: str, old_path: str, new_paths: list[str],
 
 
 @app.post("/api/swap")
-async def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(...),
+def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(...),
                product_desc: str = Form(""), new_desc: str = Form("")):
     if not old or not new_files:
         raise HTTPException(400, "Sube el video viejo y al menos un video del producto nuevo")
@@ -967,7 +967,7 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
 
 
 @app.post("/api/dub")
-async def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
+def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
               source_lang: str = Form("auto"), oferta_2x1: bool = Form(False),
               product_desc: str = Form(""), video_url: str = Form("")):
     job_id = uuid.uuid4().hex[:12]
@@ -1019,7 +1019,7 @@ def _run_download_job(job_id: str, urls: list[str]):
 
 
 @app.post("/api/download-videos")
-async def download_videos(urls: str = Form(...)):
+def download_videos(urls: str = Form(...)):
     """Baja videos desde una lista de links (uno por línea) con yt-dlp."""
     links = [u.strip() for u in urls.replace(",", "\n").splitlines() if u.strip()]
     if not links:
@@ -1057,7 +1057,7 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
 
 
 @app.post("/api/producto-clips")
-async def producto_clips(
+def producto_clips(
     winner_urls: str = Form(...),
     product_url: str = Form(""),
     product_desc: str = Form(""),
@@ -1209,7 +1209,7 @@ def _run_foreplay_producto_job(job_id: str, image_path: str | None, nombre: str,
 
 
 @app.post("/api/foreplay-producto")
-async def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(False),
+def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(False),
                                 foto: UploadFile | None = File(None)):
     """📸 Producto exacto: foto y/o nombre → TODOS los creativos de ESE producto en Foreplay
     (todos los términos, páginas grandes, juez visual). Job en background con progreso."""
@@ -1418,7 +1418,7 @@ def last_project():
 
 
 @app.post("/api/disruptive-angles")
-async def disruptive_angles(producto: str = Form(""), link: str = Form(""),
+def disruptive_angles(producto: str = Form(""), link: str = Form(""),
                             ofertas: str = Form(""), precio: str = Form(""),
                             product_image: UploadFile | None = File(None)):
     """Paso 1: analiza producto/link → 6 conceptos disruptivos para que el usuario elija."""
@@ -1474,7 +1474,7 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
 
 
 @app.post("/api/disruptive-images")
-async def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
+def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
     """Paso 2: genera las imágenes (escena + texto compuesto) de los conceptos ELEGIDOS."""
     import json as _json
     ctx = JOBS.get(ctx_id)

@@ -129,6 +129,8 @@ def _guiones_y_narraciones(work_dir: str, *, eleven_key: str | None, gemini_key:
         mp3 = os.path.join(work_dir, f"vo_{i}.mp3")
         try:
             words = voiceover.synthesize_with_timestamps(eleven_key, g["texto"], voz, mp3)
+            # Manual Maestro §6: locución 1.1-1.2× = más enérgica, retiene mejor (timings re-escalados)
+            words = voiceover.acelerar(mp3, words, factor=1.12)
             return (mp3, words, g["texto"])
         except Exception:  # noqa: BLE001
             return None

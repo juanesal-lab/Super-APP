@@ -2361,3 +2361,25 @@ Dos quejas de Juan:
 Verificado: py_compile OK, node --check 14/14 bloques OK. AVISO Jack: renderFiles cambió (filas con
 <img data-th>), bind() de Clonar tiene 2 líneas nuevas, helpers globales antes de addFiles. Nada
 de backend salvo scripts.py (prompt).
+
+### 2026-07-04 · Claude (juanesal-lab) · 📖 MANUAL MAESTRO absorbido: conocimiento al repo + quick-wins implementados
+Juan entregó su manual maestro (862 líneas: filosofía, pipeline 100% IA, guion, shotlist, assets,
+voz, música, subtítulos, edición, export, QA, schemas, stack). Absorción:
+- `assets/manual-maestro-videos-ia.md`: el manual COMPLETO copiado al repo (canónico).
+- `assets/manual-maestro-adoptado.md`: mapa de qué regla vive dónde + CONFLICTOS manual-genérico
+  vs MEDIDO en las referencias reales (regla de la casa: gana lo medido) + roadmap. Conflictos
+  clave: −18 LUFS medido vs −14 del manual (queda −18), cama plana sin drops vs "drop en reveal"
+  (queda cama+chime), dissolve medido vs hard-cut genérico (queda dissolve), y ⚠️ PENDIENTE DE
+  JUAN: el manual exige ANCLA DE PRECIO en guiones pero su regla actual PROHÍBE cifras → hoy
+  manda su regla; si quiere anclas se agrega toggle.
+- IMPLEMENTADO del manual: (1) `voiceover.acelerar()` — locución a 1.12× (atempo, sin cambiar
+  tono) con word-timings re-escalados ÷factor (subtítulos karaoke y montaje por guion siguen
+  clavados); cableada en Mi producto (_guiones_y_narraciones) y Cortar clips (/api/scripts).
+  Probado con VO real: 53.13s→47.45s exacto, timings ÷1.12 ✓. (2) Prompt de guiones: ARRANQUE
+  EN CALIENTE (primera línea a mitad de pensamiento, jamás "Hola") + HOOK STACKING (micro-gancho
+  por fase). (3) hook_gen ya cumplía el ≤8 palabras (usa 6).
+- Corto plazo anotado en el doc: SFX cash-register/notification al banco (gasta créditos → OK de
+  Juan), safe zone Meta (35% inferior libre, toggle destino), master→2 cuts TikTok/Meta, QA gate
+  de video. Grande: módulo GENERACIÓN 100% IA (4º módulo; specs §12-14 del manual).
+- AVISO Jack: voiceover.py (+acelerar), producto_clips._tts, app._run_scripts_job (acelera tras
+  TTS), scripts.py (2 reglas nuevas en el prompt). py_compile OK.

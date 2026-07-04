@@ -788,6 +788,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
         # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan)
         chosen = [(scripts * (N_VERSIONS // max(1, len(scripts)) + 1))[i] for i in range(N_VERSIONS)]
         version_vos = []
+        from pipeline.voiceover import acelerar as _acelerar_vo
         for i, txt in enumerate(chosen):
             progress(f"Generando voz {i + 1}/{N_VERSIONS} con ElevenLabs...", 12 + i * 4)
             vp = os.path.join(wd, f"vo_{i}.mp3")
@@ -795,6 +796,8 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
                 wt = synthesize_with_timestamps(key, txt, voice_key, vp)
             else:
                 synthesize(key, txt, voice_key, vp); wt = None
+            # Manual Maestro §6: locución 1.1-1.2× = más enérgica y retiene mejor
+            wt = _acelerar_vo(vp, wt, factor=1.12) or wt
             version_vos.append((vp, wt))
         # Efectos de transicion: samples REALES (los del usuario en assets/sfx/ o los del set)
         sfx_paths = list_sfx() if s.get("effects") else []

@@ -2287,3 +2287,14 @@ analizador los puntúa y el guion los usa donde calcen). Solo frontend.
 PENDIENTE anotado (plantilla de búsqueda de Jack): cuando la búsqueda TikTok no confirme NADA,
 decir QUÉ búsquedas probó y pedir marca/hashtag/país (punto 5 de su plantilla; el resto — ficha
 profunda, multi-búsquedas ES+EN, verificación obligatoria, sin relleno mezclado — ya está).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 📋 PLAN "búsqueda 30/30" (pedido de Jack, para la próxima sesión)
+Meta real: precisión 100% (cero falsos confirmados) + encontrar TODOS los que existan + honestidad
+cuando haya menos de los pedidos. Palancas, en orden:
+1. RASTREAR CUENTAS VENDEDORAS: al confirmar videos, explorar la cuenta (tikwm api/user/posts) —
+   los vendedores suben el MISMO producto 10-30 veces → es LA palanca de volumen exacto.
+2. Modo EXIGENTE: verificación profunda (frames por dentro) a TODO lo que se muestre, no solo top-12.
+3. Toggle "solo confirmados" + mensaje honesto con las búsquedas probadas y pedir marca/hashtag/país
+   cuando no llegue al count (punto 5 de la plantilla de Jack).
+4. Multi-foto de referencia (frente/lado/empaque) para el juez.
+(Contexto: hoy 9/9 láser, 21 bee venom, 27 repelente — el techo actual es supply + cuentas sin explorar.)

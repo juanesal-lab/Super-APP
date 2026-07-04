@@ -2450,3 +2450,18 @@ Probado live x3: guiones nombran NUTRILAN, 56-58 palabras, hooks citables, voz d
 AVISO Jack: scripts.py (Claude 1º + _ajustar_por_fases + presupuesto), guion_match (firmas +
 mismo_look + nat−0.18), orchestrator (firmas al plan), assemble (stretch ≤8% pre-tpad),
 index.html (defaults 22s/20s). py_compile todo OK.
+
+### 2026-07-04 · Claude (juanesal-lab) · 📡 RADAR GANADORES — nueva función: spy tool tipo Minea integrado
+Nueva pestaña "📡 Radar": spy tool propio (Meta Ad Library de 11 países — CO/MX/EC/PE/CL/PA/GT/ES/IT/FR/DE
+vía ScrapeCreators + matcher de catálogo Dropi + 186 tiendas Shopify competidoras rastreadas + detector de
+oportunidades Europa→Colombia con reach real DSA). El motor completo vive en `radar/` (solo stdlib, cero
+pip installs); `backend/radar_api.py` expone GET /radar (dashboard visual), /api/radar/resumen y
+/api/radar/candidatos (filtros: min_score, pais, sourcing). En el Mac de Juan un cron (launchd 7:30am)
+escanea y regenera el dashboard a diario. Datos y keys NO van al repo (radar/.gitignore cubre .env,
+radar.db, privado.json). Para usarlo en otra máquina: SCRAPECREATORS_API_KEY en radar/.env (gratis 1.000
+créditos en scrapecreators.com) y correr radar/run_daily.sh — guía completa en radar/HANDOFF.md.
+AVISO Jack: app.py solo ganó 2 líneas (include_router tras el mount de /assets); index.html: botón nuevo
+en #tabs, panel p-radar con iframe lazy, 3 líneas en el handler de tabs. NO toqué pipeline/. Sin
+dependencias nuevas. Probado con TestClient (el server estaba ocupado renderizando — al reiniciar con
+./run.sh queda activa la pestaña). Fix extra en radar/tiendas.py: tiendas recién descubiertas ya no
+inundan el reporte de novedades con su primer catálogo.

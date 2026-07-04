@@ -1,0 +1,11 @@
+.env
+radar.db
+docs/sample_*.json
+__pycache__/
+privado.json
+logs/
+docs/dashboard.html
+docs/reports/
+docs/*_pendientes.json
+docs/*_resultados.json
+docs/dropi_busquedas_hoy.json

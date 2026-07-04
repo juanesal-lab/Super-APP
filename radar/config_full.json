@@ -1,0 +1,406 @@
+{
+  "countries_activos": [
+    "CO",
+    "ES",
+    "MX",
+    "EC",
+    "PE",
+    "CL",
+    "PA",
+    "GT",
+    "IT",
+    "FR",
+    "DE"
+  ],
+  "paginas_por_keyword": 1,
+  "nichos": {
+    "automotriz": {
+      "CO": [
+        "accesorios para carro",
+        "limpieza carro",
+        "organizador carro"
+      ],
+      "ES": [
+        "accesorios coche"
+      ],
+      "MX": [
+        "accesorios coche"
+      ],
+      "EC": [
+        "accesorios carro"
+      ],
+      "PE": [
+        "accesorios auto"
+      ],
+      "CL": [
+        "accesorios auto"
+      ],
+      "IT": [
+        "accessori auto"
+      ],
+      "FR": [
+        "accessoires voiture"
+      ],
+      "DE": [
+        "auto zubehör"
+      ],
+      "PA": [
+        "accesorios carro"
+      ],
+      "GT": [
+        "accesorios carro"
+      ]
+    },
+    "hogar_decoracion": {
+      "CO": [
+        "alfombra",
+        "decoracion hogar",
+        "iluminacion led",
+        "cortinas"
+      ],
+      "ES": [
+        "alfombra",
+        "decoración hogar"
+      ],
+      "MX": [
+        "alfombra",
+        "decoracion hogar"
+      ],
+      "PA": [
+        "alfombra"
+      ],
+      "EC": [
+        "alfombra",
+        "decoracion hogar"
+      ],
+      "PE": [
+        "alfombra",
+        "decoracion hogar"
+      ],
+      "CL": [
+        "alfombra",
+        "decoracion hogar"
+      ],
+      "GT": [
+        "alfombra"
+      ]
+    },
+    "cocina": {
+      "CO": [
+        "organizador cocina",
+        "utensilios cocina",
+        "freidora"
+      ],
+      "ES": [
+        "organizador cocina",
+        "utensilios cocina"
+      ],
+      "MX": [
+        "organizador cocina",
+        "utensilios cocina"
+      ],
+      "EC": [
+        "organizador cocina",
+        "utensilios cocina"
+      ],
+      "PE": [
+        "organizador cocina",
+        "utensilios cocina"
+      ],
+      "CL": [
+        "organizador cocina",
+        "utensilios cocina"
+      ],
+      "PA": [
+        "organizador cocina"
+      ],
+      "GT": [
+        "organizador cocina"
+      ],
+      "IT": [
+        "organizer cucina"
+      ],
+      "FR": [
+        "organisateur cuisine"
+      ],
+      "DE": [
+        "küchen organizer"
+      ]
+    },
+    "limpieza": {
+      "CO": [
+        "limpieza hogar",
+        "quitamanchas",
+        "trapeador",
+        "manguera presion"
+      ],
+      "ES": [
+        "limpieza hogar",
+        "quitamanchas"
+      ],
+      "MX": [
+        "limpieza hogar",
+        "quitamanchas"
+      ],
+      "EC": [
+        "limpieza hogar",
+        "quitamanchas"
+      ],
+      "PE": [
+        "limpieza hogar",
+        "quitamanchas"
+      ],
+      "CL": [
+        "limpieza hogar",
+        "quitamanchas"
+      ],
+      "IT": [
+        "pulizia casa",
+        "smacchiatore"
+      ],
+      "FR": [
+        "détachant",
+        "nettoyage maison"
+      ],
+      "DE": [
+        "fleckenentferner",
+        "haushalt reinigung"
+      ],
+      "PA": [
+        "limpieza hogar"
+      ],
+      "GT": [
+        "limpieza hogar"
+      ]
+    },
+    "belleza_cuidado": {
+      "CO": [
+        "cuidado de la piel",
+        "crecimiento cabello",
+        "maquillaje",
+        "depilacion"
+      ],
+      "ES": [
+        "cuidado de la piel",
+        "crecimiento cabello"
+      ],
+      "MX": [
+        "crecimiento cabello",
+        "cuidado de la piel"
+      ],
+      "IT": [
+        "crescita capelli"
+      ],
+      "FR": [
+        "pousse cheveux"
+      ],
+      "DE": [
+        "haarwachstum"
+      ],
+      "EC": [
+        "crecimiento cabello",
+        "cuidado de la piel"
+      ],
+      "PE": [
+        "crecimiento cabello",
+        "cuidado de la piel"
+      ],
+      "CL": [
+        "crecimiento cabello",
+        "cuidado de la piel"
+      ]
+    },
+    "salud_bienestar": {
+      "CO": [
+        "dolor de espalda",
+        "corrector postura",
+        "dormir mejor",
+        "hongos uñas",
+        "masajeador"
+      ],
+      "ES": [
+        "dolor de espalda",
+        "corrector postura",
+        "masajeador"
+      ],
+      "MX": [
+        "corrector postura",
+        "dolor de espalda"
+      ],
+      "EC": [
+        "corrector postura",
+        "dolor de espalda"
+      ],
+      "PE": [
+        "corrector postura",
+        "dolor de espalda"
+      ],
+      "CL": [
+        "corrector postura",
+        "dolor de espalda"
+      ],
+      "IT": [
+        "correttore postura",
+        "mal di schiena"
+      ],
+      "FR": [
+        "correcteur posture",
+        "mal de dos"
+      ],
+      "DE": [
+        "haltungskorrektur",
+        "rückenschmerzen"
+      ],
+      "PA": [
+        "dolor de espalda"
+      ],
+      "GT": [
+        "dolor de espalda"
+      ]
+    },
+    "fitness_deporte": {
+      "CO": [
+        "ejercicio en casa",
+        "faja reductora",
+        "rodillera"
+      ],
+      "ES": [
+        "ejercicio en casa",
+        "faja reductora"
+      ],
+      "MX": [
+        "faja reductora"
+      ],
+      "EC": [
+        "faja reductora"
+      ],
+      "PE": [
+        "faja reductora"
+      ],
+      "CL": [
+        "faja reductora"
+      ]
+    },
+    "mascotas": {
+      "CO": [
+        "accesorios perros",
+        "juguete gato",
+        "cepillo mascotas"
+      ],
+      "ES": [
+        "accesorios perros"
+      ],
+      "MX": [
+        "accesorios perros"
+      ],
+      "PA": [
+        "accesorios perros"
+      ],
+      "EC": [
+        "accesorios perros"
+      ],
+      "PE": [
+        "accesorios perros"
+      ],
+      "CL": [
+        "accesorios perros"
+      ],
+      "GT": [
+        "accesorios perros"
+      ]
+    },
+    "bebes_ninos": {
+      "CO": [
+        "accesorios bebe",
+        "juguete didactico",
+        "seguridad bebe"
+      ],
+      "ES": [
+        "accesorios bebe",
+        "juguete didactico"
+      ]
+    },
+    "tecnologia_gadgets": {
+      "CO": [
+        "audifonos inalambricos",
+        "smartwatch",
+        "camara seguridad",
+        "proyector",
+        "gadget"
+      ],
+      "ES": [
+        "smartwatch",
+        "proyector",
+        "gadget"
+      ]
+    },
+    "moda_accesorios": {
+      "CO": [
+        "zapatos ortopedicos",
+        "reloj hombre",
+        "gafas de sol",
+        "bolso dama"
+      ],
+      "ES": [
+        "zapatos ortopedicos",
+        "gafas de sol"
+      ]
+    },
+    "descubrimiento_cod": {
+      "CO": [
+        "pago contra entrega",
+        "paga al recibir",
+        "envio gratis a toda colombia",
+        "50% de descuento hoy"
+      ],
+      "ES": [
+        "envio gratis",
+        "oferta por tiempo limitado"
+      ],
+      "MX": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "EC": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "PE": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "CL": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "PA": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "GT": [
+        "pago contra entrega",
+        "envio gratis"
+      ],
+      "IT": [
+        "spedizione gratuita"
+      ],
+      "FR": [
+        "livraison gratuite"
+      ],
+      "DE": [
+        "kostenloser versand"
+      ]
+    }
+  },
+  "paginas_vigiladas": {
+    "CO": [],
+    "ES": []
+  },
+  "max_competidores_co": 2,
+  "paises_eu": [
+    "ES",
+    "IT",
+    "FR",
+    "DE"
+  ]
+}

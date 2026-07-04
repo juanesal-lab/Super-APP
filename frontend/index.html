@@ -423,6 +423,7 @@
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
+    <button data-p="p-radar">📡 Radar</button>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
   </nav>
@@ -1050,6 +1051,15 @@
     }
   </script>
   </div><!-- /p-varhook -->
+
+  <div class="panel" id="p-radar" style="display:none">
+  <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">📡 Radar Ganadores</h2>
+  <p class="sub" style="margin-bottom:10px">Spy tool propio: productos ganadores detectados en la Meta Ad Library de 11 países,
+    con disponibilidad en Dropi 🟦 y oportunidades Europa→Colombia 🟢. Se actualiza solo cada mañana (7:30am).
+    <a href="/radar" target="_blank" style="color:var(--gold);font-weight:600">Abrir en pestaña completa ↗</a></p>
+  <iframe id="radarFrame" title="Radar Ganadores"
+    style="width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#0d0d0d"></iframe>
+  </div>
 
   <div class="panel" id="p-config" style="display:none">
   <h2 style="font-size:19px;margin:2px 0 4px;font-weight:800">🔑 Configuración de las IAs</h2>
@@ -2346,6 +2356,10 @@ document.querySelectorAll('#tabs button').forEach(b=>{
     const panel = document.getElementById(b.dataset.p);
     if(panel) panel.style.display='';
     b.classList.add('active');
+    if(b.dataset.p==='p-radar'){ // el dashboard (~2.5MB) se carga solo al entrar por primera vez
+      const f=document.getElementById('radarFrame');
+      if(f && !f.getAttribute('src')) f.src='/radar';
+    }
     window.scrollTo({top:0,behavior:'smooth'});
   };
 });

@@ -217,6 +217,10 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
 from fastapi.staticfiles import StaticFiles
 app.mount("/assets", StaticFiles(directory=os.path.join(BASE, "assets")), name="assets")
 
+# 📡 Radar Ganadores (spy tool) — módulo en radar/, endpoints en backend/radar_api.py
+from radar_api import router as radar_router
+app.include_router(radar_router)
+
 
 @app.get("/", response_class=HTMLResponse)
 def index():

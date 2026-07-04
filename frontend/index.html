@@ -120,6 +120,11 @@
   .vcard .name{font-weight:600;font-size:14px;margin-bottom:4px}
   .vcard .meta{font-size:12px;color:var(--muted);margin-bottom:10px}
   .vcard .dlrow{display:flex;gap:8px}
+  .vcard .regenRow{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+  .vcard .regenSel{flex:1;min-width:0;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:11.5px}
+  .vcard .regenBtn{white-space:nowrap;background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer}
+  .vcard .regenBtn:hover{background:var(--accent);color:#fff}
+  .vcard .regenBtn:disabled{opacity:.6;cursor:default}
   .vcard select{flex:1;background:var(--card);border:1px solid var(--line);color:var(--txt);
     padding:8px;border-radius:8px;font-size:13px}
   .vcard .dl{background:var(--gold);color:var(--ink);border:0;border-radius:8px;
@@ -1458,6 +1463,7 @@
       }catch(e){ msg.textContent='Error: '+e; go.disabled=false; }
     }
     async function prodPoll(id){
+      window._prodJob = id;
       const r=await fetch('/api/status/'+id); const j=await r.json();
       document.getElementById('prodBar').style.width=(j.progress||0)+'%';
       document.getElementById('prodMsg').textContent=j.message||'';
@@ -1470,6 +1476,7 @@
       if(typeof res.descargados!=='undefined') info+=`<div class="prodInfo">⬇️ ${res.descargados} video(s) descargado(s)${res.fallidos?` · ${res.fallidos} fallaron`:''}</div>`;
       if(res.voz_en_off) info+=`<div class="prodInfo">🎙️ Voz en off + subtítulos (estilo <b>${res.caption_style||''}</b>) · ${(res.guiones_vo||[]).length} guion(es)</div>`;
       document.getElementById('prodMeta').innerHTML=info;
+      res._job_id = window._prodJob || null;
       renderResults(res,'productoResults');
     }
   </script>
@@ -2648,7 +2655,7 @@ async function poll(id){
   }
   document.getElementById("progCard").classList.add("hidden");
   if(j.result){
-    if(j.result.versions){ renderResults(j.result); }        // videos cortados (si hay)
+    if(j.result.versions){ j.result._job_id = id; renderResults(j.result); }   // videos cortados
     if(j.result.scripts){ renderScripts(id, j.result.scripts); }  // guiones (si hay) — pueden venir AMBOS
   }
 }
@@ -2760,6 +2767,15 @@ function renderResults(res, rootId){
           </select>
           <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}')">Descargar</button>
         </div>
+        ${res._job_id ? `<div class="regenRow" data-jid="${res._job_id}" data-name="${v.name}">
+          <select class="regenSel">
+            <option value="edicion">🎬 Otra edición (efectos, cortes, ritmo)</option>
+            <option value="clips">🎞️ Otros clips (cámbialos por otros)</option>
+            <option value="guion">✍️ Otro guion + voz</option>
+            <option value="otra">🎲 Una versión totalmente distinta</option>
+          </select>
+          <button class="regenBtn" onclick="regenVersion(this)">🔄 Regenerar</button>
+        </div>` : ''}
       </div></div>`;
   });
   html += `</div></div>`;
@@ -2787,6 +2803,42 @@ function renderResults(res, rootId){
 function dl(path, selId, name){
   const res = document.getElementById(selId).value;
   window.location = `/api/download?path=${path}&res=${res}&name=${encodeURIComponent("vidaria_"+name)}`;
+}
+
+// 🔄 Regenerar UNA versión con un MOTIVO (pedido de Juan): reemplaza la que no gustó
+async function regenVersion(btn){
+  const row = btn.closest('.regenRow');
+  const jid = row.dataset.jid, name = row.dataset.name;
+  const motivo = row.querySelector('.regenSel').value;
+  const card = btn.closest('.vcard');
+  const t = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳ Regenerando…';
+  try{
+    const fd = new FormData(); fd.append('job_id', jid); fd.append('name', name); fd.append('motivo', motivo);
+    const r = await fetch('/api/regenerate-version', {method:'POST', body:fd});
+    const j = await r.json();
+    if(!j.job_id){ throw new Error(j.detail || 'no se pudo'); }
+    // polling del sub-job de regeneración
+    for(let k=0; k<240; k++){
+      await new Promise(s=>setTimeout(s, 1400));
+      const s = await (await fetch('/api/status/'+j.job_id)).json();
+      btn.innerHTML = '⏳ '+(s.message||'Regenerando…');
+      if(s.status==='error'){ throw new Error(s.message||'error'); }
+      if(s.status==='done' && s.result && s.result.version){
+        const nv = s.result.version;
+        const vid = card.querySelector('video');
+        vid.src = '/api/file?path='+enc(nv.path)+'&_='+Date.now();   // recarga el video nuevo
+        vid.load();
+        const dlBtn = card.querySelector('.dl');
+        dlBtn.setAttribute('onclick', `dl('${enc(nv.path)}','${card.querySelector('select[id^=res]').id}','${nv.name}')`);
+        btn.innerHTML = '✅ Regenerada'; setTimeout(()=>{btn.innerHTML=t; btn.disabled=false;}, 2500);
+        return;
+      }
+    }
+    throw new Error('tardó demasiado');
+  }catch(e){
+    btn.innerHTML = '✗ '+String(e.message||e).slice(0,30);
+    setTimeout(()=>{btn.innerHTML=t; btn.disabled=false;}, 3500);
+  }
 }
 
 // --- Reemplazar producto ---

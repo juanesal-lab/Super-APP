@@ -2616,3 +2616,31 @@ y el param opcional landing_text — tus llamadas viejas siguen idénticas. No t
 offer_banner/auto_studio. OJO: tu server :8420 quedó SIN reiniciar (tienes trabajo sin commitear
 en la carpeta principal — app.py/orchestrator/tiktok_search/index.html — y no quise pisarlo ni
 matarte el server con código a medias); cuando cierres, haz pull y ./run.sh para que esto quede vivo.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🔄 REGENERAR una versión suelta con MOTIVO (pedido de Juan)
+Juan: al ver los videos, poder reemplazar el que no gusta SIN rehacer el lote, diciendo POR QUÉ
+(edición / clips / guion). Implementado end-to-end:
+- NUEVO `pipeline/regen.py` `regenerar_version(estado, name, motivo)`: 4 motivos →
+  · "edicion": mismos clips y voz, OTRA edición (seed rota Ken Burns + patrón de cortes duros);
+  · "clips": mismo guion/voz, CLIPS distintos (plan_montaje con `evitar`=orden viejo → 0/8
+    compartidos en pool de 48); · "guion": guion nuevo (Claude) + voz nueva (ElevenLabs 1.12×) +
+    re-plan; · "otra": todo distinto. Reusa build_variations (con `seed`) + add_voiceover_and_sfx
+    + burn_word_captions (con set_destino) — mismo pipeline pro, no un camino aparte.
+- `assemble`: build_variations y concat_clips_xfade aceptan `seed`/`hard_shift` (rota motion y
+  el patrón de cortes duros → "otra edición" real). guion_match.plan_montaje acepta `evitar`.
+- `orchestrator`: render_versions arma el estado `_regen` en el manifest (pool serializado +
+  fases + usage + ajustes + por-versión: orden/topes/guion/voz/frases). También FIX: path_45 y
+  qa_aviso ahora SÍ llegan al manifest (antes se perdían en la comprehension de versions).
+- `app.py`: `_stash_regen` saca `_regen` del manifest → job + disco (regen.json), lo quita del
+  payload (pesado); `_load_regen` (memoria/disco, sobrevive reinicios); endpoint
+  `/api/regenerate-version` (job_id+name+motivo) → sub-job con progreso vía /api/status;
+  al terminar reemplaza esa versión en el result del job original. Cableado en los 3 flujos de
+  video (Cortar clips, guiones, Mi producto) + voz pasada al estado.
+- UI: en cada tarjeta de versión, fila "🔄 Regenerar" con selector de motivo (4 opciones);
+  regenVersion() hace polling del sub-job y recarga SOLO ese video + su botón de descarga.
+- Verificado E2E: unit (edicion/clips → video-stream = audio, sin congelón; clips en pool de 48
+  → 0/8 compartidos) + HTTP real (/api/regenerate-version → done, video sano). py_compile +
+  node --check 14/14.
+- AVISO Jack: NUEVO regen.py; assemble (seed/hard_shift), guion_match (evitar), orchestrator
+  (_regen en manifest + fix path_45/qa_aviso), app.py (_stash_regen/_load_regen/endpoint),
+  index.html (fila regenerar + regenVersion + _job_id en renderResults). Retro-compatible.

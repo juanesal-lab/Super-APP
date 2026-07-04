@@ -78,6 +78,41 @@ def _persist_disruptive(job_id: str):
         pass
 
 
+def _stash_regen(job: dict, result, job_id: str, extra: dict | None = None):
+    """Saca `_regen` (estado para regenerar UNA versión) del manifest → lo guarda en el job y a
+    disco (work/<id>/regen.json), y lo QUITA del result que va al frontend (es pesado: pool de
+    segmentos + fases). Pedido de Juan: reemplazar una versión sin rehacer el lote."""
+    import json as _json
+    if not isinstance(result, dict):
+        return
+    regen = result.pop("_regen", None)
+    if not regen:
+        return
+    if extra:                      # ej. la voz elegida (para regenerar "otro guion")
+        regen.setdefault("settings", {}).update({k: v for k, v in extra.items() if v is not None})
+    job["_regen"] = regen
+    try:
+        d = os.path.join(WORK_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "regen.json"), "w") as f:
+            _json.dump(regen, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _load_regen(job_id: str) -> dict | None:
+    """Estado de regeneración desde memoria o disco (sobrevive reinicios)."""
+    job = JOBS.get(job_id)
+    if job and job.get("_regen"):
+        return job["_regen"]
+    import json as _json
+    try:
+        with open(os.path.join(WORK_DIR, job_id, "regen.json")) as f:
+            return _json.load(f)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _get_job(job_id: str) -> dict | None:
     """JOBS en memoria, o recuperado de disco si el server se reinició."""
     import json as _json
@@ -205,6 +240,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
                                 settings.get("product_desc", ""), progress)
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
             _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+        _stash_regen(job, result, job_id)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -749,6 +785,7 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
             work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
         )
+        _stash_regen(job, result, job_id, {"voz": s.get("voz")})
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -996,6 +1033,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str):
             broll_fases=s.get("broll_fases"), progress=progress)
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
+        _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})
         job["result"] = manifest
         job["status"] = "done" if manifest.get("ok") else "error"
         if not manifest.get("ok"):
@@ -1251,6 +1289,65 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"
         job["message"] = f"Error: {e}"
+
+
+def _run_regen_version_job(job_id: str, src_job: str, name: str, motivo: str):
+    """Regenera UNA versión (motivo: edicion/clips/guion/otra) y la reemplaza en el resultado."""
+    job = JOBS[job_id]
+
+    def progress(m, p):
+        job["message"] = m; job["progress"] = int(p)
+
+    try:
+        from pipeline.regen import regenerar_version
+        estado = _load_regen(src_job)
+        if not estado:
+            job["status"] = "error"; job["message"] = "Ese proyecto es viejo; genera de nuevo para poder regenerar versiones."
+            return
+        nueva = regenerar_version(estado, name, motivo, gemini_key=_load_env_key(),
+                                  eleven_key=_load_eleven_key(),
+                                  voz=(estado.get("settings", {}).get("voz") or "juan_carlos"),
+                                  progress=progress)
+        if not nueva:
+            job["status"] = "error"; job["message"] = "No se pudo regenerar esa versión (reintenta)."
+            return
+        # re-persistir el estado mutado (uso/orden/guion de la versión) y devolver la versión nueva
+        sj = JOBS.get(src_job)
+        if sj is not None:
+            sj["_regen"] = estado
+            res = sj.get("result") or {}
+            for i, v in enumerate((res.get("versions") or [])):
+                if v.get("name") == name:
+                    res["versions"][i] = {**v, **nueva}
+                    break
+        try:
+            import json as _json
+            with open(os.path.join(WORK_DIR, src_job, "regen.json"), "w") as f:
+                _json.dump(estado, f, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pass
+        job["result"] = {"ok": True, "version": nueva}
+        job["status"] = "done"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/regenerate-version")
+def regenerate_version_ep(job_id: str = Form(...), name: str = Form(...),
+                          motivo: str = Form("otra")):
+    """Regenera la versión `name` del proyecto `job_id` con un MOTIVO. Devuelve un job_id nuevo
+    para hacer polling del progreso (usa el mismo /api/status)."""
+    estado = _load_regen(job_id)
+    if not estado:
+        raise HTTPException(404, "No hay estado para regenerar (proyecto viejo: genera de nuevo).")
+    if name not in (estado.get("versions") or {}):
+        raise HTTPException(400, "Esa versión no existe en el proyecto.")
+    rid = uuid.uuid4().hex[:12]
+    JOBS[rid] = {"status": "running", "progress": 0, "message": "Iniciando…",
+                 "result": None, "created": time.time()}
+    threading.Thread(target=_run_regen_version_job, args=(rid, job_id, name, motivo),
+                     daemon=True).start()
+    return {"job_id": rid}
 
 
 @app.post("/api/producto-clips")

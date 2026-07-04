@@ -173,7 +173,8 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                  usage: dict[int, int], *, version_i: int = 0, n_versiones: int = 1,
                  hook_srcs: set[int] | None = None,
                  max_usos: int = 99,
-                 firmas: dict[int, object] | None = None) -> tuple[list[int], list[float]] | None:
+                 firmas: dict[int, object] | None = None,
+                 evitar: set[int] | None = None) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
@@ -192,6 +193,7 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     orden: list[int] = []
     caps: list[float] = []
     hook_srcs = hook_srcs if hook_srcs is not None else set()
+    evitar = evitar or set()          # clips a EVITAR (regenerar "cámbialos por otros")
 
     # bucket por ranking de score: la versión v "posee" los clips en las posiciones v, v+N, v+2N...
     ranking = sorted(fases_por_idx, key=lambda i: -selected[i].score)
@@ -230,6 +232,7 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
 
         def _ordenar(pool: list[int]) -> list[int]:
             pool.sort(key=lambda i: (
+                i in evitar,                                # los "a evitar" van de últimos
                 selected[i].source_index in hook_srcs if es_hook else False,  # gancho: fuente NUEVA
                 _mismo_look(i, prev_i) if prev_i is not None else False,      # look distinto 1º
                 usage.get(i, 0),                            # menos usado por OTRAS versiones

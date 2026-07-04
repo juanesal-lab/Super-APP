@@ -230,7 +230,8 @@ def _video_stream_dur(path: str) -> float:
 
 def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
                        d: float = _XFADE_D,
-                       cut_times_out: list[float] | None = None) -> str:
+                       cut_times_out: list[float] | None = None,
+                       hard_shift: int = 0) -> str:
     """Une clips estilo ads ganadores: dissolve corto por defecto + corte duro selectivo
     (1 de cada ~5 y en la entrada del último plano = el payoff/impacto).
     Si `cut_times_out` es una lista, deja ahí los tiempos reales de cada transición.
@@ -256,7 +257,8 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
         durs.append(max(0.4, dv))
 
     n_b = len(clip_paths) - 1
-    hard = {n_b - 1} | {i for i in range(n_b) if i % 5 == 2}   # payoff + 1 de cada ~5
+    # payoff + 1 de cada ~5 (hard_shift mueve el patrón al regenerar "otra edición")
+    hard = {n_b - 1} | {i for i in range(n_b) if i % 5 == (2 + hard_shift) % 5}
 
     inputs = []
     for p in clip_paths:
@@ -393,7 +395,8 @@ def build_variations(selected: list[Segment], work_dir: str,
                      dims: tuple[int, int], enhance: bool = False,
                      fx: bool = False, target_seconds: float = 15.0,
                      version_orders: list[tuple[str, list[int]]] | None = None,
-                     version_caps: dict[str, list[float]] | None = None) -> dict:
+                     version_caps: dict[str, list[float]] | None = None,
+                     seed: int = 0) -> dict:
     """Crea clips normalizados y arma varias versiones (montajes) del video final.
 
     `version_orders` (opcional) permite pasar un plan ya calculado con plan_variations
@@ -413,20 +416,21 @@ def build_variations(selected: list[Segment], work_dir: str,
     def _slot_plan(order: list[int], caps: list[float] | None) -> list[tuple[int, float, str]]:
         n = len(order)
         n_b = n - 1
-        hard = {n_b - 1} | {k for k in range(n_b) if k % 5 == 2}   # espejo de concat_clips_xfade
+        hard = {n_b - 1} | {k for k in range(n_b) if k % 5 == (2 + seed) % 5}   # espejo del concat
         plan = []
         ciclo = ("in_suave", "in_suave", "out")
         for slot, i in enumerate(order):
+            m = ciclo[(i + seed) % 3]                  # el seed rota el Ken Burns al regenerar
             if slot == 0:
                 cap, motion = 1.6, ("in_fuerte" if fx else "in_suave")
             elif slot <= 2 and n >= 6:
-                cap, motion = 0.9, ciclo[i % 3]        # ráfaga del hook (planos cortos)
+                cap, motion = 0.9, m                   # ráfaga del hook (planos cortos)
             elif slot == n - 1:
                 cap, motion = 2.2, ("punch" if fx else "in_suave")   # payoff = acento
             elif slot >= n - 3:
-                cap, motion = 2.2, ciclo[i % 3]        # CTA calmado: que la oferta se lea
+                cap, motion = 2.2, m                   # CTA calmado: que la oferta se lea
             else:
-                cap, motion = 1.7, ciclo[i % 3]
+                cap, motion = 1.7, m
             if caps and slot < len(caps):
                 # el guion manda la duración + compensación del overlap del dissolve
                 # (xfade CONSUME dd por transición; sin esto la voz se desincroniza del plano)
@@ -461,7 +465,7 @@ def build_variations(selected: list[Segment], work_dir: str,
         # SIEMPRE dissolve corto (el pegamento pro del mashup) — antes solo con fx, y con
         # transiciones tipo PowerPoint que se veían amateur.
         cuts: list[float] = []
-        concat_clips_xfade(clip_list, out_path, work_dir, cut_times_out=cuts)
+        concat_clips_xfade(clip_list, out_path, work_dir, cut_times_out=cuts, hard_shift=seed)
         # VERIFICACIÓN anti-congelón: si el stream de video murió antes que el audio (cadena
         # xfade seca), se reconstruye con cortes duros (demuxer, robusto) — jamás entregar un
         # montaje que congele media pantalla.

@@ -2638,3 +2638,25 @@ Mi producto.
   producto_clips._guiones_y_narraciones ahora devuelve narraciones POR VERSIÓN (8 entradas, tu
   caller version_vos sigue funcionando igual); app.py: Forms nuevos en /api/producto-clips y
   /api/render + banner en _run_producto_job. Nada más.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🔧 3 quejas de Jack en Cortar clips: G/H "tal cual" + descarga que "no deja"
+Del pantallazo de Jack (job 1ccd745be9e6, con datos):
+1. **G_mixta/H_alterna salían SIN editar**: el job generó 6 voces (app.py `N_VERSIONS = 6`) para
+   8 versiones (orchestrator `_N_VERSIONS = 8`) → G/H sin voz → plan clásico (29.9s, mismo montaje
+   las dos) y sin _vo/_vo_cap. **FIX: `N_VERSIONS = 8`** (una voz por versión, como promete la UI).
+   Costo: +2 TTS por corrida con voz. OJO Juan: si cambias _N_VERSIONS, cambia los DOS.
+2. **"Descargar no me deja"**: /api/download re-codificaba SIEMPRE con libx264 preset medium →
+   83s para un montaje de 21s en 1080 (¡y el master YA era 1080!), minutos en 2K/4K, con el
+   navegador MUDO (encontré 4 .tmp huérfanos de clics repetidos de Jack). FIXES:
+   (a) si el master ya está en el ancho pedido → se sirve TAL CUAL (0.4s, medido);
+   (b) `assemble.export_resolution` usa GPU VideoToolbox si hay (4K: 22s, antes minutos; bitrate
+       por ancho 14/22/35M; fallback libx264 veryfast) — mismo recipe compatible (High/yuv420p/
+       faststart/bt709/AAC);
+   (c) el botón muestra "⏳ Preparando…" (fetch+blob, "✅ Descargado" al terminar, error visible);
+       `dl()` ganó param opcional `btn` (llamadas viejas sin botón siguen igual).
+   Verificado: 1080 directo 0.4s; 4K real 2160×3840 H.264 High con frame revisado a ojo.
+3. **Blur que deja texto legible** (su otro pantallazo): PENDIENTE — Jack va a mandar un video
+   para diagnosticar (en su imagen se ve que EAST tapó las líneas del medio pero dejó legibles
+   la 1ª/última línea y la pill "Chemical Free"). No toqué text_detect aún.
+AVISO Juan/otra sesión: commit SELECTIVO — en assemble.py solo mi hunk de export_resolution
+(dejé sin tocar sus cambios en curso de pro_mix/assemble/orchestrator del working tree).

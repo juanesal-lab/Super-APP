@@ -2782,7 +2782,7 @@ function renderResults(res, rootId){
             <option value="720">Media · 720</option>
             <option value="480">Baja · 480</option>
           </select>
-          <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}')">Descargar</button>
+          <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}',this)">Descargar</button>
         </div>
       </div></div>`;
   });
@@ -2808,9 +2808,23 @@ function renderResults(res, rootId){
   root.innerHTML = html;
 }
 
-function dl(path, selId, name){
+async function dl(path, selId, name, btn){
   const res = document.getElementById(selId).value;
-  window.location = `/api/download?path=${path}&res=${res}&name=${encodeURIComponent("vidaria_"+name)}`;
+  const url = `/api/download?path=${path}&res=${res}&name=${encodeURIComponent("vidaria_"+name)}`;
+  if(!btn){ window.location = url; return; }   // compat: llamadas viejas sin botón
+  const orig = btn.textContent; btn.disabled = true;
+  btn.textContent = (res==="2160"||res==="1440") ? "⏳ Preparando (2K/4K tarda)…" : "⏳ Preparando…";
+  try{
+    const r = await fetch(url);
+    if(!r.ok) throw new Error((await r.text()).slice(0,120));
+    const b = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b); a.download = `vidaria_${name}_${res}.mp4`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
+    btn.textContent = "✅ Descargado";
+  }catch(e){ alert("No se pudo preparar la descarga: "+e); btn.textContent = orig; }
+  finally{ btn.disabled = false; setTimeout(()=>{ btn.textContent = orig; }, 3000); }
 }
 
 // --- Reemplazar producto ---

@@ -932,7 +932,8 @@ def scripts(
     return {"job_id": job_id}
 
 
-N_VERSIONS = 6
+N_VERSIONS = 8   # DEBE ir igual a orchestrator._N_VERSIONS: con 6, las versiones G/H salían
+                 # sin voz/guion/subtítulos (el plan por guion solo cubre versiones CON voz)
 
 
 def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
@@ -1923,6 +1924,13 @@ def download(path: str, res: str = "1080", name: str = "clip"):
     """Descarga una version re-escalada al ancho pedido, conservando el formato."""
     full = _safe_path(path)
     width = RES_MAP.get(res, 1080)
+    # Si el master YA está en ese ancho, se sirve TAL CUAL (0s en vez de re-codificar ~1.5 min)
+    try:
+        src_w = _probe(full).width
+    except Exception:  # noqa: BLE001
+        src_w = None
+    if src_w and src_w == width:
+        return FileResponse(full, media_type="video/mp4", filename=f"{name}_{width}w.mp4")
     out_dir = os.path.join(os.path.dirname(full), "downloads")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"{name}_{width}w.mp4")

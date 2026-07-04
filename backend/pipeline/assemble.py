@@ -749,12 +749,20 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
 def export_resolution(src_path: str, out_path: str, width: int) -> str:
     """Re-escala un montaje al ancho pedido para descarga, conservando el formato.
     Recipe de maxima compatibilidad (QuickTime/Apple/Meta/TikTok): H.264 High,
-    yuv420p, faststart (moov al inicio) y AAC. Escribe a .tmp y renombra (atomico)."""
+    yuv420p, faststart (moov al inicio) y AAC. Escribe a .tmp y renombra (atomico).
+    GPU (VideoToolbox) si hay: el preset medium de libx264 tardaba ~4x el largo del video
+    (83s para un montaje de 21s en 1080) y en 2K/4K eran MINUTOS con el navegador mudo."""
     tmp = out_path + f".{uuid.uuid4().hex[:8]}.tmp.mp4"
+    if GPU:
+        # bitrate alto para que el escalado no pierda calidad (4K necesita mas que 1080)
+        vcodec = ["-c:v", "h264_videotoolbox", "-profile:v", "high",
+                  "-b:v", "35M" if width >= 2160 else ("22M" if width >= 1440 else "14M")]
+    else:
+        vcodec = ["-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "19"]
     cmd = [
         "ffmpeg", "-y", "-i", src_path,
         "-vf", f"scale={width}:-2:flags=lanczos,setsar=1,format=yuv420p",
-        "-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", "19",
+        *vcodec,
         "-movflags", "+faststart",
         "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
         "-c:a", "aac", "-b:a", "192k", "-ar", "44100",

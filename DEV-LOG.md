@@ -2142,3 +2142,21 @@ clip para CADA momento de la voz (antes el montaje era ciego y la voz se pegaba 
   (build_variations firma), producto_clips (reestructurado el flujo; _voz_y_subtitulos YA NO
   existe — ahora _guiones_y_narraciones), guion_match.py nuevo. Todo retro-compatible si no pasas
   los params nuevos. Tu disruptive_images (draft/HD) no lo toqué.
+
+### 2026-07-03 · Claude (juanesal-lab) · 🐞 FIX doble del "video quieto 30s al final" (bug real de Juan, file 76)
+Diagnóstico con el video real: NO era el tpad del final — del s24 al s53 el montaje encadenó
+segmentos CONSECUTIVOS del MISMO video fuente (un testimonio hablando a cámara fija): clips
+técnicamente distintos (la regla de no repetir se respetó) pero la MISMA toma en pantalla 30s =
+"se ve congelado". Además los guiones de Mi producto salieron de 43-55s para un target de 15s.
+1. `guion_match.plan_montaje`: REGLA DE VARIEDAD DE FUENTE (la tenía el plan clásico y el plan
+   por guion la perdió): nunca 2 tomas seguidas del mismo video-fuente; si toda la fase preferida
+   es de la misma fuente, busca fase vecina u otro clip del pool de OTRA fuente; racha dura ≤2.
+   Probado: fuente con 20 segmentos de la misma fase ahora alterna (racha máx 1).
+2. `scripts.py`: presupuesto de palabras REAL — 2.4 palabras/s (medido con ElevenLabs es-CO, el
+   2.6 teórico quedaba corto) INCLUYENDO el CTA obligatorio (16 palabras ≈ 7s), prompt con
+   consecuencia explícita, y `_ajustar_largo()`: recorte DURO post-Gemini por frases (Gemini
+   ignoraba el "MÁXIMO N palabras": 154→33 palabras conservando el CTA exacto al final).
+3. `orchestrator`: si los clips cubren MENOS que la voz (>1.5s de hueco), progress con ⚠️ claro
+   ("los clips cubren Xs de Ys — el cierre queda quieto").
+py_compile + tests unitarios OK. AVISO Jack: guion_match._mejor reescrito, scripts.generate_scripts
+(max_words + _ajustar_largo), orchestrator (aviso cobertura). Nada de firmas públicas cambió.

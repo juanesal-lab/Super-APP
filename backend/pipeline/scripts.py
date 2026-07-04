@@ -24,6 +24,30 @@ def _con_cta(texto: str) -> str:
     sep = "" if (not t or t.endswith((".", "!", "?"))) else "."
     return (t + sep + " " + CTA_OBLIGATORIO.capitalize() + ".").strip()
 
+
+def _ajustar_largo(texto: str, max_words: int) -> str:
+    """Recorte DURO al presupuesto de palabras. Gemini a veces ignora el 'MÁXIMO N palabras'
+    (salieron guiones de 140 palabras para un video de 15s → 30s de video congelado al final,
+    bug real del 2026-07-03). Se corta por FRASES desde el inicio reservando el CTA obligatorio,
+    y se cierra con el CTA exacto. Si ya cabe, no toca nada."""
+    t = (texto or "").strip()
+    tope = int(max_words * 1.15)                                  # 15% de gracia (CTA incluido)
+    if len(t.split()) <= tope:
+        return _con_cta(t)
+    idx = t.lower().find(CTA_OBLIGATORIO.lower()[:30])            # quita el CTA: se re-agrega al final
+    if idx > 0:
+        t = t[:idx].rstrip(" ,.;:¡¿")
+    frases = re.split(r"(?<=[.!?…])\s+", t)
+    presupuesto = max(10, int(max_words * 1.05) - len(CTA_OBLIGATORIO.split()))
+    out, cuenta = [], 0
+    for fr in frases:
+        nw = len(fr.split())
+        if out and cuenta + nw > presupuesto:
+            break
+        out.append(fr)
+        cuenta += nw
+    return _con_cta(" ".join(out))
+
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "assets")
 
@@ -114,8 +138,9 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     except Exception:
         return []
 
-    # ~2.6 palabras/seg: ritmo real de los ads GANADORES en español (energético, sin correr)
-    max_words = max(12, int(target_seconds * 2.6))
+    # ~2.4 palabras/seg: medido con ElevenLabs es-CO (con sus pausas reales habla más lento que
+    # el 2.6 teórico — guiones "de 15s" salían de 20s+). El presupuesto INCLUYE el CTA obligatorio.
+    max_words = max(28, int(target_seconds * 2.4))
 
     info = ""
     if product_desc.strip():
@@ -171,7 +196,9 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
            if oferta_2x1 else "")
         + f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
         f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
-        f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, MÁXIMO {max_words} palabras, sin "
+        f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, MÁXIMO {max_words} palabras "
+        f"(CUÉNTALAS: {max_words} palabras ≈ {int(target_seconds)}s hablados; si te pasas, el video "
+        "queda CONGELADO al final — inaceptable, se recorta tu guion). Sin "
         "emojis, sin overlays ni acotaciones de escena, listo para narrar de corrido.\n"
         "Devuelve SOLO un JSON válido (array) con esta forma exacta (fases = el MISMO texto partido por "
         "fase del arco, para que el editor sepa qué es cada parte):\n"
@@ -199,7 +226,8 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     for d in data if isinstance(data, list) else []:
         if isinstance(d, dict) and d.get("texto"):
             item = {"angulo": str(d.get("angulo", ""))[:40],
-                    "texto": _con_cta(str(d["texto"]).strip()[:600])}  # cierre con CTA EXACTO
+                    # cierre con CTA EXACTO + recorte DURO al presupuesto de palabras
+                    "texto": _ajustar_largo(str(d["texto"]).strip()[:900], max_words)}
             f = d.get("fases")
             if isinstance(f, dict):   # desglose por fase (hook/problema/giro/producto/prueba/cta)
                 item["fases"] = {k: str(v)[:220] for k, v in f.items() if isinstance(v, str) and v.strip()}

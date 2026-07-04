@@ -280,6 +280,11 @@ def render_versions(
                 if plan_g:
                     nuevos.append((name, plan_g[0]))
                     version_caps[name] = plan_g[1]
+                    voz_d = float(frases[-1]["fin"]) if frases else 0.0
+                    cubierto = sum(plan_g[1])
+                    if voz_d - cubierto > 1.5:   # el final quedaría CONGELADO: que se sepa
+                        report(f"⚠️ {name}: los clips cubren {cubierto:.0f}s de {voz_d:.0f}s de "
+                               "voz — el cierre queda quieto (sube más videos o baja la duración)", 51)
                 else:
                     nuevos.append((name, order))
             version_orders = nuevos

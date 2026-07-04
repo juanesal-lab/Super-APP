@@ -180,19 +180,46 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     orden: list[int] = []
     caps: list[float] = []
 
+    # REGLA DE VARIEDAD (bug real 2026-07-03): sin esto, un video-fuente con muchos segmentos
+    # de la misma fase (ej. un testimonio hablando quieto 40s) llenaba 15 slots SEGUIDOS →
+    # clips técnicamente distintos pero la MISMA toma en pantalla 30s = "se ve congelado".
+    # Como el plan clásico: nunca 2 tomas seguidas de la misma fuente (2 solo si no hay más).
     def _mejor(fase: str, tope: float) -> int | None:
+        prev_src = selected[orden[-1]].source_index if orden else None
+        racha = 0
+        for k in range(len(orden) - 1, -1, -1):
+            if selected[orden[k]].source_index == prev_src:
+                racha += 1
+            else:
+                break
+
+        def _ordenar(pool: list[int]) -> list[int]:
+            pool.sort(key=lambda i: (selected[i].source_index == prev_src,   # fuente distinta 1º
+                                     usage.get(i, 0),
+                                     -min(selected[i].duration(), tope),
+                                     -selected[i].score))
+            return pool
+
+        candidato_misma_fuente: int | None = None
         for f in _PREFERENCIA.get(fase, list(FASES)):
             pool = [i for i, ff in fases_por_idx.items() if ff == f and i not in usados]
             if not pool:
                 continue
-            # menos usado por otras versiones primero; luego mejor score; y que RINDA el slot
-            pool.sort(key=lambda i: (usage.get(i, 0),
-                                     -min(selected[i].duration(), tope),
-                                     -selected[i].score))
-            return pool[0]
-        sobrantes = [i for i in fases_por_idx if i not in usados]
+            pool = _ordenar(pool)
+            pick = pool[0]
+            if selected[pick].source_index != prev_src:
+                return pick
+            # toda esta fase es de la misma fuente: guarda el mejor y prueba la fase vecina
+            if candidato_misma_fuente is None:
+                candidato_misma_fuente = pick
+        sobrantes = _ordenar([i for i in fases_por_idx if i not in usados])
+        if sobrantes and selected[sobrantes[0]].source_index != prev_src:
+            # no había fuente distinta en ninguna fase preferida, pero sí en el resto del pool
+            if candidato_misma_fuente is None or racha >= 2:
+                return sobrantes[0]
+        if candidato_misma_fuente is not None and racha < 2:
+            return candidato_misma_fuente          # se permite UNA repetición de fuente, no racha
         if sobrantes:
-            sobrantes.sort(key=lambda i: (usage.get(i, 0), -selected[i].score))
             return sobrantes[0]
         return None
 

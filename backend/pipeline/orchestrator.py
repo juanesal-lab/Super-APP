@@ -280,6 +280,7 @@ def render_versions(
     # su plan clásico — nunca rompe.
     version_caps: dict[str, list[float]] = {}
     frases_por_nombre: dict[str, list[dict]] = {}   # frases del guion por versión (para los SFX)
+    regen_usage: dict[int, int] = {}                # uso por clip (para regenerar sin repetir)
     vos_pv = list(version_vos or [])
     if not vos_pv and voiceover_path and word_timings:
         vos_pv = [(voiceover_path, word_timings)] * len(version_orders)
@@ -335,6 +336,7 @@ def render_versions(
                 else:
                     nuevos.append((name, order))
             version_orders = nuevos
+            regen_usage = usage           # para regenerar versiones sin repetir clips
     # ───────────────────────────────────────────────────────────────────────────────────────
 
     # Clips sueltos: MEZCLA por FASE narrativa para que los "gifs" tengan SENTIDO (reusa la
@@ -660,11 +662,54 @@ def render_versions(
                 # aditivos (no rompen el shape): para la mezcla música+SFX de app.py
                 "cut_times": list(v.get("cut_times") or []),
                 "sfx_events": v.get("sfx_events"),
+                "path_45": v.get("path_45"),      # cut 4:5 para Meta (§10.2)
+                "qa_aviso": v.get("qa_aviso"),     # ⚠️ producto no visible ≤3s (§11.1)
             }
             for v in versions
         ],
         "max_clip_seconds": max_clip_seconds,
     }
+
+    # ── ESTADO para REGENERAR una versión suelta (pedido de Juan): pool + fases + uso +
+    #    ajustes + por-versión (orden, topes, guion, voz). Solo si hubo montaje por guion. ──
+    try:
+        vo_por_nombre: dict[str, tuple] = {}      # name → (vo_path, words, version_i)
+        for _vi, (nm, _order) in enumerate(version_orders):
+            vp, wt = (vos_pv[_vi] if _vi < len(vos_pv) else (None, None))
+            vo_por_nombre[nm] = (vp, wt, _vi)
+        if frases_por_nombre:
+            regen_versions = {}
+            for v in versions:
+                nm = v["name"]
+                fr = frases_por_nombre.get(nm) or []
+                vp, wt, vi = vo_por_nombre.get(nm, (None, None, 0))
+                order = next((o for n2, o in version_orders if n2 == nm), [])
+                regen_versions[nm] = {
+                    "order": list(order), "caps": version_caps.get(nm, []),
+                    "frases": fr, "words": wt or [], "vo_path": vp,
+                    "guion": " ".join(f.get("texto", "") for f in fr).strip(),
+                    "hook": final_hook, "version_i": vi, "regen": 0,
+                }
+            manifest["_regen"] = {
+                "selected": [s.to_dict() for s in selected],
+                "fases": {str(k): val for k, val in fases_por_idx.items()},
+                "usage": {str(k): val for k, val in regen_usage.items()},
+                "n_versiones": len(version_orders),
+                "work_dir": work_dir,
+                "sfx_paths": sfx_paths or [],
+                "music_path": music_path,
+                "settings": {
+                    "aspect": aspect, "enhance": enhance, "effects": effects,
+                    "captions": captions, "caption_style": caption_style,
+                    "caption_size": caption_size, "destino": destino,
+                    "product_desc": product_desc, "page_url": page_url,
+                    "hook_pos": hook_pos, "target_seconds": target_seconds,
+                },
+                "versions": regen_versions,
+            }
+    except Exception:  # noqa: BLE001
+        pass
+
     report("Listo", 100)
     return manifest
 

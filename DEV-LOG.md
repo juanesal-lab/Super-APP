@@ -2700,3 +2700,86 @@ callers viejos idénticos. El manifest de versiones trae 2 claves nuevas aditiva
 sfx_events); el front no las usa. OJO: loudnorm es dinámico → para medir SFX comparando
 con/sin no sirve el delta por ventana con voz real (te lo digo por si mides tú). NO commiteado
 (órdenes de Jack: hay otra sesión trabajando en paralelo en esta carpeta).
+### 2026-07-04 · Claude (juanesal-lab) · 🔄 REGENERAR una versión suelta con MOTIVO (pedido de Juan)
+Juan: al ver los videos, poder reemplazar el que no gusta SIN rehacer el lote, diciendo POR QUÉ
+(edición / clips / guion). Implementado end-to-end:
+- NUEVO `pipeline/regen.py` `regenerar_version(estado, name, motivo)`: 4 motivos →
+  · "edicion": mismos clips y voz, OTRA edición (seed rota Ken Burns + patrón de cortes duros);
+  · "clips": mismo guion/voz, CLIPS distintos (plan_montaje con `evitar`=orden viejo → 0/8
+    compartidos en pool de 48); · "guion": guion nuevo (Claude) + voz nueva (ElevenLabs 1.12×) +
+    re-plan; · "otra": todo distinto. Reusa build_variations (con `seed`) + add_voiceover_and_sfx
+    + burn_word_captions (con set_destino) — mismo pipeline pro, no un camino aparte.
+- `assemble`: build_variations y concat_clips_xfade aceptan `seed`/`hard_shift` (rota motion y
+  el patrón de cortes duros → "otra edición" real). guion_match.plan_montaje acepta `evitar`.
+- `orchestrator`: render_versions arma el estado `_regen` en el manifest (pool serializado +
+  fases + usage + ajustes + por-versión: orden/topes/guion/voz/frases). También FIX: path_45 y
+  qa_aviso ahora SÍ llegan al manifest (antes se perdían en la comprehension de versions).
+- `app.py`: `_stash_regen` saca `_regen` del manifest → job + disco (regen.json), lo quita del
+  payload (pesado); `_load_regen` (memoria/disco, sobrevive reinicios); endpoint
+  `/api/regenerate-version` (job_id+name+motivo) → sub-job con progreso vía /api/status;
+  al terminar reemplaza esa versión en el result del job original. Cableado en los 3 flujos de
+  video (Cortar clips, guiones, Mi producto) + voz pasada al estado.
+- UI: en cada tarjeta de versión, fila "🔄 Regenerar" con selector de motivo (4 opciones);
+  regenVersion() hace polling del sub-job y recarga SOLO ese video + su botón de descarga.
+- Verificado E2E: unit (edicion/clips → video-stream = audio, sin congelón; clips en pool de 48
+  → 0/8 compartidos) + HTTP real (/api/regenerate-version → done, video sano). py_compile +
+  node --check 14/14.
+- AVISO Jack: NUEVO regen.py; assemble (seed/hard_shift), guion_match (evitar), orchestrator
+  (_regen en manifest + fix path_45/qa_aviso), app.py (_stash_regen/_load_regen/endpoint),
+  index.html (fila regenerar + regenVersion + _job_id en renderResults). Retro-compatible.
+
+### 2026-07-04 · Claude (juanesal-lab) · 📰 NUEVO tipo de imagen: ADVERTORIAL (noticia viral)
+Pedido de Juan (con ejemplo): además del disruptivo, un formato tipo NOTICIA VIRAL — foto lifestyle
+real de una persona usando el producto + recuadro circular con el producto en mano + barra negra
+abajo con etiqueta "VIRAL" y titular en mayúsculas con una frase en amarillo entre comillas.
+- `disruptive_images.py`: NUEVO `_SISTEMA_ADV` + `_TOOL_ADV` (kicker/titular/destacado/escena) +
+  `_CIERRE_ADV` (4:5 vertical, no cuadrado). `generar_conceptos(tipo="advertorial")` usa ese
+  cerebro y marca cada variante `formato="advertorial"`. En `generar_ad_fullprompt`: el advertorial
+  se genera CON la foto real del producto como referencia (persona lo usa + recuadro), cierre 4:5,
+  NO se fuerza a cuadrado y NO hace la 2ª pasada de pegar producto (ya va renderizado).
+  `generar_imagen` acepta `cierre` (default 1:1; advertorial 4:5).
+- `app.py`: `/api/disruptive-angles` acepta `tipo` (exige foto para advertorial) → guarda `_tipo`
+  en el ctx (persistido) y lo respeta `disruptive-swap-concept`. Devuelve tipo al front.
+- UI: selector "💥 Disruptivo / 📰 Advertorial" arriba de la sección de imágenes; el advertorial
+  exige la foto (mensaje claro), adapta el texto del botón, muestra kicker+escena en los conceptos
+  y OCULTA el botón "poner/reubicar producto" (el producto ya va en la escena).
+- Probado REAL con Gemini: conceptos advertorial perfectos (titulares periodísticos con destacado
+  en amarillo) + imagen generada CLAVADA al ejemplo de Juan (foto lifestyle + recuadro del tenis
+  idéntico a la referencia + barra "VIRAL" + 'CÓMODOS QUE SON' en amarillo), ratio 0.81 (~4:5).
+  py_compile + node --check 14/14.
+- AVISO Jack: disruptive_images (advertorial: _SISTEMA_ADV/_TOOL_ADV/_CIERRE_ADV, generar_conceptos
+  +tipo, generar_ad_fullprompt rama es_adv, generar_imagen +cierre), app.py (endpoint +tipo,
+  swap respeta _tipo, persist _tipo), index.html (selector + render + botón condicional). Retro-compatible.
+
+### 2026-07-04 · Claude (juanesal-lab) · 🖼️ FIX ads imagen disruptivos: 4:5 sin bordes borrosos + producto en esquina sin tapar texto
+Juan (con screenshots): los disruptivos salían "corridos" (bordes difuminados), el producto TAPABA
+el texto y quedaban espacios en blanco. Dos causas:
+1. `_a_cuadrado` forzaba 1:1 con FONDO BLUR (el modelo componía en vertical → barras borrosas +
+   espacio muerto). Reescrita: reencuadra a 4:5 vertical con COVER (escala para cubrir + recorta al
+   centro el sobrante) — sin bordes, sin blur, todo el marco usado. `_CIERRE` y `_SISTEMA` ahora
+   piden "VERTICAL 4:5 filling the whole frame" + tercio inferior IZQUIERDO limpio para el producto.
+   editar_imagen_ia también actualizado a 4:5.
+2. `_integrar_producto_ia` ponía el producto hasta 30% del ancho en "zona reservada" → aterrizaba
+   sobre el titular. Ahora: producto PEQUEÑO (20-24%) anclado a la ESQUINA inferior (izq, o der si
+   la izq tiene texto), regla DURA de no solapar NINGÚN texto/botón/cara/barra (si solaparía → más
+   pequeño y más a la esquina), 4:5.
+Probado REAL con Gemini: concepto surreal (cara=mapa de carreteras), 4:5 (ratio 0.81) llenando el
+marco sin bordes, texto arriba limpio, producto en la esquina inferior izq SIN tapar nada, chrome
+de video intacto. La UI (.disCard img) ya mostraba ratio natural. py_compile OK.
+AVISO Jack: disruptive_images (_a_cuadrado→4:5 cover, _CIERRE, _SISTEMA, _integrar_producto_ia,
+editar_imagen_ia). El advertorial no cambió (ya era 4:5 nativo).
+
+### 2026-07-04 · Claude (juanesal-lab) · 🎛️ Ads imagen: elegir MODELO al generar (Nano Banana 1 barata / 2 pro)
+Pedido de Juan: poder elegir desde el arranque si el lote sale en la barata (Nano Banana 1) o la pro
+(Nano Banana 2), sin tener que ir imagen por imagen con el ✨ HD.
+- `disruptive_images.generar_ads_fullprompt(hd=False)`: pasa hd a generar_ad_fullprompt y marca
+  cada variante v["hd"]. El progreso dice qué modelo está usando.
+- `app.py`: /api/disruptive-images acepta `modelo` (rapida|pro) → hd → _run_disruptive_v2_job(hd);
+  guarda `_hd` en el ctx (persistido). regenerate-image y swap-concept reusan el modelo del lote
+  (v["hd"] o job["_hd"]) para no mezclar calidades sin querer.
+- UI: selector de radio "⚡ Nano Banana 1 (~$0.04) / ✨ Nano Banana 2 (~$0.13)" junto al botón
+  Generar. El botón ✨ HD por-imagen sigue existiendo (y ahora se marca solo "✅ Ya está en HD" si
+  el lote se generó en pro, porque v.hd viaja al front).
+Verificado: py_compile + node --check 14/14. AVISO Jack: disruptive_images (generar_ads_fullprompt
++hd), app.py (endpoint +modelo, _run_disruptive_v2_job +hd, regen/swap reusan _hd, persist _hd),
+index.html (selector disModelo + fd.append). Default sigue siendo la barata. Retro-compatible.

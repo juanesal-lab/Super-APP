@@ -68,7 +68,7 @@ def _persist_disruptive(job_id: str):
     if not job:
         return
     data = {k: job.get(k) for k in ("status", "result", "created", "_image_path", "_precio",
-                                    "_ofertas", "_producto", "_page_text")}
+                                    "_ofertas", "_producto", "_page_text", "_tipo", "_hd")}
     try:
         d = os.path.join(WORK_DIR, job_id)
         os.makedirs(d, exist_ok=True)
@@ -76,6 +76,41 @@ def _persist_disruptive(job_id: str):
             _json.dump(data, f, ensure_ascii=False)
     except Exception:  # noqa: BLE001
         pass
+
+
+def _stash_regen(job: dict, result, job_id: str, extra: dict | None = None):
+    """Saca `_regen` (estado para regenerar UNA versión) del manifest → lo guarda en el job y a
+    disco (work/<id>/regen.json), y lo QUITA del result que va al frontend (es pesado: pool de
+    segmentos + fases). Pedido de Juan: reemplazar una versión sin rehacer el lote."""
+    import json as _json
+    if not isinstance(result, dict):
+        return
+    regen = result.pop("_regen", None)
+    if not regen:
+        return
+    if extra:                      # ej. la voz elegida (para regenerar "otro guion")
+        regen.setdefault("settings", {}).update({k: v for k, v in extra.items() if v is not None})
+    job["_regen"] = regen
+    try:
+        d = os.path.join(WORK_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "regen.json"), "w") as f:
+            _json.dump(regen, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _load_regen(job_id: str) -> dict | None:
+    """Estado de regeneración desde memoria o disco (sobrevive reinicios)."""
+    job = JOBS.get(job_id)
+    if job and job.get("_regen"):
+        return job["_regen"]
+    import json as _json
+    try:
+        with open(os.path.join(WORK_DIR, job_id, "regen.json")) as f:
+            return _json.load(f)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _get_job(job_id: str) -> dict | None:
@@ -209,6 +244,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
                                 settings.get("product_desc", ""), progress)
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
             _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+        _stash_regen(job, result, job_id)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -753,6 +789,7 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
             work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
         )
+        _stash_regen(job, result, job_id, {"voz": s.get("voz")})
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -1004,6 +1041,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             broll_fases=s.get("broll_fases"), progress=progress)
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
+        _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})
         job["result"] = manifest
         job["status"] = "done" if manifest.get("ok") else "error"
         if not manifest.get("ok"):
@@ -1267,6 +1305,65 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"
         job["message"] = f"Error: {e}"
+
+
+def _run_regen_version_job(job_id: str, src_job: str, name: str, motivo: str):
+    """Regenera UNA versión (motivo: edicion/clips/guion/otra) y la reemplaza en el resultado."""
+    job = JOBS[job_id]
+
+    def progress(m, p):
+        job["message"] = m; job["progress"] = int(p)
+
+    try:
+        from pipeline.regen import regenerar_version
+        estado = _load_regen(src_job)
+        if not estado:
+            job["status"] = "error"; job["message"] = "Ese proyecto es viejo; genera de nuevo para poder regenerar versiones."
+            return
+        nueva = regenerar_version(estado, name, motivo, gemini_key=_load_env_key(),
+                                  eleven_key=_load_eleven_key(),
+                                  voz=(estado.get("settings", {}).get("voz") or "juan_carlos"),
+                                  progress=progress)
+        if not nueva:
+            job["status"] = "error"; job["message"] = "No se pudo regenerar esa versión (reintenta)."
+            return
+        # re-persistir el estado mutado (uso/orden/guion de la versión) y devolver la versión nueva
+        sj = JOBS.get(src_job)
+        if sj is not None:
+            sj["_regen"] = estado
+            res = sj.get("result") or {}
+            for i, v in enumerate((res.get("versions") or [])):
+                if v.get("name") == name:
+                    res["versions"][i] = {**v, **nueva}
+                    break
+        try:
+            import json as _json
+            with open(os.path.join(WORK_DIR, src_job, "regen.json"), "w") as f:
+                _json.dump(estado, f, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pass
+        job["result"] = {"ok": True, "version": nueva}
+        job["status"] = "done"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error: {e}"
+
+
+@app.post("/api/regenerate-version")
+def regenerate_version_ep(job_id: str = Form(...), name: str = Form(...),
+                          motivo: str = Form("otra")):
+    """Regenera la versión `name` del proyecto `job_id` con un MOTIVO. Devuelve un job_id nuevo
+    para hacer polling del progreso (usa el mismo /api/status)."""
+    estado = _load_regen(job_id)
+    if not estado:
+        raise HTTPException(404, "No hay estado para regenerar (proyecto viejo: genera de nuevo).")
+    if name not in (estado.get("versions") or {}):
+        raise HTTPException(400, "Esa versión no existe en el proyecto.")
+    rid = uuid.uuid4().hex[:12]
+    JOBS[rid] = {"status": "running", "progress": 0, "message": "Iniciando…",
+                 "result": None, "created": time.time()}
+    threading.Thread(target=_run_regen_version_job, args=(rid, job_id, name, motivo),
+                     daemon=True).start()
+    return {"job_id": rid}
 
 
 @app.post("/api/producto-clips")
@@ -1654,11 +1751,15 @@ def last_project():
 @app.post("/api/disruptive-angles")
 def disruptive_angles(producto: str = Form(""), link: str = Form(""),
                             ofertas: str = Form(""), precio: str = Form(""),
+                            tipo: str = Form("disruptivo"),
                             product_image: UploadFile | None = File(None)):
-    """Paso 1: analiza producto/link → 6 conceptos disruptivos para que el usuario elija."""
+    """Paso 1: analiza producto/link → conceptos para elegir. tipo: disruptivo | advertorial."""
     precio = ""   # REGLA GLOBAL: NUNCA se muestra precio en ningún ad
+    tipo = "advertorial" if str(tipo).lower().startswith("advert") else "disruptivo"
     if not producto.strip() and not link.strip():
         raise HTTPException(400, "Escribe tu producto o pega el link de la página")
+    if tipo == "advertorial" and not (product_image and product_image.filename):
+        raise HTTPException(400, "El advertorial necesita la FOTO de tu producto (se ve en la escena).")
     ctx_id = uuid.uuid4().hex[:12]
     image_path = None
     if product_image and product_image.filename:
@@ -1675,17 +1776,20 @@ def disruptive_angles(producto: str = Form(""), link: str = Form(""),
         except Exception:  # noqa: BLE001
             page_text = ""
     conceptos = generar_conceptos(producto.strip() or link.strip(), _load_anthropic_key(),
-                                  page_text=page_text, ofertas=ofertas_list, precio=precio.strip())
+                                  page_text=page_text, ofertas=ofertas_list, precio=precio.strip(),
+                                  tipo=tipo)
     if not conceptos:
         raise HTTPException(502, "No se pudieron generar los conceptos (revisa la key de Claude)")
-    JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos}, "created": time.time(),
+    JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos, "tipo": tipo},
+                    "created": time.time(),
                     "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list,
-                    "_producto": producto.strip() or link.strip(), "_page_text": page_text}
+                    "_producto": producto.strip() or link.strip(), "_page_text": page_text,
+                    "_tipo": tipo}
     _persist_disruptive(ctx_id)   # sobrevive reinicios del server
-    return {"ctx_id": ctx_id, "conceptos": conceptos}
+    return {"ctx_id": ctx_id, "conceptos": conceptos, "tipo": tipo}
 
 
-def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
+def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path, hd=False):
     job = JOBS[job_id]
 
     def progress(m, p):
@@ -1696,7 +1800,7 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
     # render se verifica y regenera dentro de generar_ads_fullprompt. (precio/ofertas ya van en el prompt.)
     try:
         r = generar_ads_fullprompt(conceptos, os.path.join(WORK_DIR, job_id), gemini_key=_load_env_key(),
-                                   product_image_path=image_path, progress=progress)
+                                   product_image_path=image_path, hd=hd, progress=progress)
         job["result"] = r
         job["status"] = "done" if r.get("ok") else "error"
         if not r.get("ok"):
@@ -1708,8 +1812,10 @@ def _run_disruptive_v2_job(job_id, conceptos, precio, ofertas, image_path):
 
 
 @app.post("/api/disruptive-images")
-def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
-    """Paso 2: genera las imágenes (escena + texto compuesto) de los conceptos ELEGIDOS."""
+def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...),
+                      modelo: str = Form("rapida")):
+    """Paso 2: genera las imágenes de los conceptos ELEGIDOS.
+    modelo: 'rapida' = Nano Banana 1 (~$0.04) | 'pro' = Nano Banana 2 (~$0.13)."""
     import json as _json
     ctx = JOBS.get(ctx_id)
     if not ctx or not (ctx.get("result") or {}).get("variantes"):
@@ -1722,11 +1828,13 @@ def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...)):
     elegidos = [dict(todos[i]) for i in idxs if 0 <= i < len(todos)]
     if not elegidos:
         raise HTTPException(400, "Elige al menos un concepto")
+    hd = str(modelo).lower() in ("pro", "hd", "2", "nano2", "nanobanana2")
+    ctx["_hd"] = hd          # el modelo elegido: regenerar/otro ángulo lo reusan
     ctx.update({"status": "running", "progress": 0, "message": "Iniciando...",
                 "result": {"variantes": elegidos}})
     threading.Thread(target=_run_disruptive_v2_job,
                      args=(ctx_id, elegidos, ctx.get("_precio", ""), ctx.get("_ofertas", []),
-                           ctx.get("_image_path")), daemon=True).start()
+                           ctx.get("_image_path"), hd), daemon=True).start()
     return {"job_id": ctx_id}
 
 
@@ -1740,17 +1848,19 @@ def regenerate_image(job_id: str = Form(...), index: int = Form(...)):
     if index < 0 or index >= len(variantes):
         raise HTTPException(400, "Índice fuera de rango")
     v = variantes[index]
+    hd = bool(v.get("hd") or job.get("_hd"))     # mismo modelo con el que se generó el lote
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     try:                              # full-prompt: ad completo + ortografía + producto integrado
         img = generar_ad_fullprompt(v, out, gemini_key=_load_env_key(),
                                     product_image_path=job.get("_image_path"),
-                                    integrar_producto=bool(job.get("_image_path")))
+                                    integrar_producto=bool(job.get("_image_path")), hd=hd)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo regenerar: {e}")
     if not img:
         raise HTTPException(502, v.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     v["imagen"] = img
+    v["hd"] = hd
     _persist_disruptive(job_id)
     return {"imagen": img}
 
@@ -1866,23 +1976,26 @@ def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
     evitar = [c.get("titular", "") for c in variantes if c.get("titular")]
     try:
         nuevos = generar_conceptos(producto, _load_anthropic_key(), page_text=job.get("_page_text", ""),
-                                   evitar=evitar, n=3, plantillas_fijas=False)
+                                   evitar=evitar, n=3, plantillas_fijas=False,
+                                   tipo=job.get("_tipo", "disruptivo"))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo pensar otro ángulo: {e}")
     if not nuevos:
         raise HTTPException(502, "Claude no devolvió otro concepto (revisa la key de Claude)")
     nuevo = nuevos[0]
+    hd = bool(job.get("_hd"))     # mismo modelo del lote
     out = os.path.join(WORK_DIR, job_id, f"ad_{index:02d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     try:
         img = generar_ad_fullprompt(nuevo, out, gemini_key=_load_env_key(),
                                     product_image_path=job.get("_image_path"),
-                                    integrar_producto=bool(job.get("_image_path")))
+                                    integrar_producto=bool(job.get("_image_path")), hd=hd)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No se pudo generar el nuevo ángulo: {e}")
     if not img:
         raise HTTPException(502, nuevo.get("error") or "Google no devolvió imagen (reintenta o revisa créditos)")
     nuevo["imagen"] = img
+    nuevo["hd"] = hd
     variantes[index] = nuevo   # reemplaza el concepto viejo por el nuevo
     _persist_disruptive(job_id)
     return {"variante": nuevo}

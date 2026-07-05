@@ -113,10 +113,12 @@ más específica. El 'prompt' DEBE poner en escena dolor_visual Y solucion_visua
 protagonista y la solución como giro visible.
 
 Cada 'prompt' que entregues:
-- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic square 1:1
-  screenshot of an authentic organic social video" (o post) — NO "advertisement". Describe la escena surreal
-  a pantalla completa + sujeto + emoción + el chrome nativo (center translucent play button, progress bar
-  "0:08 / 2:04", small volume/fullscreen icons) + el titular como caption blanco sobre el video.
+- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza describiendo que es un "photorealistic VERTICAL 4:5
+  screenshot of an authentic organic social video" (o post) — NO "advertisement". La escena LLENA todo el
+  marco vertical (sin bordes ni márgenes). Describe la escena surreal a pantalla completa + sujeto + emoción
+  + el chrome nativo (center translucent play button, progress bar "0:08 / 2:04", small volume/fullscreen
+  icons) + el titular como caption blanco sobre el video. DEJA el tercio inferior IZQUIERDO LIMPIO y VACÍO
+  (sin texto, sin sujeto, sin botón ahí) — es el espacio donde luego se pega el producto sin taparlo.
 - Di EXPLÍCITO: "no product or bottle anywhere in the image, keep the lower-left area clean and empty".
 - Los TEXTOS incrustados van LITERALES en español (colombiano, tuteo), entre comillas, CORTOS. SIN precio.
 - Termina SIEMPRE con: thick sans-serif fonts, high contrast, render all embedded text crisply and spelled
@@ -175,22 +177,119 @@ _TOOL = {
 }
 
 # Cola de calidad que se pega al final de cada prompt de imagen.
-_CIERRE = (" Thick bold sans-serif fonts, high contrast, 1:1 perfectly SQUARE aspect ratio, looks like an authentic "
+# 4:5 vertical (formato nativo de feed/stories): el modelo componía en vertical y el 1:1 forzado
+# le metía bordes borrosos y espacios en blanco (queja de Juan). Ahora TODO el marco se usa.
+# El tercio inferior IZQUIERDO queda LIMPIO (sin texto ni sujeto) para pegar el producto sin taparlo.
+_CIERRE = (" Thick bold sans-serif fonts, high contrast, VERTICAL 4:5 aspect ratio filling the WHOLE frame "
+           "edge to edge (no borders, no blurred bars, no empty margins). Keep the BOTTOM-LEFT area clean and "
+           "empty (no text, no subject, no button there) to leave room for the product. Looks like an authentic "
            "organic social-media video screenshot (NOT a polished advertisement), render all embedded text "
            "crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed hands, garbled or "
            "misspelled text, random logos, watermarks, nudity, low-resolution artifacts.")
 
 
+# ── ADVERTORIAL (formato NOTICIA VIRAL) — pedido de Juan 2026-07-04 ────────────────────────
+# Imagen que parece un ARTÍCULO/noticia viral: foto lifestyle real del producto EN USO arriba +
+# recuadro circular con el producto en mano + barra negra abajo con etiqueta tipo "VIRAL" y un
+# titular blanco en mayúsculas con UNA frase resaltada en amarillo entre comillas.
+_SISTEMA_ADV = """Eres DIRECTOR DE ARTE de ADVERTORIALS (publirreportajes) para dropshipping en \
+Colombia (pago contraentrega). Tu formato NO es un anuncio: es una imagen que PARECE una NOTICIA \
+VIRAL / artículo de revista digital, para que la gente baje la guardia y lea. El texto va \
+incrustado y bien escrito (el generador lo dibuja).
+
+⭐ EL MOLDE EXACTO (una imagen vertical 4:5 que parece captura de una nota viral):
+- ARRIBA (≈78% del alto): una FOTO LIFESTYLE fotorrealista y CREÍBLE — una persona REAL del \
+público objetivo USANDO/LLEVANDO el producto en un entorno cotidiano real (la entrada de su casa, \
+la calle, un parque, la cocina, la oficina), luz natural, look de foto de celular, NADA de estudio. \
+La persona se ve feliz/relajada/natural. El PRODUCTO se ve CLARO en uso.
+- RECUADRO CIRCULAR en una esquina superior (borde blanco grueso): un plano héroe del producto \
+sostenido en la mano (o primer plano limpio del producto). Es el clásico "inset" de las notas virales.
+- ABAJO (≈22%): una BARRA NEGRA sólida. Centrada, una etiquetita blanca (rectángulo o texto entre \
+líneas finas) con una palabra tipo "VIRAL" / "TENDENCIA" / "RECOMENDADO" en mayúsculas. Debajo, el \
+TITULAR en mayúsculas, sans-serif CONDENSADA y GRUESA, blanco, 2-3 líneas, con UNA frase resaltada \
+en AMARILLO y entre comillas simples (lo más emocional/coloquial).
+
+REGLA MADRE: debe parecer CONTENIDO EDITORIAL / NOTICIA, jamás un anuncio con banda de colores. El \
+titular es PERIODÍSTICO/CHISMOSO, no publicitario: "por qué todos están comprando…", "esto se volvió \
+viral y la gente no para de…", "lo que nadie te dijo sobre…", "dermatólogos recomiendan…".
+
+TITULARES (español colombiano, MAYÚSCULAS, gancho de nota viral). Cada uno con una frase 'destacado' \
+para pintar en amarillo entre comillas. Ej. (producto=tenis): titular "ESTOS TENIS SE VOLVIERON \
+VIRALES Y LA GENTE NO DEJA DE USARLOS POR LO 'CÓMODOS QUE SON'", destacado "CÓMODOS QUE SON".
+
+PROHIBIDO el PRECIO y cualquier cifra de dinero. Ofertas tipo 2x1 / envío gratis SÍ se pueden \
+mencionar como texto (no cifra). Cumplimiento Meta: nada de curas absolutas ni % médicos; \
+antes/después SOLO por lifestyle creíble, jamás clínico.
+
+Cada 'prompt' que entregues:
+- UN SOLO párrafo en INGLÉS, fotorrealista. Empieza: "photorealistic vertical 4:5 image that looks \
+like a screenshot of a VIRAL NEWS ARTICLE (not an advertisement)". Describe la escena lifestyle real \
+con el producto EN USO + el recuadro circular con el producto en mano en la esquina superior + la \
+barra negra inferior con la etiqueta y el titular.
+- Di EXPLÍCITO qué texto va: la etiqueta (ej. "VIRAL"), el titular COMPLETO en español entre comillas, \
+y cuál frase va en AMARILLO. Textos LITERALES, cortos, bien escritos.
+- El producto se renderiza a partir de la foto de referencia del cliente (respeta forma/color/logo).
+- Termina SIEMPRE con: photorealistic, natural phone-camera lighting, believable real person, bottom \
+black bar with bold condensed uppercase white headline and one phrase in bright yellow, small "VIRAL" \
+style label, circular product inset with white border top corner, render all Spanish text crisply and \
+spelled EXACTLY. Avoid: extra fingers, deformed hands, garbled or misspelled text, studio look, \
+watermarks, nudity, low-resolution artifacts.
+
+Devuelve EXACTAMENTE {n} advertorials, TODOS distintos entre sí (ángulo, escena, persona, entorno, \
+titular)."""
+
+_TOOL_ADV = {
+    "name": "entregar_advertorials",
+    "description": "Entrega las variantes de imagen ADVERTORIAL (noticia viral).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "variantes": {
+                "type": "array",
+                "description": "Advertorials, cada uno con ángulo/escena/titular DISTINTO.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "angulo": {"type": "string", "description": "el ángulo/tema de la 'nota' (corto)"},
+                        "kicker": {"type": "string", "description": "etiqueta de la barra: VIRAL | TENDENCIA | RECOMENDADO | LO NUEVO"},
+                        "titular": {"type": "string", "description": "titular de la nota (español, MAYÚSCULAS, periodístico)"},
+                        "destacado": {"type": "string", "description": "la frase del titular que va en AMARILLO (entre comillas)"},
+                        "escena": {"type": "string", "description": "la foto lifestyle: quién, dónde, cómo usa el producto"},
+                        "por_que": {"type": "string", "description": "por qué frena el scroll y da credibilidad"},
+                        "prompt": {"type": "string", "description": "prompt de imagen en inglés (ver instrucciones)"},
+                    },
+                    "required": ["angulo", "kicker", "titular", "destacado", "escena", "prompt"],
+                },
+            }
+        },
+        "required": ["variantes"],
+    },
+}
+
+# Cierre de calidad del advertorial (4:5 vertical, no cuadrado).
+_CIERRE_ADV = (" Photorealistic vertical 4:5 aspect ratio, natural phone-camera lighting, believable "
+               "real everyday person and setting (NOT studio, NOT a polished ad). Bottom solid black "
+               "bar with a bold CONDENSED uppercase white headline (2-3 lines) and ONE phrase in bright "
+               "yellow inside single quotes; a small white 'VIRAL'-style label above it between thin "
+               "lines. A circular product inset with a thick white border in a top corner. Render ALL "
+               "Spanish text crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed "
+               "hands, garbled or misspelled text, studio look, random logos, watermarks, nudity, "
+               "low-resolution artifacts.")
+
+
 def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
                       ofertas: list[str] | None = None, precio: str = "",
                       mercado: str = "Colombia · español colombiano · pago contraentrega (COD)",
-                      evitar: list[str] | None = None, n: int = 10, plantillas_fijas: bool = True) -> list[dict]:
+                      evitar: list[str] | None = None, n: int = 10, plantillas_fijas: bool = True,
+                      tipo: str = "disruptivo") -> list[dict]:
     """Claude inventa N variantes full-prompt (concepto + copy + prompt rico). Devuelve [] si falla.
 
     `evitar`: titulares/ángulos YA mostrados que NO gustaron → Claude da cosas TOTALMENTE distintas.
-    `plantillas_fijas`: si True incluye las 2 plantillas ganadoras de primeras; si False, todo surreal."""
+    `plantillas_fijas`: si True incluye las 2 plantillas ganadoras de primeras; si False, todo surreal.
+    `tipo`: "disruptivo" (surreal, default) | "advertorial" (noticia viral con producto en uso)."""
     ofertas = [o for o in (ofertas or []) if o]
     evitar = [e for e in (evitar or []) if e and e.strip()]
+    adv = str(tipo).lower().startswith("advert")
     ctx = f"PRODUCTO: {producto}\nMERCADO: {mercado}\n"
     if page_text.strip():
         ctx += f"\nCONTEXTO DE LA PÁGINA DE VENTA (para entender dolor/beneficio real):\n{page_text[:2500]}\n"
@@ -209,24 +308,35 @@ def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
         ctx += ("\n🚫 YA SE MOSTRARON estos conceptos y NO gustaron. NO los repitas ni hagas variaciones de "
                 "ellos (ni el mismo dolor/escena con otras palabras). Dame ángulos, dolores, mecanismos y "
                 "escenas TOTALMENTE DIFERENTES a estos:\n" + "\n".join(f'- "{e}"' for e in evitar[:40]) + "\n")
-    if plantillas_fijas:
+    if adv:
+        pedido = (f"\nDame {n} ADVERTORIALS (noticia viral) para este producto, TODOS distintos entre "
+                  "sí (ángulo, escena, persona, entorno, titular). Español colombiano.")
+    elif plantillas_fijas:
         pedido = (f"\nInventa las {n} variantes: las 2 PRIMERAS son las plantillas FIJAS (no_compres, "
                   f"capturas) y de la 3 a la {n} surreales con los 6 motores, todas MUY distintas entre sí.")
     else:
         pedido = (f"\nEsta vez IGNORA la regla de las 2 plantillas fijas. Dame {n} conceptos TODOS surreales "
                   "y arriesgados, con mecanismos y escenas MUY distintos entre sí (y distintos a cualquiera "
                   "ya mostrado).")
+    sistema = (_SISTEMA_ADV.replace("{n}", str(n)) if adv else _SISTEMA)
+    tool = _TOOL_ADV if adv else _TOOL
+    tool_name = tool["name"]
     try:
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
-            model=_CLAUDE, max_tokens=16000, system=_SISTEMA,
-            tools=[_TOOL], tool_choice={"type": "tool", "name": "entregar_creativos"},
+            model=_CLAUDE, max_tokens=16000, system=sistema,
+            tools=[tool], tool_choice={"type": "tool", "name": tool_name},
             messages=[{"role": "user", "content": ctx + pedido}],
         )
         for block in resp.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == "entregar_creativos":
-                return list(block.input.get("variantes", []))
+            if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
+                variantes = list(block.input.get("variantes", []))
+                if adv:
+                    for v in variantes:      # marca el formato para la generación
+                        v["formato"] = "advertorial"
+                        v["apoyo"] = v.get("destacado", "")   # el destacado también se verifica
+                return variantes
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Conceptos (Claude) no disponibles: {e}")
     return []
@@ -297,20 +407,25 @@ def _recortar_producto(img: "Image.Image", umbral: int = 244) -> "Image.Image":
 
 
 def _a_cuadrado(img_path: str) -> None:
-    """Regla de la casa: TODO ad sale 1:1. Si una edición de Nano Banana devuelve otro formato
-    (el modelo a veces ignora la instrucción), se re-encuadra LOCAL a cuadrado con fondo difuminado
-    (estilo IG) — nunca se recorta producto ni texto. $0 y determinista."""
+    """Reencuadra a 4:5 vertical LLENANDO todo el marco (cover: escala para cubrir y recorta al
+    centro) — SIN bordes borrosos ni espacios en blanco (la queja de Juan). Si ya es ~4:5 no toca
+    casi nada; solo recorta el sobrante. $0 y determinista."""
     try:
-        from PIL import ImageFilter, ImageEnhance
         im = Image.open(img_path).convert("RGB")
         w, h = im.size
-        if w == h:
+        target = 4 / 5                      # ancho/alto objetivo
+        cur = w / h
+        if abs(cur - target) < 0.02:
             return
-        lado = max(w, h)
-        fondo = im.resize((lado, lado)).filter(ImageFilter.GaussianBlur(42))
-        fondo = ImageEnhance.Brightness(fondo).enhance(0.62)
-        fondo.paste(im, ((lado - w) // 2, (lado - h) // 2))
-        fondo.save(img_path)
+        if cur > target:                    # muy ancha → recorta los lados
+            nw = int(round(h * target))
+            x = (w - nw) // 2
+            im = im.crop((x, 0, x + nw, h))
+        else:                               # muy alta → recorta arriba/abajo (poco, centrado)
+            nh = int(round(w / target))
+            y = (h - nh) // 2
+            im = im.crop((0, y, w, y + nh))
+        im.save(img_path)
     except Exception:  # noqa: BLE001
         pass
 
@@ -337,20 +452,20 @@ def _integrar_producto_ia(ad_path: str, product_image_path: str | None, gemini_k
             prod_b = f.read()
         prompt = (
             "Edit the FIRST image (a social-media ad / video screenshot). Take the EXACT product from the SECOND "
-            "image and INTEGRATE it into the composition so the viewer instantly understands THIS product is the "
-            "solution being shown. FIRST analyze the layout and choose the most natural spot for THIS design: if "
-            "the layout has an obviously clean/empty reserved zone (an empty side panel, blank corner or cleared "
-            "area), place the product THERE at a size that fills that zone naturally (up to ~30% of the image "
-            "width, clearly visible); otherwise place it smaller (~20% of the width) resting on a real flat "
-            "surface in the LOWER part of the scene — a table, counter, floor, sink or shelf edge. Always "
-            "integrate it with matching lighting, perspective and a soft realistic contact shadow, as if it had "
-            "really been photographed there. If this exact product ALREADY appears in the scene, relocate or "
-            "refine that single instance instead of adding another — the final image must contain the product "
-            "exactly ONCE. STRICT RULES: never place it over a person, face, hands, or over any text, caption, "
-            "progress bar or button. Keep the product's shape, colors and label IDENTICAL to the reference — do "
-            "NOT redesign it, do NOT add any logo, watermark or extra text on it. Change NOTHING else in the "
-            "image: keep all existing captions, the video player, progress bar and the CTA button exactly as "
-            "they are. Output only the edited first image, keeping EXACTLY the same 1:1 SQUARE aspect ratio and framing as the first image — do NOT crop, extend or change the canvas.")
+            "image and place it as a SMALL product in the composition so the viewer sees THIS is the product. "
+            "PLACEMENT (critical): put it in the BOTTOM-LEFT CORNER of the frame, SMALL — about 20-24% of the "
+            "image width, tucked into the corner. If the bottom-left already has text or a subject, use the "
+            "bottom-right corner instead — whichever corner is the emptiest. It must rest naturally against the "
+            "background with matching lighting and a soft contact shadow, as if photographed there. "
+            "HARD RULES (do not break): the product must NEVER overlap or cover any TEXT, headline, caption, "
+            "button, progress bar, face, eyes or hands — if it would overlap any of those, make it SMALLER and "
+            "move it further into the empty corner. Keep at least a small margin from every text element. The "
+            "final image must contain this product EXACTLY ONCE (if it already appears, just refine that one, "
+            "don't add another). Keep the product's shape, colors and label IDENTICAL to the reference — do NOT "
+            "redesign it, do NOT add any logo, watermark or extra text on it. Change NOTHING else: keep all "
+            "existing text, captions, the video player, progress bar and the CTA button exactly as they are, in "
+            "the same positions. Output only the edited first image, keeping EXACTLY the same VERTICAL 4:5 aspect "
+            "ratio and framing as the first image — do NOT crop, extend or change the canvas.")
         r = client.models.generate_content(
             model=model or _IMG_MODEL,
             contents=[prompt,
@@ -391,7 +506,7 @@ def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str,
             f"User instruction (Spanish): \"{instruccion.strip()}\". "
             "If the instruction adds or modifies Spanish text, render it crisply and spelled EXACTLY. "
             "Output only the edited image, keeping EXACTLY the same aspect ratio and canvas as the "
-            "input image (if the input is 1:1 square, the output MUST be 1:1 square).")
+            "input image (do NOT change the vertical 4:5 framing, do NOT add borders or margins).")
         r = client.models.generate_content(
             model=_IMG_MODEL,
             contents=[prompt, types.Part.from_bytes(data=ib, mime_type="image/png")])
@@ -418,6 +533,7 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
     prompt = variant.get("prompt", "")
     if not prompt:
         return None
+    es_adv = variant.get("formato") == "advertorial"
     textos = [variant.get("titular", ""), variant.get("apoyo", ""),
               variant.get("boton_cta", ""), variant.get("precio_cta", "")]
     errs: list = []
@@ -426,9 +542,12 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
         p = prompt if intento == 0 else (
             prompt + f" IMPORTANT (retry {intento}): make ABSOLUTELY every letter of the Spanish embedded "
             "text correct, complete and legible; do not misspell or repeat letters.")
-        # OJO: NO pasamos el producto como referencia -> el modelo NO lo dibuja; lo pegamos real después.
-        img = generar_imagen(p, gemini_key, out_path, product_image_path=None, errors=errs,
-                             model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT)
+        # ADVERTORIAL: el producto va EN la escena (persona usándolo + recuadro) → se pasa la foto
+        # real como referencia y se usa el cierre 4:5. DISRUPTIVO: escena SIN producto (se pega luego).
+        img = generar_imagen(p, gemini_key, out_path,
+                             product_image_path=product_image_path if es_adv else None,
+                             errors=errs, model=_IMG_MODEL if hd else _IMG_MODEL_DRAFT,
+                             cierre=_CIERRE_ADV if es_adv else _CIERRE)
         if not img:
             if not got:
                 if errs:         # deja el motivo (tope de gasto, cuota, key...) para el UI
@@ -440,6 +559,9 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
             break
     if not got:
         return None
+    if es_adv:
+        variant["producto_integrado"] = True     # el producto ya va renderizado en la escena
+        return out_path                           # advertorial es 4:5: NO se fuerza a cuadrado
     _a_cuadrado(out_path)
     if integrar_producto:            # 2ª pasada que integra el producto real en la escena
         res = _integrar_producto_ia(out_path, product_image_path, gemini_key,
@@ -450,10 +572,11 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
 
 
 def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: str,
-                           product_image_path: str | None = None,
+                           product_image_path: str | None = None, hd: bool = False,
                            progress: Callable[[str, int], None] | None = None) -> dict:
     """Paso 2 (full-prompt): para los conceptos ELEGIDOS genera el ad completo + verifica/regenera +
-    integra el PRODUCTO REAL en la escena (si hay foto). Nunca lanza."""
+    integra el PRODUCTO REAL en la escena (si hay foto). Nunca lanza.
+    `hd`: False = Nano Banana 1 (barata, ~$0.04); True = Nano Banana 2 pro (~$0.13)."""
     def rep(m, p):
         if progress:
             progress(m, int(p))
@@ -463,7 +586,8 @@ def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: s
         return {"ok": False, "error": "Falta la API key de Gemini para generar las imágenes."}
     n = len(variants)
     done = [0]
-    rep(f"Generando {n} ads completos con Google AI (ortografía + tu producto integrado)...", 8)
+    modelo = "Nano Banana 2 (calidad pro)" if hd else "Nano Banana 1 (rápida)"
+    rep(f"Generando {n} ads con {modelo} (ortografía + tu producto integrado)...", 8)
 
     def _one(item):
         i, v = item
@@ -471,7 +595,8 @@ def generar_ads_fullprompt(variants: list[dict], work_dir: str, *, gemini_key: s
         try:
             v["imagen"] = generar_ad_fullprompt(v, out, gemini_key=gemini_key,
                                                 product_image_path=product_image_path,
-                                                integrar_producto=bool(product_image_path))
+                                                integrar_producto=bool(product_image_path), hd=hd)
+            v["hd"] = hd
         except Exception as e:  # noqa: BLE001
             v["imagen"] = None
             v["error"] = str(e)[:150]
@@ -506,24 +631,27 @@ def _error_amigable(msg: str) -> str:
 
 def generar_imagen(prompt: str, gemini_key: str, out_path: str,
                    product_image_path: str | None = None, tries: int = 4,
-                   errors: list | None = None, model: str | None = None) -> str | None:
+                   errors: list | None = None, model: str | None = None,
+                   cierre: str | None = None) -> str | None:
     """Nano Banana convierte el prompt en imagen (usa la foto del producto como referencia si hay).
 
     Reintenta ante errores transitorios de Google (500 INTERNAL / 503 / rate-limit) con backoff.
-    Si `errors` es una lista, guarda ahí el último error crudo (para dar mensaje amigable)."""
+    Si `errors` es una lista, guarda ahí el último error crudo (para dar mensaje amigable).
+    `cierre`: cola de calidad (por defecto la cuadrada 1:1; el advertorial pasa la 4:5)."""
     import time
     from google import genai
     from google.genai import types
+    cola = cierre if cierre is not None else _CIERRE
     client = genai.Client(api_key=gemini_key)
     if product_image_path and os.path.exists(product_image_path):
         with open(product_image_path, "rb") as f:
             pb = f.read()
         mime = "image/png" if product_image_path.lower().endswith(".png") else "image/jpeg"
         contents = ["Use the product shown in this reference image (respect its exact shape, color and "
-                    "label) placed into the following ad scene. " + prompt + _CIERRE,
+                    "label) placed into the following scene. " + prompt + cola,
                     types.Part.from_bytes(data=pb, mime_type=mime)]
     else:
-        contents = [prompt + _CIERRE]
+        contents = [prompt + cola]
 
     for attempt in range(tries):
         try:

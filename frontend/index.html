@@ -679,16 +679,35 @@
           document.getElementById('tkGo').disabled=false; tkRender(j);
         }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
       }
+      // id ESTABLE de un creativo (espejo del backend): TikTok = video_id (ignora el @usuario, que
+      // cambia y hacía repetir el mismo video); Foreplay = id/video/foreplay_url (ya es estable).
+      function tkNormId(x,fuente){
+        if(fuente==='foreplay') return String(x.id||x.video||x.foreplay_url||'');
+        const m=String(x.url||'').match(/\/video\/(\d+)/);
+        return m?m[1]:String(x.url||'');
+      }
       function tkRender(j){
         const tk=j.tiktok||{}, fp=j.foreplay||{};
+        const links=(tk.links||[]), ads=(fp.ads||[]);
         // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
-                     desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
+                     desc:j.desc||'', variants:(j.variants||[]), links:links, ads:ads,
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
-                     fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[]),
-                     tkMens:tk.mensaje_busqueda||'', masComo:[]};
+                     fpOk:!!fp.ok, fpErr:fp.error||'', broll:(tk.broll||[]),
+                     tkMens:tk.mensaje_busqueda||'', masComo:[],
+                     // sets de TODO lo mostrado (ids normalizados) → nada se repite al traer más
+                     seenTk:new Set(links.map(l=>tkNormId(l,'tiktok'))),
+                     seenFp:new Set(ads.map(a=>tkNormId(a,'foreplay')))};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
         tkPaint();
+      }
+      // agrega items nuevos a un grupo SIN repetir (contra el set de vistos); devuelve solo los que entraron
+      function tkPushNuevos(fuente,items){
+        const S=window._tkS, grupo=(fuente==='tiktok')?S.links:S.ads;
+        const seen=(fuente==='tiktok')?S.seenTk:S.seenFp, nuevos=[];
+        (items||[]).forEach(it=>{ const id=tkNormId(it,fuente);
+          if(id && !seen.has(id)){ seen.add(id); grupo.push(it); nuevos.push(it); } });
+        return nuevos;
       }
       function tkPaint(){
         const S=window._tkS; if(!S) return;
@@ -837,22 +856,20 @@
       // ➕ traer OTRA tanda al grupo principal (sin ángulo: búsqueda general que excluye lo ya visto)
       async function tkMoreGroup(fuente,btn){
         const S=window._tkS; if(!S) return;
-        const grupo=(fuente==='tiktok')?S.links:S.ads;
-        const idDe=x=>(fuente==='tiktok')?x.url:String(x.id||x.video||x.foreplay_url||'');
-        const excl=grupo.map(idDe).concat(fuente==='tiktok'?S.exTk:S.exFp).filter(Boolean);
+        const seen=(fuente==='tiktok')?S.seenTk:S.seenFp;
         const fd=new FormData();
         fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
-        fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
+        fd.append('terminos',(S.variants||[]).join('\n'));
+        fd.append('excluir',[...seen].join('\n'));   // TODO lo ya mostrado (ids normalizados)
         fd.append('foto',S.foto); fd.append('n','10');
         const old=btn.textContent; btn.textContent='⏳ Buscando 10 más… (1-2 min)'; btn.disabled=true;
         try{
           const r=await fetch('/api/creative-more',{method:'POST',body:fd}); const j=await r.json();
-          const items=(j.items||[]);
-          if(!items.length){
-            btn.textContent='😕 no salieron más — dame la marca o un hashtag y busco distinto';
+          const nuevos=tkPushNuevos(fuente,j.items||[]);   // filtra los que ya se vieron (por si acaso)
+          if(!nuevos.length){
+            btn.textContent='😕 no salieron más NUEVOS — dame la marca o un hashtag y busco distinto';
             setTimeout(()=>{btn.textContent=old;btn.disabled=false;},4000); return;
           }
-          grupo.push(...items);   // entran al grupo principal (tkPaint repinta todo, botón incluido)
           tkPaint();
         }catch(e){
           btn.textContent='Error'; setTimeout(()=>{btn.textContent=old;btn.disabled=false;},3000);
@@ -861,32 +878,31 @@
       async function tkMore(fuente,idx,btn,angulo){
         const S=window._tkS; if(!S) return;
         const grupo=(fuente==='tiktok')?S.links:S.ads;
+        const seen=(fuente==='tiktok')?S.seenTk:S.seenFp;
         const item=grupo[idx]; if(!item) return;
-        const idDe=x=>(fuente==='tiktok')?x.url:String(x.id||x.video||x.foreplay_url||'');
-        const excl=grupo.map(idDe).concat(fuente==='tiktok'?S.exTk:S.exFp).filter(Boolean);
         const fd=new FormData();
         fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
-        fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
+        fd.append('terminos',(S.variants||[]).join('\n'));
+        fd.append('excluir',[...seen].join('\n'));   // TODO lo ya mostrado (ids normalizados)
         fd.append('foto',S.foto); fd.append('n',angulo?'5':'1');
         if(angulo) fd.append('angulo',(item.title||item.name||item.description||'').slice(0,220));
         const old=btn.textContent; btn.textContent='⏳'; btn.disabled=true;
         try{
           const r=await fetch('/api/creative-more',{method:'POST',body:fd}); const j=await r.json();
-          const items=(j.items||[]);
-          if(!items.length){
-            btn.textContent='😕 no hay más'; btn.disabled=false;
-            setTimeout(()=>{btn.textContent=old;},3000); return;
-          }
           if(angulo){
-            // 🎯 los 5 nuevos van a SU PROPIA sección (con el creativo que gustó de referencia)
-            const base=grupo.length; grupo.push(...items);
+            // 🎯 los nuevos (no repetidos) van a SU PROPIA sección (con el creativo de referencia)
+            const base=grupo.length, nuevos=tkPushNuevos(fuente,j.items||[]);
+            if(!nuevos.length){ btn.textContent='😕 no hay más'; btn.disabled=false; setTimeout(()=>{btn.textContent=old;},3000); return; }
             (S.masComo=S.masComo||[]).push({fuente:fuente,
               ref:((item.title||item.name||item.description||'ese creativo')+'').slice(0,60),
-              idxs:items.map((_,k)=>base+k)});
+              idxs:nuevos.map((_,k)=>base+k)});
           }
           else{
-            (fuente==='tiktok'?S.exTk:S.exFp).push(idDe(item));   // el viejo no vuelve a salir
-            grupo.splice(idx,1,items[0]);                          // el nuevo entra en su puesto
+            // 🔄 cambiar: UN nuevo (no repetido) en el puesto del que no gustó (el viejo no vuelve)
+            const nuevo=(j.items||[]).find(it=>{ const id=tkNormId(it,fuente); return id && !seen.has(id); });
+            if(!nuevo){ btn.textContent='😕 no hay más'; btn.disabled=false; setTimeout(()=>{btn.textContent=old;},3000); return; }
+            seen.add(tkNormId(item,fuente)); seen.add(tkNormId(nuevo,fuente));
+            grupo.splice(idx,1,nuevo);
           }
           tkPaint();
         }catch(e){

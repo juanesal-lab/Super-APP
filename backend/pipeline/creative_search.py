@@ -223,9 +223,10 @@ def buscar_mas(fuente: str, nombre: str = "", terminos: list[str] | None = None,
     - Con foto (`image_path`): verifica MISMO producto con el juez de siempre (tope chico de costo);
       lo confirmado va primero y lo demás queda `verificado_producto=False` (badge). Sin foto, sin IA.
     Devuelve {ok, items: [...], terminos, error?} — items con el mismo shape del grupo de su fuente."""
-    from .tiktok_search import _ES_REGIONS, buscar_tiktok
+    from .tiktok_search import _ES_REGIONS, _tk_key, buscar_tiktok, norm_tk_id
 
     excl = {str(e).strip() for e in (excluir or []) if str(e).strip()}
+    excl_tk = {norm_tk_id(e) for e in excl}   # excl normalizado a video_id (TikTok, sin engaño del @)
     terms = _terminos_angulo(angulo, nombre, gemini_key) if angulo.strip() else []
     terms = terms or [t for t in (terminos or []) if t.strip()][:4] or _expandir(nombre, [])[:3]
     terms = [t for t in terms if t.strip()]
@@ -253,8 +254,9 @@ def buscar_mas(fuente: str, nombre: str = "", terminos: list[str] | None = None,
     with ThreadPoolExecutor(max_workers=min(4, len(terms))) as ex:
         for res in ex.map(lambda q: buscar_tiktok(q, count=40, pages=2), terms):
             for c in res:
-                if c["url"] not in excl:
-                    cands.setdefault(c["url"], c)
+                k = _tk_key(c)                      # dedup por video_id (no por url: el @ engaña)
+                if k not in excl_tk and norm_tk_id(c["url"]) not in excl_tk:
+                    cands.setdefault(k, c)
     lst = [c for c in cands.values() if c.get("region") != "CO"]          # regla: sin Colombia
     lst = [c for c in lst if 4 <= c.get("dur", 0) <= 120] or lst
     lst.sort(key=lambda c: (1 if c.get("region") in _ES_REGIONS else 0, c.get("plays", 0)),

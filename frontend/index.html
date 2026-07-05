@@ -355,7 +355,14 @@
   const h2=document.getElementById('hGreetTxt');
   const marcaEl=document.getElementById('hCarMarca'), modeloEl=document.getElementById('hCarModelo');
   if(!(home&&stage&&A&&B)) return;
-  GARAJE.forEach(c=>{ const i=new Image(); i.src=c.src; fetch(c.vid).catch(()=>{}); });   // precarga foto + video: cambios sin parpadeo
+  // Precarga ESCALONADA (antes bajaba los 4 videos ~7MB al abrir la app): solo el carro que
+  // sigue, un rato después de pintar el actual — cambios sin parpadeo, apertura liviana.
+  const _pre=new Set();
+  function precargarSiguiente(){
+    const c=GARAJE[(gi+1)%GARAJE.length];
+    if(_pre.has(c.vid)) return; _pre.add(c.vid);
+    const i=new Image(); i.src=c.src; fetch(c.vid).catch(()=>{});
+  }
 
   function vestir(c){
     home.style.setProperty('--hacc', c.acc);
@@ -383,14 +390,16 @@
   }
   let gi=0, imgs=[A,B], cur=0, girando=false;
   cargar(A, GARAJE[0]); A.classList.add('on'); vestir(GARAJE[0]);
+  setTimeout(precargarSiguiente, 4000);       // el próximo carro se baja en reposo, no al abrir
   function girar(){
     if(girando) return;                       // atómico: video y tema SIEMPRE del mismo carro
+    if(home.offsetParent===null) return;      // fuera de la portada: ni gira ni gasta red/CPU
     girando=true;
     gi=(gi+1)%GARAJE.length;
     const c=GARAJE[gi], show=imgs[1-cur], hide=imgs[cur];
     cargar(show, c).then(()=>{
       show.classList.add('on'); hide.classList.remove('on'); cur=1-cur; vestir(c);
-      setTimeout(()=>{ girando=false; hide.pause&&hide.pause(); }, 1300);
+      setTimeout(()=>{ girando=false; hide.pause&&hide.pause(); precargarSiguiente(); }, 1300);
     });
   }
   const quieto=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -576,7 +585,7 @@
         if(c.video){
           const u='/api/file?path='+encodeURIComponent(c.video);
           const d='/api/download?path='+encodeURIComponent(c.video)+'&name=creativo_'+(i+1);
-          h+=`<video src="${u}" controls playsinline style="width:100%;border-radius:14px;margin-top:10px"></video>`;
+          h+=`<video src="${u}" controls playsinline preload="metadata" style="width:100%;border-radius:14px;margin-top:10px"></video>`;
           h+=`<a class="autoBtn" style="margin-top:8px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${d}" download>⬇️ Descargar creativo ${i+1}</a>`;
         }
       });
@@ -1051,7 +1060,7 @@
       }
       if(res.video){
         const u='/api/file?path='+encodeURIComponent(res.video), dl='/api/download?path='+encodeURIComponent(res.video)+'&name=clon';
-        h+=`<video src="${u}" controls playsinline style="width:100%;border-radius:14px;margin-top:16px"></video>`;
+        h+=`<video src="${u}" controls playsinline preload="metadata" style="width:100%;border-radius:14px;margin-top:16px"></video>`;
         h+=`<a class="autoBtn" style="margin-top:12px;text-align:center;text-decoration:none;display:block;box-sizing:border-box" href="${dl}" download>⬇️ Descargar clon</a>`;
       }
       box.innerHTML=h;
@@ -1895,7 +1904,7 @@
     <span id="edStatus" style="margin-left:10px;color:var(--muted);font-size:13px"></span>
 
     <div id="edStage" style="display:none;margin-top:16px">
-      <div class="edPreviewWrap"><video id="edVideo" playsinline></video></div>
+      <div class="edPreviewWrap"><video id="edVideo" playsinline preload="metadata"></video></div>
       <div class="edBar">
         <button class="btn" id="edPlay" onclick="edPlayAll()">▶️ Reproducir todo</button>
         <button class="btn" onclick="edExport()" style="background:var(--accent2)">💾 Exportar video</button>
@@ -2053,7 +2062,7 @@
         if(j.path){
           const u='/api/file?path='+enc(j.path), d='/api/download?path='+enc(j.path)+'&name=editado';
           res.innerHTML=`<div class="card" style="margin-top:14px"><h2>✅ Video exportado</h2>
-            <video src="${u}" controls playsinline style="width:100%;max-height:50vh;border-radius:12px;background:#000"></video>
+            <video src="${u}" controls playsinline preload="metadata" style="width:100%;max-height:50vh;border-radius:12px;background:#000"></video>
             <a class="btn" href="${d}" download style="margin-top:10px;display:inline-block;text-decoration:none;background:var(--accent2)">⬇️ Descargar</a></div>`;
         } else { res.innerHTML='<div class="pmsg" style="color:var(--warn)">'+(j.detail||'Error al exportar')+'</div>'; }
       }catch(e){ res.innerHTML='<div class="pmsg" style="color:var(--warn)">Error: '+e+'</div>'; }
@@ -2941,7 +2950,7 @@ function renderResults(res, rootId){
   res.versions.forEach((v,i)=>{
     const file = "/api/file?path="+enc(v.path);
     html += `<div class="vcard">
-      <video src="${file}" controls muted loop style="aspect-ratio:${ar}"></video>
+      <video src="${file}" controls muted loop preload="metadata" style="aspect-ratio:${ar}"></video>
       <div class="body">
         <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
@@ -2982,7 +2991,7 @@ function renderResults(res, rootId){
       const tag = s.tag ? `<div class="sc" style="color:var(--muted)">${s.tag}</div>` : '';
       const gifName = c.gif ? c.gif.split('/').pop() : 'clip.webm';
       const gif = c.gif ? `<a href="/api/file?path=${enc(c.gif)}" download="${gifName}" style="display:block;text-align:center;margin-top:4px;color:var(--accent2);font-size:12px;font-weight:600;text-decoration:none">⬇️ GIF (WebM)</a>` : '';
-      html += `<div class="clip" style="aspect-ratio:${ar}"><video src="${file}" controls muted loop style="aspect-ratio:${ar}"></video>
+      html += `<div class="clip" style="aspect-ratio:${ar}"><video src="${file}" controls muted loop preload="metadata" style="aspect-ratio:${ar}"></video>
         ${fase}${tag}<div class="sc">score ${s.score} · ${s.duration}s ${prod} ${use}</div>${gif}</div>`;
     });
     html += `</div></div>`;
@@ -3087,7 +3096,7 @@ async function swapPoll(id){
   document.getElementById("swapResult").innerHTML = `
     <div style="margin-top:14px">
       <div class="pmsg" style="margin-bottom:8px">✅ Reemplacé <b style="color:var(--txt)">${res.n_ranges}</b> tomas del producto (en ${res.ranges.map(r=>r[0]+'-'+r[1]+'s').join(', ')})</div>
-      <video src="/api/file?path=${enc(res.path)}" controls style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
+      <video src="/api/file?path=${enc(res.path)}" controls preload="metadata" style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
       <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=reemplazado'">Descargar</button></div>
     </div>`;
 }
@@ -3130,7 +3139,7 @@ async function dubPoll(id){
   document.getElementById("dubResult").innerHTML = `
     <div style="margin-top:14px">
       <div class="pmsg" style="margin-bottom:8px">✅ Video doblado a <b style="color:var(--txt)">${res.target_lang.toUpperCase()}</b></div>
-      <video src="/api/file?path=${enc(res.path)}" controls style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
+      <video src="/api/file?path=${enc(res.path)}" controls preload="metadata" style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
       <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=doblado_'+res.target_lang">Descargar</button></div>
     </div>`;
 }

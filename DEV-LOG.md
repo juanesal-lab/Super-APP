@@ -2941,3 +2941,22 @@ y pill 100% ilegibles y continuos; el masked de producción viejo los dejaba LEG
   producto, no caption — el viejo tampoco la tapaba). Y ojo Juan: los overrides del capitán
   (`min_wh`/`conf` en orchestrator) siguen aplicando sobre estos defaults — si el capitán sube
   mucho `conf` puede soltar líneas (así salió el segmask viejo SIN tapar del todo).
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🪶 Web más liviana (queja de Jack: "está muy pesada") — sin perder calidad
+Diagnóstico con la pestaña de red del navegador (medido, no adivinado):
+1. **Los <video> de las grillas no tenían `preload`** → Chrome usa "auto" y se descargaba TODO:
+   una pantalla de resultados de Cortar clips = 8 versiones (~46MB c/u) + ~24 clips sueltos =
+   CIENTOS de MB sin darle play a nada. FIX: `preload="metadata"` en los 8 templates de video
+   (grilla de versiones, clips sueltos, resultados de crear/clonar/variar/doblar, editor).
+   Verificado: la grilla de 8 versiones ya no pide NI UN request de /api/file al pintar; el video
+   baja solo cuando le das play (misma calidad — solo cambia CUÁNDO baja).
+2. **La portada bajaba los 4 videos del garaje (~7MB) en cada apertura** (precarga total) y el
+   carrusel seguía girando y cargando aunque estuvieras trabajando en otra pestaña. FIX: precarga
+   ESCALONADA (`precargarSiguiente()`: el carro actual + el que sigue en reposo; los demás cuando
+   les toca) + `girar()` no hace nada si la portada no está visible (`home.offsetParent===null`).
+   Verificado en vivo: al abrir solo baja el Porsche; a los ~10s se precarga la Ducati; el
+   showroom se ve IGUAL (screenshot).
+Extra revisado y ya estaba bien: /api/file responde 206 (Range/streaming ok, starlette 0.41) y
+/api/caption-preview ya tenía Cache-Control 1h. Solo frontend/index.html — cero backend.
+AVISO Juan: si agregas cards con <video> en grillas nuevas, ponles `preload="metadata"` (regla
+de la casa desde hoy; Chrome sin preload = "auto" = se baja el video entero por card).

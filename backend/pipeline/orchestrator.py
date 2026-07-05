@@ -11,7 +11,8 @@ from .gemini_rank import rank_with_gemini
 from concurrent.futures import ThreadPoolExecutor
 
 from .assemble import (build_variations, plan_variations, render_clip, export_resolution,
-                       dims_for, add_voiceover, add_voiceover_and_sfx, WORKERS)
+                       dims_for, add_voiceover, add_voiceover_and_sfx, sound_design_events,
+                       WORKERS)
 from .text_detect import mask_video as mask_video_text, available as east_available
 from .text_translate import traducir_texto_pantalla as translate_screen_text
 from .smart_caption_mask import mask_captions_smart
@@ -534,13 +535,24 @@ def render_versions(
         fr = frases_por_nombre.get(v.get("name") or "")
         phases_mix = ([{"etiqueta": str(f.get("fase", "")).upper(),
                         "inicio_s": f["inicio"], "fin_s": f["fin"]} for f in fr] if fr else None)
+        # SOUND DESIGN CON INTENCIÓN: riser→revelación del producto, whoosh rotado en cortes,
+        # pop al arrancar, cash_register en el CTA, ding en la prueba (sound_design_events).
+        # Si el cálculo falla → None → add_voiceover_and_sfx cae al plan viejo (pro_mix).
+        sd_events = None
+        vo_d = _audio_dur(vo_path)
+        if vo_d > 1.0:
+            try:
+                sd_events = sound_design_events(v.get("segments") or [], vo_d,
+                                                vo_dur=vo_d, cut_times=_cut_times(v))
+            except Exception:  # noqa: BLE001
+                sd_events = None
         try:
             # SFX ya no dependen del toggle "efectos": el plan pro (pro_mix) los pone SUTILES
             # y solo donde tocan; "efectos" sigue mandando en lo VISUAL (punch/zoom fuerte).
             add_voiceover_and_sfx(v["path"], vo_path, vo_out,
                                   sfx_paths=sfx_paths,
                                   cut_times=_cut_times(v), music_path=music_path,
-                                  phases=phases_mix)
+                                  phases=phases_mix, sfx_events=sd_events)
             v["path"] = vo_out
             v["voiceover"] = True
         except Exception:
@@ -617,6 +629,18 @@ def render_versions(
         except Exception:  # noqa: BLE001
             pass
 
+    # SOUND DESIGN para el flujo SIN voz (Cortar clips: la música/SFX se mezclan en app.py
+    # DESPUÉS, con el manifest — que no trae segments): los eventos con intención se calculan
+    # AQUÍ (donde están los flags product_visible/shows_use) y viajan en el manifest.
+    for v in versions:
+        if not v.get("voiceover"):
+            try:
+                v["sfx_events"] = sound_design_events(v.get("segments") or [],
+                                                      probe(v["path"]).duration,
+                                                      vo_dur=None, cut_times=_cut_times(v))
+            except Exception:  # noqa: BLE001
+                v["sfx_events"] = None
+
     report("Finalizando...", 98)
     manifest = {
         "ok": True,
@@ -633,6 +657,9 @@ def render_versions(
                 "filename": os.path.basename(v["path"]),
                 "n_clips": len(v["segments"]),
                 "voiceover": v.get("voiceover", False),
+                # aditivos (no rompen el shape): para la mezcla música+SFX de app.py
+                "cut_times": list(v.get("cut_times") or []),
+                "sfx_events": v.get("sfx_events"),
             }
             for v in versions
         ],

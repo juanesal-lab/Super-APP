@@ -2660,3 +2660,43 @@ Del pantallazo de Jack (job 1ccd745be9e6, con datos):
    la 1ª/última línea y la pill "Chemical Free"). No toqué text_detect aún.
 AVISO Juan/otra sesión: commit SELECTIVO — en assemble.py solo mi hunk de export_resolution
 (dejé sin tocar sus cambios en curso de pro_mix/assemble/orchestrator del working tree).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 🎬🔊 EDICIÓN PRO: sound design CON INTENCIÓN + punch-in alternado + arco narrativo (Cortar clips / Mi producto)
+Pedido de Jack (estudio CapCut 2026 + ads ecommerce): los SFX se ponían AL AZAR y todos los
+clips llevaban el mismo zoom. Ahora cada sonido cae donde la HISTORIA lo pide:
+- **assemble.sound_design_events(segments, total_dur, vo_dur=None, cut_times=None)** (NUEVA):
+  devuelve [(t, ruta_sfx, volumen)] con las reglas exactas: (1) RISER que TERMINA en el corte
+  donde entra el 1er clip con product_visible + impact/bass_drop EN ese corte (máx 1+1);
+  (2) whoosh/swoosh rotados (3 variantes) en los demás cortes a 0.5 — alternos si hay >6;
+  (3) pop en t≈0.15 con el gancho; (4) cash_register a 0.4 al arrancar el CTA (con voz =
+  vo_dur−5.5s, la frase obligatoria; sin voz = últimos 4s); (5) ding/sparkle en la 1ª prueba
+  (shows_use) DESPUÉS del producto (máx 1); (6) voz 1.0 > SFX 0.4-0.7 > música 0.16.
+- **add_voiceover_and_sfx / add_music_sfx**: param NUEVO opcional `sfx_events` — si viene,
+  manda esa colocación; si no, plan viejo de pro_mix (retrocompatible TOTAL: auto_studio,
+  winner_clone, producto_clips y llamadas viejas siguen idénticas).
+- **pro_mix.filtros_mezcla**: param opcional `music_vol=None` (None = constantes de siempre);
+  con sound design la cama va a 0.16. Nada más cambió en pro_mix.
+- **orchestrator._apply_vo**: construye los events con los segments reales de la versión y los
+  pasa; **manifest de versiones ganó 2 claves ADITIVAS** `cut_times` y `sfx_events` (el shape
+  viejo intacto — app.py las necesita porque la música se mezcla después con el manifest, que
+  no traía segments: los cuts llegaban SIEMPRE vacíos, bug silencioso viejo).
+- **app.py._agregar_musica_sfx**: usa v["sfx_events"] del manifest → el flujo sin voz de
+  Cortar clips también lleva sound design con intención.
+- **VISUAL (B)**: (1) `_MOTION` ganó `punch_hook` (gancho: 1.0→1.15 en 0.5s y sostiene, con
+  fx=True) y `out_lento` (1.12→1.0); `_slot_plan` alterna por POSICIÓN: pares zoom-in, impares
+  zoom-out (antes todos el mismo zoompan). (2) `plan_variations`: orden por ARCO narrativo
+  problema→solución/uso→producto (cronológico dentro de cada fase) en AMBOS branches
+  (order_version y pocos-clips); con una sola fase (p. ej. sin Gemini) queda como estaba.
+  Las transiciones xfade NO se tocaron.
+- VERIFICADO ($0, sin APIs): py_compile 4 archivos; 19 checks unit de sound_design_events
+  (riser termina EXACTO en el corte, topes 1 riser/1 impact, whoosh alternos >6 cortes, cash
+  con y sin voz); arco probado en ambos branches; E2E real process_job con 3 videos de
+  ~/Downloads + VO sintético (say) → 8 versiones OK sin crash; colocación de audio MEDIDA con
+  astats por ventanas de 0.5s sobre las DOS rutas (add_music_sfx y add_voiceover_and_sfx):
+  energía en TODAS las ventanas de evento y silencio (−99dB) fuera; frames del punch-in
+  mirados (zoom del gancho notorio, calidad intacta).
+AVISO Juan: firmas SOLO ganan params opcionales con default (sfx_events, music_vol) — tus
+callers viejos idénticos. El manifest de versiones trae 2 claves nuevas aditivas (cut_times,
+sfx_events); el front no las usa. OJO: loudnorm es dinámico → para medir SFX comparando
+con/sin no sirve el delta por ventana con voz real (te lo digo por si mides tú). NO commiteado
+(órdenes de Jack: hay otra sesión trabajando en paralelo en esta carpeta).

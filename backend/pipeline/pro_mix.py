@@ -141,13 +141,15 @@ def plan_sfx(cut_times: list[float], dur: float, sfx_paths: list[str],
 
 def filtros_mezcla(*, vo_label: str | None, clip_label: str | None, music_index: int | None,
                    sfx_eventos: list[dict], input_offset: int, dur_total: float,
-                   con_voz: bool) -> tuple[list[str], list[str], list[str]]:
+                   con_voz: bool, music_vol: float | None = None
+                   ) -> tuple[list[str], list[str], list[str]]:
     """Construye los filtros FFmpeg de la mezcla pro. Devuelve (extra_inputs, filter_chains, mix_labels).
 
     - vo_label/clip_label: etiquetas ya declaradas por el llamador (ej. "[vo]", "[clip]").
     - music_index: índice de input de la música (ya agregado por el llamador) o None.
     - sfx_eventos: plan de plan_sfx(). Los inputs de SFX se agregan aquí (desde input_offset).
     - La música se agacha con sidechaincompress usando la voz (o el audio del clip) como llave.
+    - music_vol: volumen de la cama (opcional). None = constantes de siempre (retrocompatible).
     """
     extra_inputs: list[str] = []
     fc: list[str] = []
@@ -164,7 +166,7 @@ def filtros_mezcla(*, vo_label: str | None, clip_label: str | None, music_index:
         mix.append(llave)               # sin música no hay ducking: la llave va directo a la mezcla
 
     if music_index is not None:
-        vol = MUSICA_VOL if con_voz else MUSICA_VOL_SIN_VOZ
+        vol = music_vol if music_vol is not None else (MUSICA_VOL if con_voz else MUSICA_VOL_SIN_VOZ)
         fade_st = max(0.0, dur_total - FADE_OUT_MUSICA)
         cadena = (f"[{music_index}:a]aloop=loop=-1:size=2000000000,volume={vol},"
                   f"afade=t=out:st={fade_st:.2f}:d={FADE_OUT_MUSICA}")

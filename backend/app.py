@@ -162,9 +162,13 @@ def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, 
             acc = 0.0
             for sg in (v.get("segments") or [])[:-1]:
                 acc += float(sg.get("duration", 0)); cuts.append(acc)
+        # sound design CON INTENCIÓN: los eventos ya vienen calculados en el manifest
+        # (orchestrator.sound_design_events); tuplas por si viajaron como listas (JSON).
+        events = [(float(t), p, float(vol)) for t, p, vol in (v.get("sfx_events") or [])] or None
         try:
             out = v["path"][:-4] + "_mx.mp4"
-            v["path"] = add_music_sfx(v["path"], out, music_path=music_path, sfx_paths=sfx, cut_times=cuts)
+            v["path"] = add_music_sfx(v["path"], out, music_path=music_path, sfx_paths=sfx,
+                                      cut_times=cuts, sfx_events=events)
         except Exception:  # noqa: BLE001
             pass
 

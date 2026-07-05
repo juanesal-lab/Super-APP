@@ -6,6 +6,7 @@ normaliza a un tamano/fps/codec comun para concatenar sin glitches.
 """
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 import uuid
@@ -73,7 +74,9 @@ _MOTION = {
     "in_suave": (0.020, 1.30, "in"),
     "in_fuerte": (0.060, 1.30, "in"),
     "punch": (0.180, 1.22, "in"),
+    "punch_hook": (0.300, 1.15, "in"),   # gancho: 1.0→1.15 en los primeros 0.5s y SOSTIENE
     "out": (0.025, 1.06, "out"),
+    "out_lento": (0.030, 1.12, "out"),   # zoom-out lento: arranca en 1.12 y baja hacia 1.0
 }
 
 
@@ -303,16 +306,31 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
 
     by_score = sorted(range(n), key=lambda i: selected[i].score, reverse=True)
 
+    def _fase_arco(i):
+        """Fase narrativa del clip para el ARCO de ecommerce que convierte:
+        0 = problema (ni producto ni uso) → 1 = solución/uso (shows_use) → 2 = producto."""
+        if selected[i].shows_use:
+            return 1
+        if selected[i].product_visible:
+            return 2
+        return 0
+
     def order_version(idxs):
         """Estructura de edición PRO estilo TikTok:
         1) HOOK: la toma más fuerte de una (frena el scroll).
-        2) CUERPO: nunca dos tomas seguidas del MISMO video (se siente editado, no pegado),
-           empezando por las tomas CORTAS (ritmo rápido al inicio, como los ads que retienen).
-        3) PAYOFF: cierra con la mejor toma del producto EN USO (el "remate" antes del CTA)."""
+        2) ARCO NARRATIVO (si los flags de Gemini distinguen fases): problema → solución/uso
+           → producto, cronológico DENTRO de cada fase — la historia que convierte en ecommerce.
+        3) Fallback (todos los clips de la misma fase, p. ej. sin Gemini): cuerpo anti-repetición
+           de fuente + payoff con la mejor toma del producto EN USO (comportamiento de siempre)."""
         if not idxs:
             return []
         hook = max(idxs, key=lambda i: selected[i].score)
         rest = [i for i in idxs if i != hook]
+        # ARCO problema→solución→producto cuando hay al menos 2 fases distintas en el cuerpo
+        if len({_fase_arco(i) for i in rest}) >= 2:
+            return [hook] + sorted(rest, key=lambda i: (_fase_arco(i),
+                                                        selected[i].source_index,
+                                                        selected[i].start))
         # payoff: mejor toma con el producto en uso/visible (si existe) reservada para el cierre
         payoff = None
         uso = [i for i in rest if selected[i].shows_use or selected[i].product_visible]
@@ -381,7 +399,11 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
                 if dur >= need:
                     break
                 take.append(i); dur += min(selected[i].duration(), 1.7)
-            rest = sorted(take, key=lambda i: (selected[i].source_index, selected[i].start))
+            # ARCO narrativo problema→solución/uso→producto, cronológico DENTRO de cada fase.
+            # Con una sola fase (p. ej. sin Gemini todos son "problema") la clave de fase es
+            # constante → queda el cronológico de siempre (comportamiento viejo intacto).
+            rest = sorted(take, key=lambda i: (_fase_arco(i),
+                                               selected[i].source_index, selected[i].start))
             order = [hook] + rest
             for i in order:
                 usage[i] += 1
@@ -407,26 +429,28 @@ def build_variations(selected: list[Segment], work_dir: str,
     version_caps = version_caps or {}
 
     # CURVA DE RITMO PRO (medida en 4 ads ganadores): ancla ≤1.6s → ráfaga 0.9s → crucero ≤1.7s
-    # → cierre/CTA calmado ≤2.2s. Movimiento por plano: hook fuerte, payoff punch (con fx),
-    # cuerpo Ken Burns alternado 2-3 in : 1 out (por índice → estable entre versiones).
+    # → cierre/CTA calmado ≤2.2s. Movimiento ALTERNADO POR POSICIÓN (técnica CapCut 2026):
+    # gancho = punch-in rápido y notorio (1.0→1.15 en 0.5s, sostiene); slots pares = zoom-in
+    # lento; impares = zoom-out lento (1.12→1.0); payoff = punch (con fx). Antes todos los
+    # clips llevaban el mismo zoompan lento y el montaje se sentía plano.
     # Con guion (caps): la DURACIÓN la mandan las frases de la voz; el movimiento sigue la curva.
     def _slot_plan(order: list[int], caps: list[float] | None) -> list[tuple[int, float, str]]:
         n = len(order)
         n_b = n - 1
         hard = {n_b - 1} | {k for k in range(n_b) if k % 5 == 2}   # espejo de concat_clips_xfade
         plan = []
-        ciclo = ("in_suave", "in_suave", "out")
         for slot, i in enumerate(order):
+            alt = "in_suave" if slot % 2 == 0 else "out_lento"     # alternado por posición
             if slot == 0:
-                cap, motion = 1.6, ("in_fuerte" if fx else "in_suave")
+                cap, motion = 1.6, ("punch_hook" if fx else "in_suave")
             elif slot <= 2 and n >= 6:
-                cap, motion = 0.9, ciclo[i % 3]        # ráfaga del hook (planos cortos)
+                cap, motion = 0.9, alt                 # ráfaga del hook (planos cortos)
             elif slot == n - 1:
                 cap, motion = 2.2, ("punch" if fx else "in_suave")   # payoff = acento
             elif slot >= n - 3:
-                cap, motion = 2.2, ciclo[i % 3]        # CTA calmado: que la oferta se lea
+                cap, motion = 2.2, alt                 # CTA calmado: que la oferta se lea
             else:
-                cap, motion = 1.7, ciclo[i % 3]
+                cap, motion = 1.7, alt
             if caps and slot < len(caps):
                 # el guion manda la duración + compensación del overlap del dissolve
                 # (xfade CONSUME dd por transición; sin esto la voz se desincroniza del plano)
@@ -616,23 +640,141 @@ def _has_audio_stream(path: str) -> bool:
         return False
 
 
+# ─────────────────────────── SOUND DESIGN CON INTENCIÓN ───────────────────────────
+# Reglas del estudio CapCut 2026 + ads ecommerce: cada SFX cae donde la HISTORIA lo pide
+# (riser→revelación del producto, cash en el CTA...), no rotado al azar en cada corte.
+_SD_MUSIC_VOL = 0.16      # música bajo el sound design: voz 1.0 > SFX 0.4-0.7 > música 0.16
+
+
+def _sd_sfx(*names: str) -> str | None:
+    """Primera ruta existente en assets/sfx/ entre los nombres dados (None si ninguno)."""
+    for n in names:
+        p = os.path.join(_SFX_DIR, n)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def sound_design_events(segments: list[dict], total_dur: float,
+                        vo_dur: float | None = None,
+                        cut_times: list[float] | None = None
+                        ) -> list[tuple[float, str, float]]:
+    """Plan de SFX CON INTENCIÓN. Devuelve [(t_inicio_segundos, ruta_sfx, volumen_lineal)].
+
+    Reglas (estudio de técnicas CapCut 2026 + estructura de ads ecommerce):
+    1. RISER que TERMINA exactamente en el corte donde entra el PRIMER clip con
+       product_visible=True + impact/bass_drop justo EN ese corte (máx 1 riser + 1 golpe).
+    2. Whoosh/swoosh ROTADOS (3 variantes) en los demás cortes a volumen moderado (~0.5);
+       con más de 6 cortes, solo en cortes alternos (que no sature).
+    3. Pop/click suave en t≈0.15s (acompaña el gancho/texto inicial).
+    4. cash_register bajito (~0.4) al ARRANCAR el CTA: con voz = últimos ~5.5s de la
+       narración (la frase obligatoria "por tu compra hoy..."); sin voz = últimos 4s.
+    5. Ding/sparkle suave (máx 1) en el corte de la PRUEBA: primer clip con shows_use=True
+       DESPUÉS del clip del producto.
+    6. Jerarquía: voz 1.0 > SFX puntuales 0.4-0.7 > música 0.16 — nunca tapar la voz.
+
+    `segments` = v["segments"] (dicts con duration/product_visible/shows_use).
+    `cut_times` (opcional) = tiempos REALES de corte; si no viene, se acumulan los
+    `duration` de segments (igual que _cut_times del orchestrator)."""
+    from .pro_mix import _dur_audio
+    events: list[tuple[float, str, float]] = []
+    segs = [dict(s or {}) for s in (segments or [])]
+    if total_dur <= 1.0:
+        return events
+    if cut_times is None:
+        cut_times, acc = [], 0.0
+        for sg in segs[:-1]:
+            acc += float(sg.get("duration", 0) or 0)
+            cut_times.append(round(acc, 3))
+    cut_times = list(cut_times)
+    cuts = [t for t in cut_times if 0.3 < t < total_dur - 0.3]
+    ocupados: list[float] = []          # cortes ya cubiertos por un acento (sin whoosh encima)
+
+    # 3) pop de arranque con el gancho/texto inicial
+    pop = _sd_sfx("pop.wav", "click.wav", "notification_pop.mp3")
+    if pop:
+        events.append((0.15, pop, 0.5))
+
+    # 1) riser → revelación del producto + impact/bass EN el corte (máximo 1 + 1)
+    j = next((k for k, sg in enumerate(segs) if sg.get("product_visible")), None)
+    t_prod = None
+    if j is not None and 0 < j <= len(cut_times):
+        t_prod = float(cut_times[j - 1])
+    if t_prod and 0.8 < t_prod < total_dur - 0.4:
+        golpe = _sd_sfx("impact.wav", "bass_drop.wav", "boom.wav")
+        if golpe:
+            events.append((round(t_prod, 3), golpe, 0.7))
+        for rname in ("riser.wav", "riser_fast.wav"):   # el riser COMPLETO termina EN el corte
+            rp = _sd_sfx(rname)
+            rd = _dur_audio(rp) if rp else 0.0
+            if rp and 0.3 < rd <= t_prod - 0.05:
+                events.append((round(t_prod - rd, 3), rp, 0.55))
+                break
+        ocupados.append(t_prod)
+
+    # 5) ding/sparkle suave en la PRUEBA (shows_use DESPUÉS del producto, máx 1)
+    if j is not None:
+        k = next((m for m in range(j + 1, len(segs)) if segs[m].get("shows_use")), None)
+        if k is not None and k <= len(cut_times):
+            t_uso = float(cut_times[k - 1])
+            if 0.5 < t_uso < total_dur - 0.4 and all(abs(t_uso - s) > 0.6 for s in ocupados):
+                brillo = _sd_sfx("ding.wav", "sparkle.wav")
+                if brillo:
+                    events.append((round(t_uso, 3), brillo, 0.45))
+                    ocupados.append(t_uso)
+
+    # 4) caja registradora bajita al ARRANCAR el CTA (es una firma, no un golpe)
+    t_cta = (vo_dur - 5.5) if vo_dur else (total_dur - 4.0)
+    cash = _sd_sfx("cash_register.mp3")
+    if cash and 1.0 < t_cta < total_dur - 0.5:
+        events.append((round(t_cta, 3), cash, 0.4))
+        ocupados.append(t_cta)
+
+    # 2) whoosh/swoosh rotados en los DEMÁS cortes (alternos si hay más de 6 cortes)
+    whooshes = [p for p in (_sd_sfx("whoosh.wav"), _sd_sfx("whoosh_fast.wav"),
+                            _sd_sfx("swoosh.wav")) if p]
+    otros = [t for t in cuts if all(abs(t - s) > 0.6 for s in ocupados)]
+    if len(cuts) > 6:
+        otros = otros[::2]
+    for nw, t in enumerate(otros):
+        if whooshes:   # arranca 150ms antes para que el pico aterrice EN el corte
+            events.append((round(max(0.0, t - 0.15), 3), whooshes[nw % len(whooshes)], 0.5))
+
+    events.sort(key=lambda e: e[0])
+    return events
+
+
+def _sd_eventos(sfx_events: list[tuple[float, str, float]]) -> list[dict]:
+    """Convierte los eventos (t, ruta, volumen lineal) al formato de pro_mix (dB)."""
+    return [{"t": max(0.0, float(t)), "path": p,
+             "db": 20.0 * math.log10(min(1.0, max(0.05, float(v)))), "pre_ms": 0}
+            for t, p, v in (sfx_events or []) if p and os.path.exists(p)]
+
+
 def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
                   sfx_paths: list[str] | None = None, cut_times: list[float] | None = None,
-                  phases: list[dict] | None = None) -> str:
+                  phases: list[dict] | None = None,
+                  sfx_events: list[tuple[float, str, float]] | None = None) -> str:
     """MEZCLA PRO sin voz en off (Cortar clips): el audio del clip manda, la música se agacha
     debajo de él (ducking) con fade-out final, y los SFX van SUTILES solo en ~50% de los cortes
-    (whoosh 150ms antes del corte). Master −18 LUFS. Devuelve la ruta o el original si no aplica."""
+    (whoosh 150ms antes del corte). Master −18 LUFS. Devuelve la ruta o el original si no aplica.
+
+    `sfx_events` (opcional): colocación EXACTA [(t, ruta, volumen)] de sound_design_events —
+    si viene, manda ELLA (sound design con intención); si no, el plan viejo (retrocompatible)."""
     from .pro_mix import plan_sfx, filtros_mezcla, cadena_final
     sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
     has_music = bool(music_path and os.path.exists(music_path))
-    if not has_music and not sfx_paths:
+    if not has_music and not sfx_paths and not sfx_events:
         return video_path
     from .ffmpeg_utils import probe
     try:
         vdur = probe(video_path).duration
     except Exception:  # noqa: BLE001
         return video_path
-    eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vdur, sfx_paths, phases=phases)
+    if sfx_events is not None:
+        eventos = _sd_eventos(sfx_events)
+    else:
+        eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vdur, sfx_paths, phases=phases)
     if not has_music and not eventos:
         return video_path
     inputs = ["-i", video_path]
@@ -647,7 +789,8 @@ def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
         music_index = idx; idx += 1
     extra, fc2, mix = filtros_mezcla(vo_label=None, clip_label=clip_label, music_index=music_index,
                                      sfx_eventos=eventos, input_offset=idx, dur_total=vdur,
-                                     con_voz=False)
+                                     con_voz=False,
+                                     music_vol=_SD_MUSIC_VOL if sfx_events is not None else None)
     if not mix:
         return video_path
     inputs += extra
@@ -693,17 +836,24 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
                           sfx_paths: list[str] | None = None,
                           cut_times: list[float] | None = None,
                           music_path: str | None = None,
-                          phases: list[dict] | None = None) -> str:
+                          phases: list[dict] | None = None,
+                          sfx_events: list[tuple[float, str, float]] | None = None) -> str:
     """Voz en off + MEZCLA PRO (pro_mix, reglas de 4 ads ganadores reales):
     música 13dB bajo la voz + ducking al hablar + fade-out final; SFX SUTILES solo en ~50% de
     los cortes (whoosh 150ms ANTES del corte) + 1 'brillo' protagonista en el momento del
-    producto; master −18 LUFS. Antes: whoosh a 0.8 en CADA corte + música plana (sonaba amateur)."""
+    producto; master −18 LUFS. Antes: whoosh a 0.8 en CADA corte + música plana (sonaba amateur).
+
+    `sfx_events` (opcional): colocación EXACTA [(t, ruta, volumen)] de sound_design_events —
+    si viene, manda ELLA (riser→producto, cash→CTA...); si no, plan viejo (retrocompatible)."""
     from .pro_mix import plan_sfx, filtros_mezcla, cadena_final, _dur_audio
     sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
     has_music = bool(music_path and os.path.exists(music_path))
     vo_dur_s = _dur_audio(vo_path)
-    eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vo_dur_s or 20.0,
-                       sfx_paths, phases=phases)
+    if sfx_events is not None:
+        eventos = _sd_eventos(sfx_events)
+    else:
+        eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vo_dur_s or 20.0,
+                           sfx_paths, phases=phases)
     if not eventos and not has_music:
         return add_voiceover(video_path, vo_path, out_path)
 
@@ -728,7 +878,8 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
         music_index = idx; idx += 1
     extra, fc2, mix = filtros_mezcla(vo_label="[vo]", clip_label=None, music_index=music_index,
                                      sfx_eventos=eventos, input_offset=idx,
-                                     dur_total=vo_dur_s or 20.0, con_voz=True)
+                                     dur_total=vo_dur_s or 20.0, con_voz=True,
+                                     music_vol=_SD_MUSIC_VOL if sfx_events is not None else None)
     inputs += extra
     fc += fc2
     fc.append(cadena_final(mix))

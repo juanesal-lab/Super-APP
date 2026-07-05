@@ -2971,3 +2971,25 @@ FIX (3 líneas, mismo patrón de _run_job): Form `banner_oferta` en /api/scripts
 _run_render_job. Verificado: add_offer_banner sobre una versión real → pill roja "ENVÍO GRATIS ·
 PAGAS AL RECIBIR" + "OFERTA 2X1" arriba en 5s, CON Gemini muerto (fallback y=0.04 funciona).
 Frame revisado a ojo. py_compile ok. AVISO Juan: nada tuyo tocado; solo app.py.
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🔎 Auditoría por secciones (2 agentes) → arreglos confirmados
+Tiré varios agentes revisores; 2 alcanzaron a entregar antes de cortarse. Apliqué SOLO lo verificado:
+- **🔴→✅ "🔄 Regenerar" en Mi producto daba 404 SIEMPRE** (queja latente): `_run_producto_job`
+  guardaba `job["result"]=result` SIN `_stash_regen`, así que `regen.json` nunca se escribía →
+  /api/regenerate-version → 404. Y de paso el pool pesado `_regen` (segmentos+fases) se filtraba
+  al frontend. FIX: `_stash_regen(job, result, job_id, {"voz": settings.get("voz")})` antes de
+  guardar el result (app.py, mismo patrón que Cortar clips/render con voz — que sí lo tenían).
+- **🟡→✅ Las versiones G y H repetían el guion** aunque N_VERSIONS ya era 8: el FRONTEND capaba
+  a 6 (`slice(0,6)` + `i<6` premarcado). Con eso, G/H reciclaban los guiones 1 y 2. FIX: subí a 8
+  ambos → las 8 versiones con voz/guion DISTINTO (completa el fix de N_VERSIONS de ayer).
+- **🔵→✅ UI mostraba "G_mixta"/"H_alterna" crudos** (el mapa `names` solo tenía A–F) → agregué
+  "Versión G · Mixta" y "Versión H · Alterna".
+- **🔵→✅ Descargar tras Regenerar** perdía el "⏳ Preparando…" (el onclick reconstruido llamaba
+  `dl(...)` con 3 args, sin `this` → caía a la rama vieja window.location). FIX: `,this`.
+- **🔵→✅ regen.py no pasaba `sfx_events`** → la versión regenerada sonaba con el plan de SFX viejo,
+  distinta a las del lote. FIX: calcula `sound_design_events` igual que orchestrator y lo pasa.
+- **🔵 Cosmético**: textos "6 versiones/videos" de la guía/ayuda → "8".
+Todo compila (py + JS 14/14). Server reiniciado y sirviendo 200. Pendientes de los agentes que se
+cortaron (blur en ruta de producción con el capitán, degradación con Gemini muerto, Colombia en
+todas las búsquedas, Radar, Ads imagen) — quedan para retomar. AVISO Juan: solo app.py + regen.py
++ index.html; nada de tu terreno de assemble/orchestrator tocado.

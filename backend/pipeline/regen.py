@@ -139,11 +139,24 @@ def regenerar_version(estado: dict, name: str, motivo: str, *,
         phases_mix = [{"etiqueta": str(f.get("fase", "")).upper(),
                        "inicio_s": f["inicio"], "fin_s": f["fin"]} for f in frases]
         vo_out = v["path"].replace(".mp4", "_vo.mp4")
+        # SOUND DESIGN CON INTENCIÓN igual que el render principal (riser→producto, cash→CTA):
+        # sin esto la versión regenerada sonaba distinta (plan viejo) a las del lote.
+        from .assemble import sound_design_events
+        from .ffmpeg_utils import probe as _probe
+        sd_events = None
+        try:
+            vo_d = _probe(vo_path).duration
+            if vo_d and vo_d > 1.0:
+                sd_events = sound_design_events(v.get("segments") or [], vo_d,
+                                                vo_dur=vo_d, cut_times=list(v.get("cut_times") or []))
+        except Exception:  # noqa: BLE001
+            sd_events = None
         try:
             add_voiceover_and_sfx(v["path"], vo_path, vo_out,
                                   sfx_paths=estado.get("sfx_paths") or None,
                                   cut_times=list(v.get("cut_times") or []),
-                                  music_path=estado.get("music_path"), phases=phases_mix)
+                                  music_path=estado.get("music_path"), phases=phases_mix,
+                                  sfx_events=sd_events)
             v["path"] = vo_out
             v["voiceover"] = True
         except Exception:  # noqa: BLE001

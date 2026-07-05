@@ -1384,6 +1384,9 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
         # Banner de oferta ARRIBA (2x1 · envío gratis · pagas al recibir), igual que en Cortar clips
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
             _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+        # Estado para "🔄 Regenerar UNA versión" (faltaba SOLO aquí → daba 404 y filtraba el pool
+        # pesado _regen al frontend). Mismo patrón que Cortar clips / render con voz.
+        _stash_regen(job, result, job_id, {"voz": settings.get("voz")})
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):

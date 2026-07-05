@@ -2916,3 +2916,28 @@ Jack: "en las escenas haz lo mismo que los creativos para que se pueda ver un pr
 - Cero backend (los items ya traían cover/title/play/fase). node --check OK.
 - AVISO Juan: solo index.html (tkPaint grupo 3, tkBrCard/tkBrPlay nuevos, div #brollPrev,
   buscarBrollIA pinta el preview). Tu flujo de fases/descarga intacto.
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🫥 Blur de textos ARREGLADO: tapa el bloque COMPLETO y sin entrecortarse
+Quejas de Jack (con su pantallazo): el blur dejaba líneas legibles (1ª/última del caption y la
+pill "Chemical Free") y se ENTRECORTABA (parpadeaba mientras el texto seguía en pantalla).
+Fix en `text_detect.py` (solo ese archivo; lo construyó un agente y lo verifiqué frame a frame):
+- **Resolución de detección** `_INW/_INH` 320×640 → 512×960: a 320 EAST perdía líneas enteras
+  (reproducido con segraw_003 del job 1ccd745be9e6). A 512 caza las 4 líneas y la pill.
+- **`_merge_blocks()`**: une líneas vecinas del mismo bloque (hueco vertical chico + solape
+  horizontal) → el párrafo se tapa como UN bloque con margen (`_BOX_PAD_W/H`). Solo une cajas
+  que YA pasaron forma+persistencia (no crea falsos positivos).
+- **`_track()` + `_box_at()`**: tracking temporal por IoU — si la caja se ve en t1 y t3, el
+  hueco de t2 se RELLENA; colchón `_PAD_FRAMES=6` al inicio/fin; caja interpolada entre
+  detecciones (texto estático = caja quieta; texto que se mueve = lo sigue). Adiós parpadeo.
+- **`_obscure()`**: el gaussiano débil dejaba texto leíble → ahora miniatura ÷36 + re-agrandado
+  (ilegible verificado a resolución nativa).
+- **Rendimiento**: `DETECT_EVERY` 4→8 compensa la resolución (el tracking rellena) → mediana
+  3.4s → 3.5s por segmento (sin regresión). Haar de caras solo si hay candidatos.
+- **Sin regresión de FP**: gates `_MIN_WH`/`_TEXT_WH`/`_confirm` intactos; segmentos sin texto
+  → 0 cajas (y a 512 desaparecieron 2 FP esporádicos que había a 320).
+VERIFICADO A OJO (yo, no solo el agente): grillas de TODOS los frames de 2 segmentos — caption
+y pill 100% ilegibles y continuos; el masked de producción viejo los dejaba LEGIBLES.
+- Honestidad: la letra chica impresa EN el empaque sigue legible a ratos (texto físico del
+  producto, no caption — el viejo tampoco la tapaba). Y ojo Juan: los overrides del capitán
+  (`min_wh`/`conf` en orchestrator) siguen aplicando sobre estos defaults — si el capitán sube
+  mucho `conf` puede soltar líneas (así salió el segmask viejo SIN tapar del todo).

@@ -28,8 +28,8 @@ _LAYERS = ["feature_fusion/Conv_7/Sigmoid", "feature_fusion/concat_3"]
 
 _net = None
 _face = None
-DETECT_EVERY = 4      # detecta cada N frames (reutiliza entre medio: el texto casi no se mueve)
-_INW, _INH = 320, 640  # entrada de la red (múltiplos de 32, ratio vertical)
+DETECT_EVERY = 8      # detecta cada N frames (el tracking temporal rellena entre medio: el texto quemado es estático)
+_INW, _INH = 512, 960  # entrada de la red (múltiplos de 32, ratio vertical). A 320x640 EAST perdía líneas enteras (1080p ⇒ texto de ~15px en la red)
 _CONF = 0.6           # confianza mínima (EAST está igual de "seguro" en árboles que en texto: no discrimina)
 _MIN_H = 0.022        # alto mínimo del texto (fracción): descarta texto chico (envase/ruido)
 # Discriminador principal: el texto quemado es una LÍNEA horizontal (más ancha que alta).
@@ -39,6 +39,12 @@ _MIN_WH = 1.5         # ancho/alto mínimo para considerar una caja: descarta cu
 _TEXT_WH = 3.0        # muy horizontal -> línea de texto clara: se conserva aunque no persista (cámara en mano)
 _MIN_DETECTIONS = 2   # cajas dudosas (poco anchas): exige persistir en >=2 frames de detección (mata parpadeos)
 _IOU = 0.3            # dos cajas son "la misma" (misma posición) si su IoU >= esto
+_BLOCK_GAP = 0.6      # une líneas del mismo BLOQUE si el hueco vertical < esto × alto de línea (tapa el párrafo entero)
+_BLOCK_XOVER = 0.3    # ...y se solapan horizontalmente al menos esta fracción de la línea más angosta
+_TRACK_GAP = 24       # tracking: una caja re-detectada hasta N frames después sigue siendo el MISMO texto (rellena huecos)
+_PAD_FRAMES = 6       # colchón: extiende el tapado N frames antes/después del tramo detectado (sin parpadeo en bordes)
+_BOX_PAD_W = 0.05     # margen de seguridad horizontal del bloque final (fracción del ancho)
+_BOX_PAD_H = 0.12     # margen de seguridad vertical del bloque final (fracción del alto)
 
 
 def ensure_model() -> bool:
@@ -133,12 +139,11 @@ def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH) -> list[tuple]:
             rects.append((int((ex - w) * rW), int((ey - h) * rH), int(w * rW), int(h * rH)))
             confs.append(float(sc[x]))
     idx = cv2.dnn.NMSBoxes(rects, confs, conf, 0.4)
-    faces = _faces(frame)
+    cands = [rects[i] for i in (idx.flatten() if len(idx) else [])
+             if rects[i][3] >= _MIN_H * H]   # texto muy chico (envase/ruido) -> ignorar
+    faces = _faces(frame) if cands else []   # Haar es caro: solo si hay candidatos
     boxes = []
-    for i in (idx.flatten() if len(idx) else []):
-        x, y, w, h = rects[i]
-        if h < _MIN_H * H:            # texto muy chico (envase/ruido) -> ignorar
-            continue
+    for (x, y, w, h) in cands:
         if _on_face((x, y, w, h), faces):   # está sobre una cara -> no es caption
             continue
         # padding: un poco horizontal, más vertical (EAST recorta alto)
@@ -172,6 +177,106 @@ def _merge_lines(boxes: list[tuple], W: int) -> list[tuple]:
         if not placed:
             merged.append([x, y, w, h])
     return [tuple(m) for m in merged]
+
+
+def _merge_blocks(boxes: list[tuple]) -> list[tuple]:
+    """Une líneas VECINAS del mismo bloque de texto en una sola caja (párrafo entero).
+
+    Dos cajas se unen si están casi pegadas en vertical (hueco < _BLOCK_GAP × alto de
+    línea) y se solapan horizontalmente (>= _BLOCK_XOVER de la más angosta). Así un
+    caption de 4 líneas se tapa como UN bloque (antes quedaban la 1ª/última legibles).
+    Solo une cajas que YA pasaron el gate de forma + persistencia: no crea falsos positivos.
+    """
+    boxes = [list(b) for b in boxes]
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                ax, ay, aw, ah = boxes[i]
+                bx, by, bw, bh = boxes[j]
+                gap = max(ay, by) - min(ay + ah, by + bh)      # hueco vertical (<0 = se solapan)
+                xover = min(ax + aw, bx + bw) - max(ax, bx)     # solape horizontal en px
+                if gap < _BLOCK_GAP * min(ah, bh) and xover >= _BLOCK_XOVER * min(aw, bw):
+                    nx, ny = min(ax, bx), min(ay, by)
+                    boxes[i] = [nx, ny, max(ax + aw, bx + bw) - nx, max(ay + ah, by + bh) - ny]
+                    boxes.pop(j)
+                    changed = True
+                    break
+            if changed:
+                break
+    return [tuple(b) for b in boxes]
+
+
+def _track(confirmed: dict[int, list[tuple]], last_frame: int) -> list[dict]:
+    """Agrupa las cajas confirmadas entre frames en TRACKS continuos.
+
+    El texto quemado es estático por tramos: si una caja aparece en t1 y t3 pero no en t2
+    (EAST parpadea), el track vive [t1, t3] y el hueco se RELLENA. Cada track guarda sus
+    detecciones (fidx, caja) y su tramo [start, end] con _PAD_FRAMES de colchón a cada lado
+    (y hasta la siguiente detección al final). La caja por frame la da _box_at.
+    """
+    tracks: list[dict] = []           # {dets: [(fidx, box)...], start, end}
+    for fidx in sorted(confirmed):
+        blocks = _merge_blocks(confirmed[fidx])
+        for box in blocks:
+            best, best_iou = None, 0.0
+            for t in tracks:
+                if t["dets"][-1][0] == fidx:      # ya recibió una caja en este frame
+                    continue
+                if fidx - t["dets"][-1][0] > _TRACK_GAP:
+                    continue
+                v = _iou(box, t["dets"][-1][1])
+                if v >= _IOU and v > best_iou:
+                    best, best_iou = t, v
+            if best is None:
+                tracks.append({"dets": [(fidx, box)]})
+            else:
+                best["dets"].append((fidx, box))
+    for t in tracks:
+        t["start"] = max(0, t["dets"][0][0] - _PAD_FRAMES)
+        t["end"] = min(last_frame, t["dets"][-1][0] + DETECT_EVERY - 1 + _PAD_FRAMES)
+    return tracks
+
+
+def _box_at(track: dict, i: int) -> tuple:
+    """Caja del track en el frame `i`: interpola entre sus detecciones vecinas.
+
+    Texto estático -> cajas casi idénticas (el tapado no tiembla). Texto que se mueve con
+    la cámara/objeto -> la caja lo SIGUE suave en vez de tapar la unión de todo el recorrido
+    (que dejaba un parche gigante sobre el producto). Antes/después de la primera/última
+    detección usa esa caja fija. Devuelve la caja ya con margen de seguridad.
+    """
+    dets = track["dets"]
+    prev = dets[0]
+    nxt = dets[-1]
+    for d in dets:
+        if d[0] <= i:
+            prev = d
+        if d[0] >= i:
+            nxt = d
+            break
+    if nxt[0] <= prev[0]:
+        x, y, w, h = prev[1]
+    else:
+        f = (i - prev[0]) / float(nxt[0] - prev[0])
+        x, y, w, h = (int(round(a + (b - a) * f)) for a, b in zip(prev[1], nxt[1]))
+    px, py = int(w * _BOX_PAD_W) + 4, int(h * _BOX_PAD_H) + 4   # margen de seguridad espacial
+    return (x - px, y - py, w + 2 * px, h + 2 * py)
+
+
+def _obscure(roi):
+    """Deja el texto 100% ILEGIBLE (el blur gaussiano solo dejaba las letras legibles).
+
+    Reduce la zona a una miniatura (ninguna letra sobrevive a esa resolución), la re-agranda
+    con interpolación suave y pasa un blur final para que no se noten bloques. Como la caja
+    del track es continua y el contenido de un caption es estático, el resultado no parpadea.
+    """
+    h, w = roi.shape[:2]
+    small = cv2.resize(roi, (max(2, w // 36), max(2, h // 36)), interpolation=cv2.INTER_AREA)
+    big = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+    k = min(51, max(9, (min(w, h) // 4) | 1))   # solo suaviza bloques; capado (kernel gigante = lento y no aporta)
+    return cv2.GaussianBlur(big, (k, k), 0)
 
 
 def _iou(a: tuple, b: tuple) -> float:
@@ -212,11 +317,13 @@ def mask_video(in_path: str, out_path: str,
                min_wh: float | None = None, conf: float | None = None) -> str:
     """Tapa el texto detectado frame por frame y conserva el audio.
 
-    Dos pases para evitar falsos positivos (blur donde NO hay texto):
+    Tres pases para evitar falsos positivos (blur donde NO hay texto) y parpadeos:
       1) DETECTAR: recorre el video guardando solo las CAJAS de cada frame de detección
          (no guarda frames -> memoria mínima aunque sea 4K y aunque corran varios clips a la vez).
-      2) CONFIRMAR: por consistencia temporal, descarta las cajas que no persisten.
-      3) APLICAR: re-lee el video y difumina SOLO las cajas confirmadas.
+      2) CONFIRMAR + TRACKEAR: descarta cajas que no persisten (falsos positivos), une las
+         líneas de un mismo bloque, y agrupa por IoU entre frames en tracks CONTINUOS
+         (si EAST pierde el texto en un frame intermedio, el hueco se rellena; ver _track).
+      3) APLICAR: re-lee el video y tapa cada track de forma continua todo su tramo.
     Si no queda nada confirmado, devuelve el original sin re-codificar.
 
     `min_wh`/`conf`: overrides opcionales del detector. Suben la precisión (menos falsos
@@ -250,34 +357,33 @@ def mask_video(in_path: str, out_path: str,
         i += 1
     cap.release()
 
-    # ── Pase 2: filtrar falsos positivos por forma + persistencia (clip corto -> umbral 1) ──
+    # ── Pase 2: filtrar falsos positivos (forma + persistencia) y armar tracks continuos ──
     n = len(detections)
     min_det = _MIN_DETECTIONS if n >= 3 else 1
     confirmed = _confirm(detections, min_det)
     if not confirmed:                 # no hay texto real que tapar -> original tal cual
         return in_path
+    total_frames = i
+    tracks = _track(confirmed, total_frames - 1)
 
-    # ── Pase 3: aplicar blur solo a lo confirmado (re-lee el video) ──
+    # ── Pase 3: aplicar el tapado, CONTINUO durante todo el tramo de cada track ──
     cap = cv2.VideoCapture(in_path)
     tmp = out_path + ".noaudio.mp4"
     writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
-    boxes, i = [], 0
+    i = 0
     while True:
         ok, frame = cap.read()
         if not ok:
             break
-        if i % DETECT_EVERY == 0:
-            boxes = confirmed.get(i, [])
-        for (x, y, w, h) in boxes:
+        for t in tracks:
+            if not (t["start"] <= i <= t["end"]):   # el track no está activo en este frame
+                continue
+            x, y, w, h = _box_at(t, i)
             x0, y0 = max(0, x), max(0, y)
             x1, y1 = min(W, x + w), min(H, y + h)
             if x1 > x0 and y1 > y0:
-                roi = frame[y0:y1, x0:x1]
-                # DESENFOQUE real (no relleno sólido de color, que quedaba como un parche feo):
-                # difumina fuerte la región → borroso natural que se MEZCLA con la imagen. Es
-                # estable (caja fija = no parpadea). Kernel impar que escala con el tamaño de la caja.
-                k = max(9, (min(x1 - x0, y1 - y0) // 4) | 1)
-                frame[y0:y1, x0:x1] = cv2.GaussianBlur(roi, (k, k), 0)
+                # caja continua del track (interpolada, no parpadea) + _obscure -> ilegible de verdad
+                frame[y0:y1, x0:x1] = _obscure(frame[y0:y1, x0:x1])
         writer.write(frame)
         i += 1
     writer.release()

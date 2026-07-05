@@ -2576,3 +2576,8 @@ Jack: "las imágenes se ven muy irreales → CPC altísimos; básate en 1000+ es
   — tu pipeline de render/ortografía/recorte quedó intacto. En index.html: tkPaint (grupos + secciones),
   tkTkCard/tkFpCard (título del 🎯), el IIFE de fotos y tkRun. Pendiente chiquito: mirar el look real de
   chips y secciones en la primera búsqueda con APIs (el pintado simulado ya pasó).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ➕ Buscar creativos: "Traer 10 más" por grupo
+- Botón al final del grupo TikTok y del grupo Foreplay: trae OTRA tanda de 10 del mismo producto
+  excluyendo todo lo ya mostrado (reusa /api/creative-more sin ángulo, misma verificación).
+  Los nuevos entran al grupo principal; ▶️/📋/🔄/🎯 funcionan igual en ellos.

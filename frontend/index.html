@@ -684,6 +684,7 @@
           h+='<div class="fpGrid">';
           mainTk.forEach(p=>{ h+=tkTkCard(p[0],p[1],S.tkVerif); });
           h+='</div>';
+          h+=`<button class="btn sec" style="margin:12px 0 0;width:auto" onclick="tkMoreGroup('tiktok',this)" title="Busca OTRA tanda del mismo producto, sin repetir los ya mostrados">➕ Traer 10 más de TikTok</button>`;
         }
         // ── secciones 🎯 "más como esta" (TikTok) — cada una con su referencia ──
         mas.filter(m=>m.fuente==='tiktok').forEach(m=>{
@@ -709,6 +710,7 @@
           h+='<div class="fpGrid">';
           mainFp.forEach(p=>{ h+=tkFpCard(p[0],p[1],S.fpVerif); });
           h+='</div>';
+          h+=`<button class="btn sec" style="margin:12px 0 0;width:auto" onclick="tkMoreGroup('foreplay',this)" title="Busca OTRA tanda del mismo producto, sin repetir los ya mostrados">➕ Traer 10 más de Foreplay</button>`;
         }
         // ── secciones 🎯 "más como esta" (Foreplay) ──
         mas.filter(m=>m.fuente==='foreplay').forEach(m=>{
@@ -782,6 +784,30 @@
       }
       // 🔄 cambiar (angulo=false: busca OTRO y lo pone en ese puesto) / 🎯 más así (angulo=true:
       // agrega hasta 6 creativos MÁS con el mismo ángulo de venta del que te gustó)
+      // ➕ traer OTRA tanda al grupo principal (sin ángulo: búsqueda general que excluye lo ya visto)
+      async function tkMoreGroup(fuente,btn){
+        const S=window._tkS; if(!S) return;
+        const grupo=(fuente==='tiktok')?S.links:S.ads;
+        const idDe=x=>(fuente==='tiktok')?x.url:String(x.id||x.video||x.foreplay_url||'');
+        const excl=grupo.map(idDe).concat(fuente==='tiktok'?S.exTk:S.exFp).filter(Boolean);
+        const fd=new FormData();
+        fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
+        fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
+        fd.append('foto',S.foto); fd.append('n','10');
+        const old=btn.textContent; btn.textContent='⏳ Buscando 10 más… (1-2 min)'; btn.disabled=true;
+        try{
+          const r=await fetch('/api/creative-more',{method:'POST',body:fd}); const j=await r.json();
+          const items=(j.items||[]);
+          if(!items.length){
+            btn.textContent='😕 no salieron más — dame la marca o un hashtag y busco distinto';
+            setTimeout(()=>{btn.textContent=old;btn.disabled=false;},4000); return;
+          }
+          grupo.push(...items);   // entran al grupo principal (tkPaint repinta todo, botón incluido)
+          tkPaint();
+        }catch(e){
+          btn.textContent='Error'; setTimeout(()=>{btn.textContent=old;btn.disabled=false;},3000);
+        }
+      }
       async function tkMore(fuente,idx,btn,angulo){
         const S=window._tkS; if(!S) return;
         const grupo=(fuente==='tiktok')?S.links:S.ads;

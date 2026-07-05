@@ -126,6 +126,28 @@ _ES_REGIONS = {"MX", "ES", "AR", "PE", "CL", "EC", "VE", "GT", "BO", "DO", "CR",
                "PA", "UY", "PY", "SV", "HN", "NI", "US"}
 
 
+_VIDEO_ID_RE = re.compile(r"/video/(\d+)")
+
+
+def norm_tk_id(url_or_id: str) -> str:
+    """ID ESTABLE de un video de TikTok, para deduplicar SIN que engañe el @usuario.
+
+    El mismo video sale con handles distintos (vanity vs canónico, o el vendedor cambió de nombre)
+    → la URL cambia pero el `video_id` NO. Dedup por este id evita repetir el mismo video.
+    Acepta una URL (…/video/123…) o el id pelado; si no reconoce nada, devuelve la cadena tal cual
+    (así un id de Foreplay u otra fuente pasa sin romperse)."""
+    s = (url_or_id or "").strip()
+    m = _VIDEO_ID_RE.search(s)
+    if m:
+        return m.group(1)
+    return s
+
+
+def _tk_key(c: dict) -> str:
+    """Clave de dedup de un candidato de TikTok: su video_id (por `id` si viene, si no del url)."""
+    return str(c.get("id") or norm_tk_id(c.get("url", "")))
+
+
 def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
     """Videos reales de TikTok con paginación + datos de engagement (views/likes/región/duración)."""
     out: list[dict] = []
@@ -143,6 +165,7 @@ def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
                 vid = v.get("video_id", "")
                 if au and vid:
                     out.append({
+                        "id": str(vid),                # id ESTABLE del video (dedup sin engaño del @)
                         "url": f"https://www.tiktok.com/@{au}/video/{vid}",
                         "title": (v.get("title") or "").strip()[:120],
                         "cover": v.get("cover") or "",
@@ -178,6 +201,7 @@ def _posts_cuenta(unique_id: str, count: int = 30) -> list[dict]:
             vid = v.get("video_id", "")
             if au and vid:
                 out.append({
+                    "id": str(vid),                # id ESTABLE del video (dedup sin engaño del @)
                     "url": f"https://www.tiktok.com/@{au}/video/{vid}",
                     "title": (v.get("title") or "").strip()[:120],
                     "cover": v.get("cover") or "",
@@ -413,7 +437,7 @@ def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
     with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
         for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
             for c in res:
-                cands.setdefault(c["url"], c)
+                cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url)
     lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
     # más views primero (b-roll viral = más dopamínico) y variedad de autores
     lst.sort(key=lambda c: c.get("plays", 0), reverse=True)
@@ -681,10 +705,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     with ThreadPoolExecutor(max_workers=6) as ex:
         for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=3), queries):
             for c in res:
-                cands.setdefault(c["url"], c)
+                cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url: el @ engaña)
     # + FOREPLAY: ads GANADORES ya probados (video descargable) al MISMO pool y con la MISMA verificación
     for c in _foreplay_candidatos(queries, foreplay_key):
-        cands.setdefault(c["url"], c)
+        cands.setdefault(_tk_key(c), c)
     cand_list = list(cands.values())
     # EXCLUIR COLOMBIA (regla del dueño) + descartar duraciones raras (fuera de 4-120s)
     filtered = [c for c in cand_list if 4 <= c.get("dur", 0) <= 120 and c.get("region") != "CO"]
@@ -730,8 +754,8 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         # pie, el antes/después, la cara) → falsos rechazos. Para los candidatos con TÍTULO prometedor
         # que la portada no confirmó, se baja el video y se juzgan 3 frames de ADENTRO.
         if len(matches) < count:
-            ya = {c["url"] for c in matches}
-            pendientes = [c for c in pool if c["url"] not in ya and c.get("play") and _title_score(c) >= 2]
+            ya = {_tk_key(c) for c in matches}
+            pendientes = [c for c in pool if _tk_key(c) not in ya and c.get("play") and _title_score(c) >= 2]
             pendientes = pendientes[:12]      # tope: 12 descargas (costo/tiempo acotado)
             if pendientes:
                 with ThreadPoolExecutor(max_workers=4) as ex:
@@ -770,7 +794,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         # dedup contra TODO lo ya visto, sin Colombia, y cada candidato se juzga SOLO por portada
         # (sin verificación profunda ni Claude: tope de costo).
         if explorar_cuentas and matches and len(matches) < count:
-            vistos_urls = {c["url"] for c in cand_list} | {c["url"] for c in matches}
+            vistos_urls = {_tk_key(c) for c in cand_list} | {_tk_key(c) for c in matches}
             cuentas: list[str] = []
             for c in matches:
                 u = c.get("url", "")
@@ -785,9 +809,9 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 with ThreadPoolExecutor(max_workers=3) as ex:
                     for res in ex.map(lambda u: _posts_cuenta(u, count=30), cuentas):
                         for c in res:
-                            if (c["url"] not in vistos_urls and c.get("region") != "CO"
+                            if (_tk_key(c) not in vistos_urls and c.get("region") != "CO"
                                     and 4 <= c.get("dur", 0) <= 120):
-                                vistos_urls.add(c["url"])
+                                vistos_urls.add(_tk_key(c))
                                 extra_cands.append(c)
             extra_cands = extra_cands[:max(60, count * 4)]   # mismo tope que el pool principal
             if extra_cands:

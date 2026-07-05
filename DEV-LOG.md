@@ -2993,3 +2993,22 @@ Todo compila (py + JS 14/14). Server reiniciado y sirviendo 200. Pendientes de l
 cortaron (blur en ruta de producción con el capitán, degradación con Gemini muerto, Colombia en
 todas las búsquedas, Radar, Ads imagen) — quedan para retomar. AVISO Juan: solo app.py + regen.py
 + index.html; nada de tu terreno de assemble/orchestrator tocado.
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🚫🔁 Buscar creativos: "traer más" NUNCA repite (dedup por video_id)
+Jack: "cuando le dé a generar nuevos videos de TikTok, dame todos diferentes para que no se repitan".
+CAUSA RAÍZ: todo deduplicaba por la URL COMPLETA, que lleva el @usuario. El mismo video sale con
+handles distintos (vanity vs canónico, o el vendedor se renombró) → URL distinta → se colaba repetido.
+- `tiktok_search.py`: NUEVO `norm_tk_id(url|id)` (saca el video_id de …/video/(\d+)) + `_tk_key(c)` +
+  campo `"id"` en cada candidato de buscar_tiktok/_posts_cuenta. Dedup por id (no por url) en `buscar`
+  (pool principal), `buscar_broll`, la 2ª pasada profunda y la expansión de cuentas vendedoras.
+- `creative_search.buscar_mas`: normaliza `excluir` a video_id (`excl_tk`) y filtra el pool por id.
+  La rama Foreplay sigue excluyendo por su id estable (NO se normaliza a video_id).
+- `index.html`: `tkNormId()` (espejo exacto del backend), sets `S.seenTk`/`S.seenFp` que acumulan TODO
+  lo mostrado (búsqueda inicial + cada 🔄/🎯/➕), `tkPushNuevos()` filtra repetidos también en el
+  cliente (cinturón y tirantes). El excl que se manda al backend sale del set de vistos, no del grupo.
+  Quité `exTk/exFp` (ya sin uso). Mensaje honesto si no salen NUEVOS ("dame la marca o un hashtag").
+- PROBADO REAL (tikwm, sin gastar Gemini): buscar + 3 tandas seguidas de "traer más" de una rodillera →
+  0 video_ids repetidos entre tandas. Navegador: funciones OK, handles colapsan, [999 visto,111,111,222]
+  → agrega solo [111,222], 0 errores de consola. py_compile 2/2 + node --check 14/14.
+- AVISO Juan: toqué tiktok_search (norm_tk_id/_tk_key/campo id + dedup por id — hook_variator solo itera,
+  no se afecta) y creative_search.buscar_mas. Shape de resultados SOLO ganó la clave `id` (aditiva).

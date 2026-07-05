@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import threading
 import time
 import uuid
+
+import requests
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -168,13 +171,22 @@ def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress) -> Non
     """Cortar clips: pill 'ENVÍO GRATIS · PAGAS AL RECIBIR' + 'OFERTA 2X1' arriba (como la foto
     de Jack). La IA elige la altura para no tapar caras/producto (offer_banner.safe_top_y)."""
     from pipeline.offer_banner import add_offer_banner
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
     progress("🏷️ Poniendo el banner de oferta (2x1 · envío gratis)...", 97)
-    for v in versions:
+    gk = _load_env_key()
+
+    # EN PARALELO (antes en serie: 1 llamada Gemini + 1 re-encode por versión, una tras otra).
+    # add_offer_banner ya usa un PNG con nombre único por versión (no se pisan).
+    def _banner_one(v):
         try:
             out = v["path"][:-4] + "_of.mp4"
-            v["path"] = add_offer_banner(v["path"], out, work_dir, gemini_key=_load_env_key())
+            v["path"] = add_offer_banner(v["path"], out, work_dir, gemini_key=gk)
         except Exception:  # noqa: BLE001
             pass
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_banner_one, versions))
 
 
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
@@ -572,8 +584,73 @@ def auto(
 
 # ---- BUSCAR CREATIVOS EN TIKTOK (foto + nombre -> links reales) ----
 
-def _guardar_fotos_busqueda(foto, fotos) -> list[str]:
-    """Guarda las fotos de búsqueda (campo viejo `foto` + campo nuevo `fotos`, máx 3) y devuelve rutas."""
+_UA_FOTO = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+            "Accept": "image/avif,image/webp,image/*,text/html;q=0.9,*/*;q=0.8",
+            "Accept-Language": "es-CO,es;q=0.9,en;q=0.8"}
+
+
+def _tipo_imagen(b: bytes) -> str | None:
+    """Detecta el formato real por bytes mágicos (no confía en la extensión del link)."""
+    if b[:3] == b"\xff\xd8\xff":
+        return "jpg"
+    if b[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "webp"
+    if b[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    return None
+
+
+def _bajar_foto_url(url: str, destino_dir: str) -> str | None:
+    """Baja la foto de un LINK. Si pegan el link de la PÁGINA del producto (no de la imagen),
+    pesca la imagen principal (og:image/twitter:image). WEBP/GIF se convierten a JPG para que
+    los jueces de visión no se atoren. Devuelve la ruta local o None."""
+    try:
+        url = url.strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return None
+        r = requests.get(url, timeout=20, headers=_UA_FOTO, allow_redirects=True)
+        if r.status_code != 200:
+            return None
+        data = r.content
+        if _tipo_imagen(data[:16]) is None:
+            # no es una imagen: probablemente pegaron la PÁGINA → buscar og:image / twitter:image
+            html = r.text[:400_000]
+            m = (re.search(r'<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image)(?::src)?["\'][^>]*?content=["\']([^"\']+)["\']', html, re.I)
+                 or re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*?(?:property|name)=["\'](?:og:image|twitter:image)(?::src)?["\']', html, re.I))
+            if not m:
+                return None
+            r = requests.get(m.group(1).replace("&amp;", "&"), timeout=20, headers=_UA_FOTO, allow_redirects=True)
+            if r.status_code != 200:
+                return None
+            data = r.content
+        if len(data) > 15 * 1024 * 1024 or len(data) < 2000:
+            return None
+        ext = _tipo_imagen(data[:16])
+        if not ext:
+            return None
+        os.makedirs(destino_dir, exist_ok=True)
+        p = os.path.join(destino_dir, f"url_{hashlib.md5(url.encode()).hexdigest()[:10]}.{ext}")
+        with open(p, "wb") as o:
+            o.write(data)
+        if ext in ("webp", "gif"):
+            try:
+                from PIL import Image
+                jpg = p.rsplit(".", 1)[0] + ".jpg"
+                Image.open(p).convert("RGB").save(jpg, quality=92)
+                os.remove(p)
+                p = jpg
+            except Exception:  # noqa: BLE001 — sin PIL se queda el original (mejor que nada)
+                pass
+        return p
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _guardar_fotos_busqueda(foto, fotos, fotos_url: str = "") -> list[str]:
+    """Guarda las fotos de búsqueda (campo viejo `foto` + campo nuevo `fotos` + links `fotos_url`,
+    máx 3 en total) y devuelve rutas."""
     d = os.path.join(UPLOAD_DIR, "tksearch")
     paths: list[str] = []
     for up in ([foto] if foto is not None else []) + list(fotos or []):
@@ -586,7 +663,14 @@ def _guardar_fotos_busqueda(foto, fotos) -> list[str]:
         if p not in paths:
             paths.append(p)
         if len(paths) >= 3:
+            return paths
+    for u in re.split(r"[\n,]+", fotos_url or ""):
+        if len(paths) >= 3:
             break
+        if u.strip():
+            p = _bajar_foto_url(u, d)
+            if p and p not in paths:
+                paths.append(p)
     return paths
 
 
@@ -639,42 +723,16 @@ def _frames_de_videos(videos_ref) -> list[str]:
 
 def _fotos_desde_urls(fotos_url: str) -> list[str]:
     """Descarga FOTOS pegadas como URL (una por línea, máx 3) al mismo dir de búsqueda → entran al
-    MISMO flujo que las fotos subidas. Valida que sea imagen (content-type image/* o magic bytes
-    png/jpg/webp/gif), tope 15MB y timeout 20s; la URL que falle se ignora sin romper nada."""
-    import requests as _rq
+    MISMO flujo que las fotos subidas. Usa _bajar_foto_url: valida por bytes mágicos, convierte
+    WEBP/GIF→JPG y si pegan el link de la PÁGINA del producto pesca la og:image sola. La URL que
+    falle se ignora sin romper nada."""
     d = os.path.join(UPLOAD_DIR, "tksearch")
     out: list[str] = []
-    urls = [u.strip() for u in (fotos_url or "").splitlines() if u.strip()][:3]
-    for i, u in enumerate(urls, 1):
-        if not u.startswith(("http://", "https://")):
-            continue
-        try:
-            r = _rq.get(u, headers={"User-Agent": "Mozilla/5.0"}, timeout=20, stream=True)
-            if r.status_code != 200:
-                continue
-            ct = (r.headers.get("content-type") or "").lower()
-            data = b""
-            for chunk in r.iter_content(1 << 16):
-                data += chunk
-                if len(data) > 15 * 1024 * 1024:          # tope 15MB por imagen
-                    data = b""
-                    break
-            es_img = (ct.startswith("image/") or data[:4] == b"\x89PNG" or data[:3] == b"\xff\xd8\xff"
-                      or (data[:4] == b"RIFF" and data[8:12] == b"WEBP") or data[:6] in (b"GIF87a", b"GIF89a"))
-            if not (data and es_img):
-                continue
-            os.makedirs(d, exist_ok=True)
-            base = os.path.basename(u.split("?")[0]).strip() or "foto.jpg"
-            if "." not in base:
-                base += ".jpg"
-            p = os.path.join(d, f"url{i}_{base[-80:]}")
-            with open(p, "wb") as o:
-                o.write(data)
+    for u in [x.strip() for x in (fotos_url or "").splitlines() if x.strip()][:3]:
+        p = _bajar_foto_url(u, d)
+        if p and p not in out:
             out.append(p)
-        except Exception:  # noqa: BLE001
-            continue
     return out
-
 
 def _texto_landing(landing: str) -> str:
     """Texto útil de la página de venta (o "" si falla — nunca rompe la búsqueda)."""
@@ -695,10 +753,10 @@ def tiktok_search(nombre: str = Form(""), count: int = Form(20),
                         fotos_url: str = Form(""),
                         landing: str = Form("")):
     """`foto` (una, campo viejo) sigue igual; `fotos` acepta hasta 3 del MISMO producto (multi-foto).
-    `fotos_url`: URLs de imagen pegadas (una por línea; máx 3 fotos combinadas con las subidas).
-    `videos_ref` (máx 2): videos del producto → 2 frames c/u entran como fotos de referencia extra
-    (tope total 4 imágenes, fotos primero). `landing`: link de la página de venta → contexto para
-    la ficha y los términos. Todo opcional; firmas viejas intactas."""
+    `fotos_url`: LINKS de fotos pegados (una por línea; si pegan el link de la PÁGINA se pesca la
+    og:image sola; máx 3 fotos combinadas con las subidas). `videos_ref` (máx 2): videos del producto
+    → 2 frames c/u entran como fotos de referencia extra (tope total 4 imágenes, fotos primero).
+    `landing`: link de la página de venta → contexto para la ficha y los términos. Todo opcional."""
     from pipeline.tiktok_search import buscar
     img_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
     img_paths = (img_paths + _frames_de_videos(videos_ref))[:4]
@@ -724,7 +782,7 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
     /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo.
     `fotos` acepta hasta 3 del MISMO producto (frente/lado/empaque) → ficha y jueces más precisos.
-    `fotos_url`: URLs de imagen pegadas (una por línea; máx 3 fotos combinadas con las subidas).
+    `fotos_url`: LINKS de fotos pegados (uno por línea; si pegan la PÁGINA se pesca la og:image sola).
     `videos_ref` (máx 2): videos del producto → 2 frames c/u como fotos de referencia extra (tope
     total 4, fotos primero). `landing`: link de la página de venta → contexto para la ficha."""
     from pipeline.creative_search import buscar_creativos

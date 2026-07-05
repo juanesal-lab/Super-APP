@@ -596,10 +596,11 @@
       <input type="file" id="tkFoto" accept="image/*" multiple class="hidden">
       <label class="autoDrop" for="tkFoto"><b id="tkFotoName">📸 Fotos del producto (hasta 3, opcional)</b>
         <div class="s">frente / lado / empaque = búsqueda más precisa — o solo escribe el nombre abajo</div></label>
-      <textarea id="tkFotosUrl" class="full" rows="2" style="width:100%;margin:8px 0"
-        placeholder="🔗 …o pega URLs de imagen (una por línea, hasta 3)"></textarea>
+      <input type="text" id="tkFotoUrl" class="full" style="margin-top:8px"
+        placeholder="🔗 …o pega el LINK de la foto (o de la página del producto) y presiona Enter">
+      <div id="tkUrlChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
       <input type="file" id="tkVids" accept="video/*" multiple class="hidden">
-      <label class="autoDrop" for="tkVids"><b id="tkVidsName">🎥 Videos de tu producto (opcional)</b>
+      <label class="autoDrop" for="tkVids" style="margin-top:8px"><b id="tkVidsName">🎥 Videos de tu producto (opcional)</b>
         <div class="s">hasta 2 — saco fotos del video y la búsqueda sale más exacta</div></label>
       <div class="autoOpts">
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
@@ -611,11 +612,34 @@
       <div id="tkResult"></div>
     </div>
     <script>
-      (function(){ const el=document.getElementById('tkFoto');
-        el.addEventListener('change',e=>{ const fs=[...e.target.files].slice(0,3);
-          window._tkFotos=fs; window._tkFoto=fs[0]||null;   // _tkFoto se conserva por compatibilidad
+      (function(){
+        const el=document.getElementById('tkFoto'), urlIn=document.getElementById('tkFotoUrl');
+        window._tkFotos=[]; window._tkUrls=[];
+        function tkFotoLabel(){
+          const n=(window._tkFotos||[]).length+(window._tkUrls||[]).length;
           document.getElementById('tkFotoName').textContent =
-            fs.length>1?('📸 '+fs.length+' fotos'):(fs[0]?('📸 '+fs[0].name):'📸 Fotos del producto (hasta 3, opcional)'); }); })();
+            n?('📸 '+n+(n>1?' fotos':' foto')+' del producto'):'📸 Fotos del producto (hasta 3, opcional)';
+        }
+        window._tkChips=function(){
+          document.getElementById('tkUrlChips').innerHTML=(window._tkUrls||[]).map((u,i)=>
+            `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:4px 8px;max-width:280px">`+
+            `<img src="${tkEsc(u)}" referrerpolicy="no-referrer" style="width:34px;height:34px;object-fit:cover;border-radius:6px" onerror="this.outerHTML='🔗'">`+
+            `<span style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tkEsc(u.replace(/^https?:\/\//,''))}</span>`+
+            `<b style="cursor:pointer" title="Quitar" onclick="window._tkUrls.splice(${i},1);window._tkChips()">✕</b></span>`).join('');
+          tkFotoLabel();
+        };
+        function addUrl(){
+          const u=urlIn.value.trim(); if(!u) return;
+          if(!/^https?:\/\//i.test(u)){ alert('Pega un link completo (empieza por http…)'); return; }
+          if((window._tkFotos.length+window._tkUrls.length)>=3){ alert('Máximo 3 fotos en total'); return; }
+          window._tkUrls.push(u); urlIn.value=''; window._tkChips();
+        }
+        urlIn.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addUrl(); } });
+        urlIn.addEventListener('change',addUrl);
+        el.addEventListener('change',e=>{ window._tkFotos=[...e.target.files].slice(0,3);
+          window._tkFoto=window._tkFotos[0]||null;   // _tkFoto se conserva por compatibilidad
+          tkFotoLabel(); });
+      })();
       (function(){ const el=document.getElementById('tkVids');
         el.addEventListener('change',e=>{ const vs=[...e.target.files].slice(0,2);
           window._tkVids=vs;
@@ -626,13 +650,13 @@
         const nombre=document.getElementById('tkNombre').value.trim();
         const fs=window._tkFotos||(window._tkFoto?[window._tkFoto]:[]);
         const vs=window._tkVids||[];
-        const fu=document.getElementById('tkFotosUrl').value.trim();
-        if(!nombre && !fs.length && !vs.length && !fu){ alert('Escribe el nombre o sube una foto o un video'); return; }
+        const urls=window._tkUrls||[];
+        const landing=document.getElementById('tkLanding').value.trim();
+        if(!nombre && !fs.length && !urls.length && !vs.length){ alert('Escribe el nombre, sube una foto/video o pega su link'); return; }
         const fd=new FormData();
         fs.slice(0,3).forEach(f=>fd.append('fotos',f));   // hasta 3 fotos del MISMO producto
-        if(fu) fd.append('fotos_url',fu);                 // URLs de imagen pegadas (una por línea)
+        if(urls.length) fd.append('fotos_url',urls.slice(0,3).join('\n'));   // links: el server los baja (og:image incluida)
         vs.slice(0,2).forEach(v=>fd.append('videos_ref',v));   // hasta 2 videos → frames como fotos extra
-        const landing=document.getElementById('tkLanding').value.trim();
         if(landing) fd.append('landing',landing);         // página de venta → mejores términos
         const cnt=document.getElementById('tkCount').value;
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
@@ -653,42 +677,67 @@
                      desc:j.desc||'', variants:(j.variants||[]), links:(tk.links||[]), ads:(fp.ads||[]),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
                      fpOk:!!fp.ok, fpErr:fp.error||'', exTk:[], exFp:[], broll:(tk.broll||[]),
-                     tkMens:tk.mensaje_busqueda||''};
+                     tkMens:tk.mensaje_busqueda||'', masComo:[]};
         document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
         tkPaint();
       }
       function tkPaint(){
         const S=window._tkS; if(!S) return;
         const links=S.links, ads=S.ads;
+        // los creativos de las secciones 🎯 "más como esta" viven en el mismo array (los handlers
+        // usan el índice), pero se PINTAN en su propia sección — acá se apartan del grupo principal
+        const mas=(S.masComo||[]);
+        const clTk=new Set(mas.filter(m=>m.fuente==='tiktok').flatMap(m=>m.idxs));
+        const clFp=new Set(mas.filter(m=>m.fuente==='foreplay').flatMap(m=>m.idxs));
         let h='';
         // ── grupo 1: TikTok ──────────────────────────────────────────────
-        const conf=links.filter(l=>l.verificado_producto);
-        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${links.length})${S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:''}</h3>`;
-        if(!links.length){
+        const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1]));
+        const conf=mainTk.map(p=>p[0]).filter(l=>l.verificado_producto);
+        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${mainTk.length})${S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:''}</h3>`;
+        if(!mainTk.length){
           h+='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+tkEsc(S.busq)+'" target="_blank">'+tkEsc(S.busq)+'</a></div>';
         } else {
-          const urls=(conf.length?conf:links).map(l=>l.url).join('\n');
-          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||links.length} links${conf.length?' confirmados':''}</button>`;
+          const urls=(conf.length?conf:mainTk.map(p=>p[0])).map(l=>l.url).join('\n');
+          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||mainTk.length} links${conf.length?' confirmados':''}</button>`;
           h+='<div class="fpGrid">';
-          links.forEach((l,i)=>{ h+=tkTkCard(l,i,S.tkVerif); });
+          mainTk.forEach(p=>{ h+=tkTkCard(p[0],p[1],S.tkVerif); });
           h+='</div>';
+          h+=`<button class="btn sec" style="margin:12px 0 0;width:auto" onclick="tkMoreGroup('tiktok',this)" title="Busca OTRA tanda del mismo producto, sin repetir los ya mostrados">➕ Traer 10 más de TikTok</button>`;
         }
+        // ── secciones 🎯 "más como esta" (TikTok) — cada una con su referencia ──
+        mas.filter(m=>m.fuente==='tiktok').forEach(m=>{
+          h+=`<h3 style="margin:22px 0 4px">🎯 Más como: «${tkEsc(m.ref)}» (${m.idxs.length})</h3>`;
+          h+=`<div class="pmsg" style="margin:0 0 10px">Buscados con el ángulo del creativo que te gustó — los verificados llevan ✅.</div>`;
+          h+='<div class="fpGrid">';
+          m.idxs.forEach(i=>{ if(links[i]) h+=tkTkCard(links[i],i,S.tkVerif); });
+          h+='</div>';
+        });
         // mensaje HONESTO cuando los confirmados no llegan al count pedido (con las búsquedas probadas)
         if(S.tkMens){ h+='<div class="autoStep" style="margin-top:8px">💬 '+tkEsc(S.tkMens)+'</div>'; }
         // ── grupo 2: Foreplay ────────────────────────────────────────────
-        const fpConf=ads.filter(a=>a.verificado_producto);
-        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${ads.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
+        const mainFp=ads.map((a,i)=>[a,i]).filter(p=>!clFp.has(p[1]));
+        const fpConf=mainFp.map(p=>p[0]).filter(a=>a.verificado_producto);
+        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${mainFp.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
         if(!S.fpOk && S.fpErr){
           h+='<div class="autoStep bad">'+tkEsc(S.fpErr)+'</div>';
-        } else if(!ads.length){
+        } else if(!mainFp.length){
           h+='<div class="autoStep">Sin resultados en Foreplay para este producto.</div>';
         } else {
-          const dls=(fpConf.length?fpConf:ads).map(a=>a.video).filter(Boolean).join('\n');
-          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${dls.replace(/"/g,'&quot;')}" title="Links directos del video (sirven en 📥 Descargar y Mi producto)">📋 Copiar los ${fpConf.length||ads.length} links de video${fpConf.length?' confirmados':''}</button>`;
+          const dls=(fpConf.length?fpConf:mainFp.map(p=>p[0])).map(a=>a.video).filter(Boolean).join('\n');
+          h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${dls.replace(/"/g,'&quot;')}" title="Links directos del video (sirven en 📥 Descargar y Mi producto)">📋 Copiar los ${fpConf.length||mainFp.length} links de video${fpConf.length?' confirmados':''}</button>`;
           h+='<div class="fpGrid">';
-          ads.forEach((a,i)=>{ h+=tkFpCard(a,i,S.fpVerif); });
+          mainFp.forEach(p=>{ h+=tkFpCard(p[0],p[1],S.fpVerif); });
           h+='</div>';
+          h+=`<button class="btn sec" style="margin:12px 0 0;width:auto" onclick="tkMoreGroup('foreplay',this)" title="Busca OTRA tanda del mismo producto, sin repetir los ya mostrados">➕ Traer 10 más de Foreplay</button>`;
         }
+        // ── secciones 🎯 "más como esta" (Foreplay) ──
+        mas.filter(m=>m.fuente==='foreplay').forEach(m=>{
+          h+=`<h3 style="margin:22px 0 4px">🎯 Más como: «${tkEsc(m.ref)}» (${m.idxs.length})</h3>`;
+          h+=`<div class="pmsg" style="margin:0 0 10px">Buscados con el ángulo del creativo que te gustó — los verificados llevan ✅.</div>`;
+          h+='<div class="fpGrid">';
+          m.idxs.forEach(i=>{ if(ads[i]) h+=tkFpCard(ads[i],i,S.fpVerif); });
+          h+='</div>';
+        });
         // ── grupo 3: 🎬 B-ROLL de apoyo (escenas para darle ritmo/dopamina al ad) ──
         const br=S.broll||[];
         if(br.length){
@@ -716,7 +765,7 @@
               <button class="fpBtn" onclick="tkTkPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
               <button class="fpBtn" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅'" data-u="${tkEsc(l.url)}" title="Copiar el link">📋</button>
               <button class="fpBtn" onclick="tkMore('tiktok',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
-              <button class="fpBtn" onclick="tkMore('tiktok',${i},this,true)" title="Buscar MÁS creativos con este mismo ángulo de venta">🎯 Más así</button>
+              <button class="fpBtn" onclick="tkMore('tiktok',${i},this,true)" title="Me gusta: busca 5 MÁS basados en este (salen en su propia sección abajo)">🎯 5 más así</button>
             </div>
             <a class="fpLink" href="${tkEsc(l.url)}" target="_blank">abrir en TikTok ↗</a>
           </div></div>`;
@@ -741,7 +790,7 @@
               <button class="fpBtn" onclick="tkFpPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
               <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar el video">⬇️</a>
               <button class="fpBtn" onclick="tkMore('foreplay',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
-              <button class="fpBtn" onclick="tkMore('foreplay',${i},this,true)" title="Buscar MÁS creativos con este mismo ángulo de venta">🎯 Más así</button>
+              <button class="fpBtn" onclick="tkMore('foreplay',${i},this,true)" title="Me gusta: busca 5 MÁS basados en este (salen en su propia sección abajo)">🎯 5 más así</button>
             </div>
             <a class="fpLink" href="${tkEsc(a.foreplay_url)||'#'}" target="_blank">ver en Foreplay ↗</a>
           </div></div>`;
@@ -753,6 +802,30 @@
       }
       // 🔄 cambiar (angulo=false: busca OTRO y lo pone en ese puesto) / 🎯 más así (angulo=true:
       // agrega hasta 6 creativos MÁS con el mismo ángulo de venta del que te gustó)
+      // ➕ traer OTRA tanda al grupo principal (sin ángulo: búsqueda general que excluye lo ya visto)
+      async function tkMoreGroup(fuente,btn){
+        const S=window._tkS; if(!S) return;
+        const grupo=(fuente==='tiktok')?S.links:S.ads;
+        const idDe=x=>(fuente==='tiktok')?x.url:String(x.id||x.video||x.foreplay_url||'');
+        const excl=grupo.map(idDe).concat(fuente==='tiktok'?S.exTk:S.exFp).filter(Boolean);
+        const fd=new FormData();
+        fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
+        fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
+        fd.append('foto',S.foto); fd.append('n','10');
+        const old=btn.textContent; btn.textContent='⏳ Buscando 10 más… (1-2 min)'; btn.disabled=true;
+        try{
+          const r=await fetch('/api/creative-more',{method:'POST',body:fd}); const j=await r.json();
+          const items=(j.items||[]);
+          if(!items.length){
+            btn.textContent='😕 no salieron más — dame la marca o un hashtag y busco distinto';
+            setTimeout(()=>{btn.textContent=old;btn.disabled=false;},4000); return;
+          }
+          grupo.push(...items);   // entran al grupo principal (tkPaint repinta todo, botón incluido)
+          tkPaint();
+        }catch(e){
+          btn.textContent='Error'; setTimeout(()=>{btn.textContent=old;btn.disabled=false;},3000);
+        }
+      }
       async function tkMore(fuente,idx,btn,angulo){
         const S=window._tkS; if(!S) return;
         const grupo=(fuente==='tiktok')?S.links:S.ads;
@@ -762,7 +835,7 @@
         const fd=new FormData();
         fd.append('fuente',fuente); fd.append('nombre',S.nombre); fd.append('desc',S.desc);
         fd.append('terminos',(S.variants||[]).join('\n')); fd.append('excluir',excl.join('\n'));
-        fd.append('foto',S.foto); fd.append('n',angulo?'6':'1');
+        fd.append('foto',S.foto); fd.append('n',angulo?'5':'1');
         if(angulo) fd.append('angulo',(item.title||item.name||item.description||'').slice(0,220));
         const old=btn.textContent; btn.textContent='⏳'; btn.disabled=true;
         try{
@@ -772,7 +845,13 @@
             btn.textContent='😕 no hay más'; btn.disabled=false;
             setTimeout(()=>{btn.textContent=old;},3000); return;
           }
-          if(angulo){ grupo.push(...items); }
+          if(angulo){
+            // 🎯 los 5 nuevos van a SU PROPIA sección (con el creativo que gustó de referencia)
+            const base=grupo.length; grupo.push(...items);
+            (S.masComo=S.masComo||[]).push({fuente:fuente,
+              ref:((item.title||item.name||item.description||'ese creativo')+'').slice(0,60),
+              idxs:items.map((_,k)=>base+k)});
+          }
           else{
             (fuente==='tiktok'?S.exTk:S.exFp).push(idDe(item));   // el viejo no vuelve a salir
             grupo.splice(idx,1,items[0]);                          // el nuevo entra en su puesto

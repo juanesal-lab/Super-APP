@@ -2411,6 +2411,8 @@ AVISO Juan: en TU terreno solo `orchestrator.py` (param opcional broll_fases en 
 process_job + 6 líneas de override tras fases_por_idx — sin broll_fases NADA cambia). app.py:
 Form broll_paths en process/scripts + _parse_broll + endpoint /api/broll-dolor + fetch-links ahora
 devuelve también `url` (aditivo). Costo por búsqueda IA: ~$0.05 (2 llamadas Claude).
+
+
 ### 2026-07-04 · Claude (juanesal-lab) · ✍️ Guiones que SÍ nombran el producto + 🖼️ preview de videos al subirlos
 Dos quejas de Juan:
 1. **Guiones genéricos que no nombraban el producto**: la causa era el prompt de generate_scripts —
@@ -2579,6 +2581,7 @@ CTA exacto, 63-68 palabras (presupuesto 63), y la calidad se nota: especificidad
 - AVISO Jack: NO toqué el flujo/parseo (mismo schema angulo/texto/fases y tool entregar_variaciones)
   ni el congelón (vi tu fix ebe9029 del xfade — quedó intacto). Solo prompts + framework.
 
+
 ### 2026-07-04 · Claude (jackingshop1-cell) · 🎥 Buscar creativos ahora acepta VIDEOS del producto + 🔗 link de la landing
 Pedido de Jack ("que sean exactos los videos"): además de fotos y nombre, la búsqueda acepta:
 1. VIDEOS DE REFERENCIA: `videos_ref` (máx 2, tope 100MB c/u) en /api/tiktok-search y
@@ -2700,6 +2703,7 @@ callers viejos idénticos. El manifest de versiones trae 2 claves nuevas aditiva
 sfx_events); el front no las usa. OJO: loudnorm es dinámico → para medir SFX comparando
 con/sin no sirve el delta por ventana con voz real (te lo digo por si mides tú). NO commiteado
 (órdenes de Jack: hay otra sesión trabajando en paralelo en esta carpeta).
+
 ### 2026-07-04 · Claude (juanesal-lab) · 🔄 REGENERAR una versión suelta con MOTIVO (pedido de Juan)
 Juan: al ver los videos, poder reemplazar el que no gusta SIN rehacer el lote, diciendo POR QUÉ
 (edición / clips / guion). Implementado end-to-end:
@@ -2783,3 +2787,35 @@ Pedido de Juan: poder elegir desde el arranque si el lote sale en la barata (Nan
 Verificado: py_compile + node --check 14/14. AVISO Jack: disruptive_images (generar_ads_fullprompt
 +hd), app.py (endpoint +modelo, _run_disruptive_v2_job +hd, regen/swap reusan _hd, persist _hd),
 index.html (selector disModelo + fd.append). Default sigue siendo la barata. Retro-compatible.
+
+### 2026-07-04 · Claude (jackingshop1-cell) · 📸 ADS IMAGEN REALISTAS (calibrado con 724 ads validados) + 🎯 "5 más así" + 🔗 fotos por link
+Jack: "las imágenes se ven muy irreales → CPC altísimos; básate en 1000+ estáticos con 30+ días en USA/EU".
+- INVESTIGACIÓN REAL: 724 ads estáticos únicos bajados de Foreplay (30+ días corriendo; 321 llevan 3+ AÑOS),
+  56 revisados visualmente uno a uno + metadata completa. Costo: 1.677 créditos Foreplay (quedan ~5.150).
+  Hallazgo central: CERO CGI/porcelana/botones de play falsos entre los longevos — realidad fotográfica pura.
+  Destilado en assets/ads-estaticos-validados.md (12 arquetipos validados + lista negra + doctrina).
+- disruptive_images.py REESCRITO: doctrina "concepto audaz, ejecución FOTOGRAFIABLE" (si no se puede
+  fotografiar con actores/utilería en una tarde → se reescribe), 8 motores psicológicos, 12 arquetipos
+  (el campo `formato` ahora es el arquetipo — la UI lo muestra tal cual), campo NUEVO `escena_real`
+  (obligatorio: lugar/quién/utilería/luz), _CIERRE anti-CGI (piel real con poros, cámara de celular,
+  prohibido play falso). Las 2 plantillas fijas (no_compres/capturas) intactas.
+  PROBADO E2E REAL: 10/10 variantes con 8 arquetipos distintos, lista negra limpia, y UNA imagen generada
+  (draft $0.04) del veneno de abeja: macro real de ojo de 55 años, piel con poros, luz de ventana — otra
+  liga vs los ejemplos que dolían. OJO: el draft sigue con typos en texto CHICO (conocido; el flujo pro
+  + _verificar_ortografia lo cubre).
+- 🎯 "5 MÁS ASÍ": el botón por card ahora trae 5 y los pinta en SU PROPIA SECCIÓN «🎯 Más como: [título]»
+  debajo del grupo (los índices viven en el mismo array → ▶️/📋/🔄 intactos). tkPaint verificado en
+  navegador con estado simulado, sin errores.
+- 🔗 FOTOS POR LINK en Buscar creativos: pega hasta 3 links (Enter) con chips de preview; backend
+  `fotos_url` en /api/tiktok-search y /api/creative-search → _bajar_foto_url valida por bytes mágicos,
+  convierte WEBP/GIF→JPG, y si pegan el link de la PÁGINA pesca la og:image sola (probado real: imagen
+  directa ✓, página Shopify ✓, redirect ✓; Wikimedia no — su WAF pide bot registrado, irrelevante).
+- AVISO Juan: en disruptive_images SOLO toqué _SISTEMA/_TOOL/_CIERRE y el pedido de plantillas_fijas=False
+  — tu pipeline de render/ortografía/recorte quedó intacto. En index.html: tkPaint (grupos + secciones),
+  tkTkCard/tkFpCard (título del 🎯), el IIFE de fotos y tkRun. Pendiente chiquito: mirar el look real de
+  chips y secciones en la primera búsqueda con APIs (el pintado simulado ya pasó).
+
+### 2026-07-04 · Claude (jackingshop1-cell) · ➕ Buscar creativos: "Traer 10 más" por grupo
+- Botón al final del grupo TikTok y del grupo Foreplay: trae OTRA tanda de 10 del mismo producto
+  excluyendo todo lo ya mostrado (reusa /api/creative-more sin ángulo, misma verificación).
+  Los nuevos entran al grupo principal; ▶️/📋/🔄/🎯 funcionan igual en ellos.

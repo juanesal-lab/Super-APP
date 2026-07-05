@@ -2960,3 +2960,14 @@ Extra revisado y ya estaba bien: /api/file responde 206 (Range/streaming ok, sta
 /api/caption-preview ya tenía Cache-Control 1h. Solo frontend/index.html — cero backend.
 AVISO Juan: si agregas cards con <video> en grillas nuevas, ponles `preload="metadata"` (regla
 de la casa desde hoy; Chrome sin preload = "auto" = se baja el video entero por card).
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🏷️ FIX: el banner "Oferta 2x1" NO salía cuando había voz en off
+Queja de Jack: "no estás haciendo lo de los textos arriba de oferta 2x1". Causa: el toggle
+`banner_oferta` estaba cableado SOLO en /api/process (ruta sin voz). Con "🎙️ Voz en off" activo
+el flujo va por /api/scripts → _run_render_job, que IGNORABA el checkbox (el front lo mandaba
+pero el endpoint no lo declaraba). Como Jack ahora siempre usa voz en off, nunca le salía.
+FIX (3 líneas, mismo patrón de _run_job): Form `banner_oferta` en /api/scripts + settings +
+`_agregar_banner_oferta(manifest["versions"], wd, progress)` tras render_versions en
+_run_render_job. Verificado: add_offer_banner sobre una versión real → pill roja "ENVÍO GRATIS ·
+PAGAS AL RECIBIR" + "OFERTA 2X1" arriba en 5s, CON Gemini muerto (fallback y=0.04 funciona).
+Frame revisado a ojo. py_compile ok. AVISO Juan: nada tuyo tocado; solo app.py.

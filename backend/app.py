@@ -989,6 +989,7 @@ def scripts(
     use_music: bool = Form(False),
     use_captions: bool = Form(False),
     oferta_2x1: bool = Form(False),
+    banner_oferta: bool = Form(False),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     destino: str = Form("tiktok"),
@@ -1023,6 +1024,7 @@ def scripts(
         "destino": destino if destino in ("tiktok", "meta") else "tiktok",
         "use_music": bool(use_music), "captions": bool(use_captions),
         "oferta_2x1": bool(oferta_2x1),
+        "banner_oferta": bool(banner_oferta),   # banner 2x1 arriba — antes SOLO existía sin voz
         "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
         "broll_fases": broll_fases,
@@ -1119,6 +1121,10 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
             broll_fases=s.get("broll_fases"), progress=progress)
+        # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
+        # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1")
+        if manifest.get("ok") and manifest.get("versions") and s.get("banner_oferta"):
+            _agregar_banner_oferta(manifest["versions"], wd, progress)
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
         _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})

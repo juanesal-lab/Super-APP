@@ -843,24 +843,34 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
                           cut_times: list[float] | None = None,
                           music_path: str | None = None,
                           phases: list[dict] | None = None,
-                          sfx_events: list[tuple[float, str, float]] | None = None) -> str:
+                          sfx_events: list[tuple[float, str, float]] | None = None,
+                          caption_pngs: list[tuple[str, float, float]] | None = None,
+                          out_45: str | None = None) -> str:
     """Voz en off + MEZCLA PRO (pro_mix, reglas de 4 ads ganadores reales):
     música 13dB bajo la voz + ducking al hablar + fade-out final; SFX SUTILES solo en ~50% de
     los cortes (whoosh 150ms ANTES del corte) + 1 'brillo' protagonista en el momento del
     producto; master −18 LUFS. Antes: whoosh a 0.8 en CADA corte + música plana (sonaba amateur).
 
     `sfx_events` (opcional): colocación EXACTA [(t, ruta, volumen)] de sound_design_events —
-    si viene, manda ELLA (riser→producto, cash→CTA...); si no, plan viejo (retrocompatible)."""
+    si viene, manda ELLA (riser→producto, cash→CTA...); si no, plan viejo (retrocompatible).
+    `caption_pngs` (opcional): [(png_fullframe, inicio_s, fin_s)] de caption_styles.caption_events —
+    los subtítulos se queman AQUÍ MISMO (overlay en el mismo filter_complex) = una pasada de
+    re-encode menos por versión. Los tiempos van en la línea de tiempo de la VOZ (la misma del
+    video final: el video se estira/acolcha a la voz ANTES de los overlays, así que quedan
+    idénticos a quemarlos después).
+    `out_45` (opcional): además del master, escribe en UNA MISMA pasada el cut 4:5 para Meta
+    (crop central, mismo audio). Todo retrocompatible: sin estos params, comportamiento de siempre."""
     from .pro_mix import plan_sfx, filtros_mezcla, cadena_final, _dur_audio
     sfx_paths = [p for p in (sfx_paths or []) if p and os.path.exists(p)]
     has_music = bool(music_path and os.path.exists(music_path))
     vo_dur_s = _dur_audio(vo_path)
+    caption_pngs = [(p, s, e) for p, s, e in (caption_pngs or []) if p and os.path.exists(p)]
     if sfx_events is not None:
         eventos = _sd_eventos(sfx_events)
     else:
         eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vo_dur_s or 20.0,
                            sfx_paths, phases=phases)
-    if not eventos and not has_music:
+    if not eventos and not has_music and not caption_pngs and not out_45:
         return add_voiceover(video_path, vo_path, out_path)
 
     # SIN loop de video: si la voz es más larga, se sostiene el último frame (tpad clone).
@@ -882,22 +892,56 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
     if has_music:
         inputs += ["-i", music_path]
         music_index = idx; idx += 1
-    extra, fc2, mix = filtros_mezcla(vo_label="[vo]", clip_label=None, music_index=music_index,
-                                     sfx_eventos=eventos, input_offset=idx,
-                                     dur_total=vo_dur_s or 20.0, con_voz=True,
-                                     music_vol=_SD_MUSIC_VOL if sfx_events is not None else None)
-    inputs += extra
-    fc += fc2
-    fc.append(cadena_final(mix))
+    if eventos or has_music:
+        extra, fc2, mix = filtros_mezcla(vo_label="[vo]", clip_label=None, music_index=music_index,
+                                         sfx_eventos=eventos, input_offset=idx,
+                                         dur_total=vo_dur_s or 20.0, con_voz=True,
+                                         music_vol=_SD_MUSIC_VOL if sfx_events is not None else None)
+        inputs += extra
+        fc += fc2
+        fc.append(cadena_final(mix))
+        alabel = "[a]"
+    else:
+        # solo captions/45 sin SFX ni música: el audio queda como en add_voiceover (sin loudnorm)
+        alabel = "[vo]"
+
+    # Subtítulos EN LA MISMA pasada (overlays con enable=between sobre la línea de tiempo final)
+    vlabel = "[v]"
+    n_in = len(inputs) // 2                     # todos los inputs son pares "-i ruta"
+    for k, (png, st, en) in enumerate(caption_pngs):
+        inputs += ["-i", png]
+        tag = f"[vcap{k}]"
+        fc.append(f"{vlabel}[{n_in}:v]overlay=0:0:enable='between(t,{st:.2f},{en:.2f})'{tag}")
+        vlabel = tag
+        n_in += 1
+
     vo_dur = _dur_flag(vo_path)   # corte EXACTO al final de la voz
+    a_enc = ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"]
+    if out_45:
+        # master + cut 4:5 para Meta en UNA pasada (split del video final + crop central)
+        fc.append(f"{vlabel}split=2[vmain][v45p]")
+        fc.append("[v45p]crop=iw:iw*5/4:0:(ih-iw*5/4)/2,setsar=1[v45]")
+        fc.append(f"{alabel}asplit=2[amain][a45]")
+        run([
+            "ffmpeg", "-y", *inputs,
+            "-filter_complex", ";".join(fc),
+            "-map", "[vmain]", "-map", "[amain]", "-shortest", *vo_dur,
+            *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            # -ar 48000 OBLIGATORIO: loudnorm sube el sample rate interno a 192k si no se fija
+            *a_enc, out_path,
+            "-map", "[v45]", "-map", "[a45]", "-shortest", *vo_dur,
+            *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            *a_enc, out_45,
+        ])
+        return out_path
     run([
         "ffmpeg", "-y", *inputs,
         "-filter_complex", ";".join(fc),
-        "-map", "[v]", "-map", "[a]", "-shortest", *vo_dur,
+        "-map", vlabel, "-map", alabel, "-shortest", *vo_dur,
         *venc(),
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         # -ar 48000 OBLIGATORIO: loudnorm sube el sample rate interno a 192k si no se fija
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+        *a_enc,
         out_path,
     ])
     return out_path

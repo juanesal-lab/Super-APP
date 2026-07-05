@@ -56,18 +56,31 @@ def clasificar(segments: list, api_key: str | None, product_desc: str = "") -> l
     if not (api_key and segments):
         return None
     try:
-        from google import genai
-        from google.genai import types
-        frames = [(i, _frame_medio(s)) for i, s in enumerate(segments)]
+        # frames EN PARALELO (cv2 abre/lee y suelta el GIL) — antes uno a uno en serie
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, max(2, len(segments)))) as ex:
+            frames = list(enumerate(ex.map(_frame_medio, segments)))
         con_frame = [(i, f) for i, f in frames if f]
         if len(con_frame) < max(3, len(segments) // 2):   # muy pocos frames legibles → mejor heurística
             return None
-        contents: list = [_PROMPT.format(desc=product_desc or "producto", last=len(con_frame) - 1)]
+        prompt = _PROMPT.format(desc=product_desc or "producto", last=len(con_frame) - 1)
+        # 1) Camino RÁPIDO: REST con thinkingBudget=0 (~3s). 2) Fallback: SDK (~15-25s "pensando").
+        from . import gemini_fast
+        parts: list = [prompt]
         for k, (_, fb) in enumerate(con_frame):
-            contents.append(f"IMAGEN {k}:")
-            contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
-        resp = genai.Client(api_key=api_key).models.generate_content(model=_MODEL, contents=contents)
-        m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
+            parts.append(f"IMAGEN {k}:")
+            parts.append((fb, "image/jpeg"))
+        texto = gemini_fast.generate(api_key, parts)
+        if not texto:
+            from google import genai
+            from google.genai import types
+            contents: list = [prompt]
+            for k, (_, fb) in enumerate(con_frame):
+                contents.append(f"IMAGEN {k}:")
+                contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
+            resp = genai.Client(api_key=api_key).models.generate_content(model=_MODEL, contents=contents)
+            texto = resp.text or ""
+        m = re.search(r"\[.*\]", texto, re.DOTALL)
         if not m:
             return None
         por_k: dict[int, str] = {}

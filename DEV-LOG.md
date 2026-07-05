@@ -2819,3 +2819,88 @@ Jack: "las imágenes se ven muy irreales → CPC altísimos; básate en 1000+ es
 - Botón al final del grupo TikTok y del grupo Foreplay: trae OTRA tanda de 10 del mismo producto
   excluyendo todo lo ya mostrado (reusa /api/creative-more sin ángulo, misma verificación).
   Los nuevos entran al grupo principal; ▶️/📋/🔄/🎯 funcionan igual en ellos.
+
+### 2026-07-05 · Claude (jackingshop1-cell) · ⚡ VELOCIDAD Cortar clips / Mi producto: medición real + pasadas fusionadas (sin bajar calidad)
+Queja de Jack: "Cortar clips y Mi producto se demoran MUCHO". MEDÍ una corrida real completa
+(3 videos de ~/Downloads: almohadilla + bee venom + plagas, use_gemini + tapado + efectos +
+subtítulos con VO sintético `say` + destino=meta; $0 de ElevenLabs) instrumentando el progress
+y cada ffmpeg, y optimicé el TOP confirmado. OJO: los videos de prueba viven ahora en copias
+estables (Jack movió las carpetas de Downloads A MITAD de la corrida y tumbó la 1ª medición).
+
+**TOP de tiempo confirmado (corrida base, 3 videos):** 1) tapado de textos (EAST 640x1280 ≈
+4.8s/FRAME de detección en CPU — es el piso físico de esa calidad); 2) el "pensamiento" de
+Gemini en el SDK (10-25s por llamada de clasificación); 3) la cadena de re-encodes POR VERSIÓN
+(mezcla → subtítulos → cut 4:5 = 3 pasadas enteras × 8); 4) loops de cv2 EN SERIE (firmas
+perceptuales, frames de fases).
+
+**Tabla ANTES → DESPUÉS (mismas 3 fuentes; base parcial porque crasheó al borrarse el archivo):**
+- rank Gemini: 19s → 9.4s (ya iba por REST)
+- selección/dedup firmas: 22.1s → 6.6s (firmas en paralelo)
+- phase_classify: 38.5s → 6.6s (frames en paralelo + REST sin thinking: 17.0s→~2s la llamada)
+- montaje por guion (etiquetar+firmas+plan): 40.6s → 8.0s
+- tapado/masking (17 cortes): 675s → 286s (clasificación Gemini por corte 4.6s→~2s; el resto
+  es EAST puro — y la base corrió con la máquina cargada, ver nota)
+- voz+subtítulos+4:5 por versión: 15.6s → 9.1s c/u en el MISMO artefacto (A/B limpio: mezcla
+  2.9 + subs 6.7 + 4:5 libx264 6.0 → UNA pasada fusionada 9.1) = 1.71×; y el loop de 8
+  versiones ahora va EN PARALELO (3 sesiones GPU): 82.9s → 62.0s medido (2.0× total de etapa)
+- QA producto visible: ~5.2s las 8 versiones (REST; antes el SDK pensaba 10-20s)
+- banner oferta: 4.5s/versión (REST) y ahora EN PARALELO — antes ~10-20s/versión EN SERIE
+- **E2E after completo: 678s con ok=True, 8/8 versiones (33-35MB), path_45 en las 8, QA avisos
+  correctos.** La corrida base no terminó (borraron el video fuente a mitad), pero las etapas
+  medidas arriba suman >2.5× en lo optimizado. NOTA: análisis dio 149s en la base vs 14s en la
+  after — eso fue CARGA de la máquina (otra sesión encodeando), no una mejora mía; el análisis
+  no lo toqué.
+
+**Cambios exactos (retrocompatibles, defaults intactos):**
+- NUEVO `pipeline/gemini_fast.py`: `generate(key, parts)` = Gemini Flash por REST con
+  thinkingBudget=0 (patrón ya probado de gemini_rank._call_rest_fast; key va por header).
+  Lo usan ahora (con fallback al SDK si falla): phase_classify, guion_match.etiquetar_frases,
+  smart_caption_mask._classify_gemini, offer_banner.safe_top_y y el QA del orchestrator.
+  MISMO prompt, MISMA respuesta, ~2-3s en vez de 10-25s.
+- `caption_styles.py`: NUEVO `caption_events(W,H,words,...) -> [(png,inicio,fin)]` (el corazón
+  de burn_word_captions, separado). `burn_word_captions` la usa por dentro — firma y output
+  IDÉNTICOS (tus callers auto_studio/winner_clone/hook_variator/regen igual).
+- `assemble.add_voiceover_and_sfx`: params NUEVOS OPCIONALES `caption_pngs` y `out_45` —
+  quema subtítulos y saca el cut 4:5 DENTRO del mismo filter_complex de la mezcla (1 pasada
+  en vez de 3). Sin esos params, comportamiento byte-igual al de antes (tus llamadas viejas
+  de regen/producto intactas). El 4:5 sale con venc() GPU (antes libx264 CPU).
+- `orchestrator.py`: `_apply_vo` pasa caption_pngs+out_45 (con fallback al camino viejo si la
+  fusionada falla); el loop de voz por versión va EN PARALELO (ThreadPool WORKERS=3, prefijos
+  de PNG únicos por versión); el bloque de path_45 quedó solo para versiones SIN voz (GPU +
+  paralelo); firmas del pool y dedup de selección en paralelo (mismos valores, solo threads).
+  QA por gemini_fast.
+- `app.py`: `_agregar_banner_oferta` en paralelo (WORKERS); `_run_render_job` genera las voces
+  de ElevenLabs EN PARALELO y paga solo pares (guion, voz) ÚNICOS — mismo patrón que ya
+  probamos en producto_clips._guiones_y_narraciones (OJO Juan: antes 8 llamadas TTS aunque el
+  texto se repitiera; ahora versiones con el mismo guion+voz comparten mp3 — como Mi producto).
+- `offer_banner.py`: el PNG del banner ahora tiene nombre único por versión (con el paralelo
+  se pisaban); safe_top_y por gemini_fast.
+- `text_overlay.burn_hook`: venc() GPU (era el último libx264 CPU de la cadena por versión).
+
+**Verificado:** py_compile 9 archivos; smoke del fused (master+4:5 correctos); E2E real 678s
+ok=True 8/8; frames MIRADOS a ojo (gancho con captions grupo 1, mitad con "SIENTES EL CALOR
+PROFUNDO." y SINCRONÍA EXACTA — la palabra CALOR activa en cian justo en su ventana 9.8-10.2s,
+verificado contra el PNG wc_A_gancho_26 —, cierre con el CTA "ANTE ESTAFAS PAGAS AL", 4:5 con
+los subs adentro del encuadre por la safe zone meta, banner arriba sin tapar); ffprobe: h264+aac
+en master (1080x1920) y 4:5 (1080x1350), duración = voz (23.1s); audio −21dB mean (master −18
+LUFS intacto); manifest con el MISMO shape + cut_times/sfx_events/path_45/qa_aviso (el front ya
+tolera path_45 null: `v.path_45?…:''`); burn_hook GPU probado real.
+
+**Llamadas Gemini por corrida (sin cambio de CANTIDAD, solo latencia):** rank 1 + fases 1 +
+etiquetar 1 + tapado ~1/corte con texto (12/17 aquí) + QA 1 + banner 1/versión (si está
+activado) ≈ 16-25. Todas flash.
+
+**Lo que NO toqué y por qué:** (1) EAST del tapado inteligente (640x1280, cada 4 frames): es
+el 40% del tiempo total pero bajarle resolución/frecuencia SÍ baja la calidad del tapado —
+si quieren más velocidad ahí la palanca es inferencia en GPU (CoreML) o re-pensar el detector,
+no un tune; (2) análisis + detector de escenas: probé select a 480px = MISMOS cortes pero el
+costo real es el DECODE, no vale el riesgo; (3) DETECT_EVERY y umbrales EAST: knobs de calidad;
+(4) pool de 98 de Juan: verificado que el masking sigue procesando SOLO los cortes usados
+(used_all) tras los merges — no se regresó; (5) xfade: confirmado una sola pasada de encode por
+versión (el rebuild con concat_clips solo salta en el anti-congelón); (6) los TTS paralelos de
+_run_render_job no se probaron contra ElevenLabs real (regla de $0 en pruebas) — el patrón es
+copia del de producto_clips que ya está probado en producción.
+AVISO Juan/otra sesión: NO commiteado (hay trabajo en paralelo en la carpeta); el server :8420
+hay que reiniciarlo para que esto quede vivo. Firmas: solo params opcionales nuevos
+(caption_pngs/out_45 en add_voiceover_and_sfx; caption_events es función nueva) — tus callers
+viejos siguen idénticos.

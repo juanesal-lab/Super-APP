@@ -70,11 +70,16 @@ def safe_top_y(video_path: str, gemini_key: str | None) -> float:
                   "¿A qué fracción vertical (0.02 a 0.30, desde arriba) lo pongo para que NO tape la cara, el "
                   "producto ni texto importante? Prefiere lo más ARRIBA posible con espacio libre. "
                   "Responde SOLO el número (ej. 0.04).")
-        resp = genai.Client(api_key=gemini_key).models.generate_content(
-            model=_MODEL, contents=[prompt, types.Part.from_bytes(data=buf.tobytes(),
-                                                                  mime_type="image/jpeg")])
+        # rápido por REST (thinkingBudget=0, ~2s por versión vs ~10s "pensando"); fallback SDK
+        from . import gemini_fast
+        texto = gemini_fast.generate(gemini_key, [prompt, (buf.tobytes(), "image/jpeg")])
+        if not texto:
+            resp = genai.Client(api_key=gemini_key).models.generate_content(
+                model=_MODEL, contents=[prompt, types.Part.from_bytes(data=buf.tobytes(),
+                                                                      mime_type="image/jpeg")])
+            texto = resp.text or ""
         import re
-        m = re.search(r"0?\.\d+", resp.text or "")
+        m = re.search(r"0?\.\d+", texto)
         if m:
             return max(0.02, min(0.30, float(m.group(0))))
     except Exception:  # noqa: BLE001
@@ -90,7 +95,9 @@ def add_offer_banner(video_path: str, out_path: str, work_dir: str, *,
         info = probe(video_path)
         W, H = info.width, info.height
         y = safe_top_y(video_path, gemini_key)
-        png = os.path.join(work_dir, "offer_banner.png")
+        # PNG con nombre ÚNICO por salida: las versiones ahora se procesan EN PARALELO
+        # (app._agregar_banner_oferta) y con un nombre fijo se pisaban entre sí.
+        png = os.path.join(work_dir, os.path.basename(out_path) + ".banner.png")
         render_banner(W, H, y_frac=y, line1=line1, line2=line2).save(png)
         run(["ffmpeg", "-y", "-i", video_path, "-i", png,
              "-filter_complex", "[0:v][1:v]overlay=0:0[v]", "-map", "[v]", "-map", "0:a?",

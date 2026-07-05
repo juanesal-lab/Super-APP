@@ -371,23 +371,22 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     return img
 
 
-def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
-                       style: str = "karaoke", group_size: int = 4,
-                       cap_size: str = "mediano") -> str:
-    """Quema subtítulos PALABRA POR PALABRA sincronizados (usa tiempos reales de ElevenLabs).
+def caption_events(W: int, H: int, words: list[dict], work_dir: str, *,
+                   style: str = "karaoke", group_size: int = 4,
+                   cap_size: str = "mediano", prefix: str = "wc") -> list[tuple[str, float, float]]:
+    """Renderiza los PNG de subtítulos palabra-por-palabra y devuelve [(png, inicio, fin)].
 
-    Agrupa en bloques cortos (group_size) y resalta la palabra que se está diciendo. Estilo adapta.
-    """
+    Es el corazón de burn_word_captions, separado para poder quemar los subtítulos DENTRO
+    del mismo ffmpeg de la mezcla de voz (assemble.add_voiceover_and_sfx con caption_pngs=…):
+    una pasada de re-encode menos por versión. `prefix` evita colisiones de nombres si dos
+    versiones renderizan a la vez."""
     words = [w for w in (words or []) if w.get("word", "").strip() and w.get("end", 0) > w.get("start", 0)]
     if not words:
-        return inp
+        return []
     # Ordenar por inicio: la clave para que NO se dupliquen (dos grupos a la vez).
     words = sorted(words, key=lambda w: float(w["start"]))
-    info = probe(inp)
-    W, H = info.width, info.height
     groups = [words[i:i + group_size] for i in range(0, len(words), group_size)]
-
-    inputs, filt, last, n = ["-i", inp], [], "[0:v]", 0
+    events, n = [], 0
     for gi, g in enumerate(groups):
         for j, w in enumerate(g):
             gidx = gi * group_size + j                      # índice GLOBAL en toda la lista
@@ -396,13 +395,30 @@ def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
             # garantiza que en cada instante haya UN solo subtítulo visible (nunca duplicados).
             nxt = float(words[gidx + 1]["start"]) if gidx + 1 < len(words) else float(w["end"]) + 0.3
             end = max(start + 0.05, nxt)
-            png = os.path.join(work_dir, f"wc_{n}.png")
+            png = os.path.join(work_dir, f"{prefix}_{n}.png")
             _render_wordgroup(g, j, W, H, style, cap_size).save(png)
-            inputs += ["-i", png]
-            filt.append(f"{last}[{n + 1}:v]overlay=0:0:enable='between(t,{start:.2f},{end:.2f})'[v{n}]")
-            last = f"[v{n}]"; n += 1
-    if n == 0:
+            events.append((png, start, end))
+            n += 1
+    return events
+
+
+def burn_word_captions(inp: str, words: list[dict], work_dir: str, out: str,
+                       style: str = "karaoke", group_size: int = 4,
+                       cap_size: str = "mediano") -> str:
+    """Quema subtítulos PALABRA POR PALABRA sincronizados (usa tiempos reales de ElevenLabs).
+
+    Agrupa en bloques cortos (group_size) y resalta la palabra que se está diciendo. Estilo adapta.
+    """
+    info = probe(inp)
+    events = caption_events(info.width, info.height, words, work_dir,
+                            style=style, group_size=group_size, cap_size=cap_size)
+    if not events:
         return inp
+    inputs, filt, last = ["-i", inp], [], "[0:v]"
+    for n, (png, start, end) in enumerate(events):
+        inputs += ["-i", png]
+        filt.append(f"{last}[{n + 1}:v]overlay=0:0:enable='between(t,{start:.2f},{end:.2f})'[v{n}]")
+        last = f"[v{n}]"
     run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filt),
          "-map", last, "-map", "0:a?", "-c:a", "copy", *venc(),
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])

@@ -1048,22 +1048,44 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         wd = job["work_dir"]
         os.makedirs(wd, exist_ok=True)
         key = _load_eleven_key()
-        # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan)
+        # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan).
+        # EN PARALELO y pagando TTS solo por cada par (guion, voz) ÚNICO — mismo patrón
+        # probado de producto_clips._guiones_y_narraciones (antes: 8 llamadas en serie).
         chosen = [(scripts * (N_VERSIONS // max(1, len(scripts)) + 1))[i] for i in range(N_VERSIONS)]
-        version_vos = []
         from pipeline.voiceover import acelerar as _acelerar_vo
-        for i, txt in enumerate(chosen):
-            # voz por versión: la mezcla del usuario (jc/kate cicladas) o la única elegida
-            v_i = voces[i % len(voces)] if voces else voice_key
-            progress(f"Generando voz {i + 1}/{N_VERSIONS} ({v_i}) con ElevenLabs...", 12 + i * 4)
-            vp = os.path.join(wd, f"vo_{i}.mp3")
-            if s.get("captions"):
-                wt = synthesize_with_timestamps(key, txt, v_i, vp)
-            else:
-                synthesize(key, txt, v_i, vp); wt = None
-            # Manual Maestro §6: locución 1.1-1.2× = más enérgica y retiene mejor
-            wt = _acelerar_vo(vp, wt, factor=1.12) or wt
-            version_vos.append((vp, wt))
+        from concurrent.futures import ThreadPoolExecutor
+        pares = [(chosen[i], voces[i % len(voces)] if voces else voice_key)
+                 for i in range(N_VERSIONS)]
+        unicos = sorted(set(pares))
+        progress(f"Generando {len(unicos)} voces con ElevenLabs (en paralelo)...", 14)
+        hechas_ct = [0]
+
+        def _tts_par(par):
+            txt, v_i = par
+            vp = os.path.join(wd, f"vo_{unicos.index(par)}.mp3")
+            try:
+                if s.get("captions"):
+                    wt = synthesize_with_timestamps(key, txt, v_i, vp)
+                else:
+                    synthesize(key, txt, v_i, vp); wt = None
+                # Manual Maestro §6: locución 1.1-1.2× = más enérgica y retiene mejor
+                wt = _acelerar_vo(vp, wt, factor=1.12) or wt
+                hechas_ct[0] += 1
+                progress(f"Voces listas: {hechas_ct[0]}/{len(unicos)} (ElevenLabs)...",
+                         14 + int(24 * hechas_ct[0] / max(1, len(unicos))))
+                return par, (vp, wt)
+            except Exception:  # noqa: BLE001
+                return par, None
+
+        hechas: dict = {}
+        with ThreadPoolExecutor(max_workers=min(4, len(unicos))) as ex:
+            for par, r in ex.map(_tts_par, unicos):
+                if r:
+                    hechas[par] = r
+        if not hechas:
+            raise RuntimeError("ElevenLabs no devolvió ninguna voz (revisa la API key/créditos)")
+        respaldo = list(hechas.values())    # si un par falló, esa versión usa otra narración hecha
+        version_vos = [hechas.get(p) or respaldo[i % len(respaldo)] for i, p in enumerate(pares)]
         # Efectos de transicion: samples REALES (los del usuario en assets/sfx/ o los del set)
         sfx_paths = list_sfx() if s.get("effects") else []
         # Musica de fondo (opcional): ElevenLabs Music, segun el nicho del producto

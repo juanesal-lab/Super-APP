@@ -105,10 +105,11 @@ def burn_hook(video_path: str, out_path: str, work_dir: str, text: str,
     try:
         block_h = _render_png(text, vw, vh, font, png)
         y = _y_pos(position, vh, block_h)
+        from .assemble import venc   # GPU si hay (antes libx264 CPU: ~4x más lento por versión)
         run([
             "ffmpeg", "-y", "-i", video_path, "-i", png,
             "-filter_complex", f"[0:v][1:v]overlay=0:{y}",
-            "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
+            *venc(),
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             "-c:a", "copy",
             out_path,

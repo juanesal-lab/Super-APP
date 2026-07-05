@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .assemble import (build_variations, plan_variations, render_clip, export_resolution,
                        dims_for, add_voiceover, add_voiceover_and_sfx, sound_design_events,
-                       WORKERS)
+                       venc, WORKERS)
 from .text_detect import mask_video as mask_video_text, available as east_available
 from .text_translate import traducir_texto_pantalla as translate_screen_text
 from .smart_caption_mask import mask_captions_smart
@@ -57,6 +57,17 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     chosen_sigs: list = []
     per_source: dict[int, int] = {}
 
+    # Firmas perceptuales PRE-CALCULADAS EN PARALELO (cv2 abre/lee video: suelta el GIL).
+    # Antes se calculaban una a una dentro del loop de dedup (~1-2s por corte, en serie).
+    sig_cache: dict[int, list] = {}
+    precalc = ranked[:pool_size + 40]
+    try:
+        with ThreadPoolExecutor(max_workers=min(8, max(2, len(precalc)))) as _ex:
+            for seg, sigs in zip(precalc, _ex.map(segment_signatures, precalc)):
+                sig_cache[id(seg)] = sigs
+    except Exception:  # noqa: BLE001
+        sig_cache = {}
+
     def is_duplicate(sigs) -> bool:
         # Duplicado REAL solo si: (a) algún frame es casi IDÉNTICO (<4 bits), o (b) COINCIDEN ≥2 de las
         # 3 firmas (misma escena de verdad). Con 1 sola coincidencia floja NO se descarta: con 30 videos
@@ -84,7 +95,10 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
                 continue
             if not relax and per_source.get(seg.source_index, 0) >= cap_per_source:
                 continue
-            sigs = segment_signatures(seg)
+            sigs = sig_cache.get(id(seg))
+            if sigs is None:
+                sigs = segment_signatures(seg)
+                sig_cache[id(seg)] = sigs
             if is_duplicate(sigs):
                 continue
             chosen.append(seg)
@@ -295,13 +309,20 @@ def render_versions(
             report("Montaje por guion: eligiendo el mejor clip para cada frase...", 51)
             guion_match.etiquetar_frases([f for f in frases_pv if f], gemini_key, product_desc)
             # firma perceptual de cada clip del pool: detecta "misma escena" aunque venga de
-            # ARCHIVOS distintos (varios TikToks de la misma creadora = se veía congelado)
+            # ARCHIVOS distintos (varios TikToks de la misma creadora = se veía congelado).
+            # EN PARALELO (cv2 suelta el GIL); antes era ~1-2s por clip EN SERIE.
             firmas: dict[int, object] = {}
-            for _i in fases_por_idx:
+
+            def _firma_uno(_i):
                 try:
-                    firmas[_i] = segment_signature(selected[_i])
+                    return _i, segment_signature(selected[_i])
                 except Exception:  # noqa: BLE001
-                    pass
+                    return _i, None
+
+            with ThreadPoolExecutor(max_workers=8) as _ex:
+                for _i, _f in _ex.map(_firma_uno, list(fases_por_idx)):
+                    if _f is not None:
+                        firmas[_i] = _f
             usage: dict[int, int] = {}
             hook_srcs: set[int] = set()           # cada versión abre con una FUENTE distinta
             # TOPE DURO de reuso entre versiones: un clip solo puede salir en ~su cuota justa
@@ -548,18 +569,41 @@ def render_versions(
                                                 vo_dur=vo_d, cut_times=_cut_times(v))
             except Exception:  # noqa: BLE001
                 sd_events = None
+        # SUBTÍTULOS EN LA MISMA PASADA de la voz (caption_events + caption_pngs): antes eran
+        # 2 re-encodes del video entero por versión (mezcla y luego captions) — ahora 1.
+        # Los PNG se renderizan igual que siempre (mismo look); los tiempos van en la línea
+        # de tiempo de la voz = la del video final, así que la sincronía es idéntica.
+        cap_specs = None
+        if captions and wt:
+            try:
+                from .caption_styles import caption_events
+                _info = probe(v["path"])
+                cap_specs = caption_events(_info.width, _info.height, wt, work_dir,
+                                           style=caption_style, cap_size=caption_size,
+                                           prefix=f"wc_{v.get('name', 'v')}")
+            except Exception:  # noqa: BLE001
+                cap_specs = None
+        # Cut 4:5 para Meta TAMBIÉN en la misma pasada (split+crop dentro del mismo ffmpeg):
+        # antes era otro re-encode entero (y en libx264 CPU) por versión.
+        out45 = (vo_out.replace(".mp4", "_45.mp4")
+                 if destino == "meta" and aspect == "9:16" else None)
         try:
             # SFX ya no dependen del toggle "efectos": el plan pro (pro_mix) los pone SUTILES
             # y solo donde tocan; "efectos" sigue mandando en lo VISUAL (punch/zoom fuerte).
             add_voiceover_and_sfx(v["path"], vo_path, vo_out,
                                   sfx_paths=sfx_paths,
                                   cut_times=_cut_times(v), music_path=music_path,
-                                  phases=phases_mix, sfx_events=sd_events)
+                                  phases=phases_mix, sfx_events=sd_events,
+                                  caption_pngs=cap_specs, out_45=out45)
             v["path"] = vo_out
             v["voiceover"] = True
+            if cap_specs:
+                v["captions"] = True
+            if out45 and os.path.exists(out45):
+                v["path_45"] = out45
         except Exception:
             v["voiceover"] = False
-        if captions and wt:
+        if captions and wt and not v.get("captions"):   # fallback: la pasada fusionada no los quemó
             cap_out = v["path"].replace(".mp4", "_cap.mp4")
             try:
                 from .caption_styles import burn_word_captions
@@ -572,29 +616,47 @@ def render_versions(
                 v["path"] = new_path
                 v["captions"] = ok
 
-    if version_vos:                                  # un guion/voz distinto por version
-        for v_i, v in enumerate(versions):
-            report(f"Voz en off por versión ({v_i + 1}/{len(versions)})...", 86 + v_i)
-            vo_path, wt = version_vos[v_i] if v_i < len(version_vos) else (None, None)
+    # VOZ+SUBTÍTULOS+4:5 POR VERSIÓN EN PARALELO (antes en serie): cada versión es independiente
+    # (archivos y prefijos únicos) y el tope de sesiones GPU lo pone WORKERS (=3 con VideoToolbox).
+    if version_vos or voiceover_path:
+        done_vo = [0]
+
+        def _vo_one(item):
+            v_i, v = item
+            if version_vos:
+                vo_path, wt = version_vos[v_i] if v_i < len(version_vos) else (None, None)
+            else:
+                vo_path, wt = voiceover_path, word_timings
             _apply_vo(v, v_i, vo_path, wt)
-    elif voiceover_path:                             # una sola voz para todas
-        for v_i, v in enumerate(versions):
-            report(f"Agregando voz en off{' y efectos' if effects else ''} ({v_i + 1}/{len(versions)})...", 86 + v_i)
-            _apply_vo(v, v_i, voiceover_path, word_timings)
+            done_vo[0] += 1
+            report(f"Voz en off + subtítulos por versión ({done_vo[0]}/{len(versions)})...",
+                   86 + done_vo[0])
+
+        report("Voz en off por versión (en paralelo)...", 86)
+        with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+            list(ex.map(_vo_one, list(enumerate(versions))))
 
     # ── Cut 4:5 para Meta feed (Manual §10.2): mismo master, recorte central 1080x1350 ──
+    # Las versiones CON voz ya lo traen de la pasada fusionada (v["path_45"]); esto cubre solo
+    # las que faltan (sin voz) — ahora con GPU (venc) y en paralelo, antes libx264 CPU en serie.
     if destino == "meta" and aspect == "9:16":
-        report("Generando el cut 4:5 para Meta feed...", 96)
-        for v in versions:
-            try:
-                out45 = v["path"].replace(".mp4", "_45.mp4")
-                run(["ffmpeg", "-y", "-i", v["path"],
-                     "-vf", "crop=iw:iw*5/4:0:(ih-iw*5/4)/2,setsar=1",
-                     "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "20",
-                     "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy", out45])
-                v["path_45"] = out45
-            except Exception:  # noqa: BLE001
-                pass
+        pend45 = [v for v in versions if not v.get("path_45")]
+        if pend45:
+            report("Generando el cut 4:5 para Meta feed...", 96)
+
+            def _mk45(v):
+                try:
+                    out45 = v["path"].replace(".mp4", "_45.mp4")
+                    run(["ffmpeg", "-y", "-i", v["path"],
+                         "-vf", "crop=iw:iw*5/4:0:(ih-iw*5/4)/2,setsar=1",
+                         *venc(),
+                         "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy", out45])
+                    v["path_45"] = out45
+                except Exception:  # noqa: BLE001
+                    pass
+
+            with ThreadPoolExecutor(max_workers=min(WORKERS, len(pend45))) as ex:
+                list(ex.map(_mk45, pend45))
 
     # ── QA GATE (Manual §11.1): ¿el producto se ve en los primeros 3s? (1 llamada Gemini) ──
     if gemini_key and versions and product_desc.strip():
@@ -602,13 +664,11 @@ def render_versions(
             report("QA: verificando que el producto salga en los primeros segundos...", 97)
             import json as _json
             import re as _re
-            from google import genai as _genai
-            from google.genai import types as _types
-            partes = [f"Producto: {product_desc.strip()}. Te paso 1 frame del segundo ~2.5 de "
-                      "cada video (numerados). Responde SOLO un JSON array "
-                      '[{"i":0,"producto_visible":true}, ...] indicando si el PRODUCTO (o su uso '
-                      "directo) se alcanza a ver en ese frame."]
-            oks = []
+            prompt_qa = (f"Producto: {product_desc.strip()}. Te paso 1 frame del segundo ~2.5 de "
+                         "cada video (numerados). Responde SOLO un JSON array "
+                         '[{"i":0,"producto_visible":true}, ...] indicando si el PRODUCTO (o su uso '
+                         "directo) se alcanza a ver en ese frame.")
+            frames_qa, oks = [], []
             for k, v in enumerate(versions):
                 fj = os.path.join(work_dir, f"_qa_{k}.jpg")
                 subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "2.5", "-i", v["path"],
@@ -616,12 +676,22 @@ def render_versions(
                                capture_output=True, timeout=30)
                 if os.path.exists(fj):
                     with open(fj, "rb") as fh:
-                        partes.append(_types.Part.from_bytes(data=fh.read(), mime_type="image/jpeg"))
+                        frames_qa.append(fh.read())
                     oks.append(k)
             if oks:
-                rq = _genai.Client(api_key=gemini_key).models.generate_content(
-                    model="gemini-2.5-flash", contents=partes)
-                m = _re.search(r"\[.*\]", rq.text or "", _re.DOTALL)
+                # rápido por REST (thinkingBudget=0, ~2s); fallback SDK como siempre
+                from . import gemini_fast
+                texto_qa = gemini_fast.generate(
+                    gemini_key, [prompt_qa] + [(fb, "image/jpeg") for fb in frames_qa])
+                if not texto_qa:
+                    from google import genai as _genai
+                    from google.genai import types as _types
+                    partes = [prompt_qa] + [_types.Part.from_bytes(data=fb, mime_type="image/jpeg")
+                                            for fb in frames_qa]
+                    rq = _genai.Client(api_key=gemini_key).models.generate_content(
+                        model="gemini-2.5-flash", contents=partes)
+                    texto_qa = rq.text or ""
+                m = _re.search(r"\[.*\]", texto_qa, _re.DOTALL)
                 if m:
                     for item in _json.loads(m.group(0)):
                         k = int(item.get("i", -1))

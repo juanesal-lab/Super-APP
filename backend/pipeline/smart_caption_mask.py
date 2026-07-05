@@ -113,11 +113,16 @@ def _classify_gemini(regions, frames, W, H, gemini_key) -> set[int]:
         "Devuelve SOLO un JSON array: [{\"n\":0,\"caption\":true}, {\"n\":1,\"caption\":false}, ...]"
     )
     try:
-        client = genai.Client(api_key=gemini_key)
-        resp = client.models.generate_content(
-            model=_MODEL,
-            contents=[prompt, types.Part.from_bytes(data=buf.tobytes(), mime_type="image/jpeg")])
-        m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
+        # rápido por REST (thinkingBudget=0, ~2s por corte vs ~5-15s "pensando"); fallback SDK
+        from . import gemini_fast
+        texto = gemini_fast.generate(gemini_key, [prompt, (buf.tobytes(), "image/jpeg")])
+        if not texto:
+            client = genai.Client(api_key=gemini_key)
+            resp = client.models.generate_content(
+                model=_MODEL,
+                contents=[prompt, types.Part.from_bytes(data=buf.tobytes(), mime_type="image/jpeg")])
+            texto = resp.text or ""
+        m = re.search(r"\[.*\]", texto, re.DOTALL)
         data = json.loads(m.group(0)) if m else []
         keep = {int(d["n"]) for d in data if d.get("caption") is True}
         return keep

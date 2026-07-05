@@ -135,7 +135,6 @@ def etiquetar_frases(frases_por_version: list[list[dict]], gemini_key: str | Non
         return
     if gemini_key:
         try:
-            from google import genai
             listado = "\n".join(f'{i}: "{f["texto"]}"' for i, f in enumerate(todas))
             prompt = (
                 f"Frases de guiones de anuncios de UN producto ({product_desc or 'producto'}). "
@@ -150,9 +149,15 @@ def etiquetar_frases(frases_por_version: list[list[dict]], gemini_key: str | Non
                 "- cta: llamado a comprar (oferta, envío, paga al recibir)\n"
                 f"Responde SOLO un JSON array [{{\"i\":0,\"fase\":\"problema\"}},...] con TODAS "
                 f"las frases (0..{len(todas) - 1}).\n\n{listado}")
-            cl = genai.Client(api_key=gemini_key)
-            resp = cl.models.generate_content(model="gemini-2.5-flash", contents=[prompt])
-            m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
+            # rápido por REST (thinkingBudget=0, ~2s); si falla, SDK como siempre
+            from . import gemini_fast
+            texto = gemini_fast.generate(gemini_key, [prompt])
+            if not texto:
+                from google import genai
+                cl = genai.Client(api_key=gemini_key)
+                resp = cl.models.generate_content(model="gemini-2.5-flash", contents=[prompt])
+                texto = resp.text or ""
+            m = re.search(r"\[.*\]", texto, re.DOTALL)
             if m:
                 validas = set(FASES) | {"cta"}
                 for item in json.loads(m.group(0)):

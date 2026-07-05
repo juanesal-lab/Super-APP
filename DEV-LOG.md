@@ -2904,3 +2904,15 @@ AVISO Juan/otra sesión: NO commiteado (hay trabajo en paralelo en la carpeta); 
 hay que reiniciarlo para que esto quede vivo. Firmas: solo params opcionales nuevos
 (caption_pngs/out_45 en add_voiceover_and_sfx; caption_events es función nueva) — tus callers
 viejos siguen idénticos.
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🎬 Escenas B-roll con PREVIEW (tarjetas como los creativos)
+Jack: "en las escenas haz lo mismo que los creativos para que se pueda ver un preview".
+- Buscar creativos, grupo "🎬 B-roll de apoyo": de lista de links pelados → GRILLA de tarjetas con
+  portada, views, ▶️ Ver (reproduce ahí mismo con el play de tikwm), 📋 copiar y link a TikTok
+  (tkBrCard/tkBrPlay — mismo look de tkTkCard, sin botones de juez porque el b-roll no se verifica).
+- Cortar clips, "🎭 Buscar B-roll con IA": debajo de los botones aparece la grilla de preview
+  (#brollPrev) con badge de fase (🔴 dolor / ⚙️ uso / ✨ resultado) y ▶️ — las escenas se VEN antes
+  de darle 📥 Bajar. El cajón de links sigue igual (el flujo de descarga no cambia).
+- Cero backend (los items ya traían cover/title/play/fase). node --check OK.
+- AVISO Juan: solo index.html (tkPaint grupo 3, tkBrCard/tkBrPlay nuevos, div #brollPrev,
+  buscarBrollIA pinta el preview). Tu flujo de fases/descarga intacto.

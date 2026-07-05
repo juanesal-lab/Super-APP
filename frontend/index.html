@@ -744,7 +744,9 @@
           h+=`<h3 style="margin:26px 0 4px">🎬 B-roll de apoyo (${br.length})</h3>`;
           h+=`<div class="pmsg" style="margin:0 0 10px">Escenas de stock/TikTok adaptadas al ÁNGULO de tu producto (antes/después, uso, reacciones) — para intercalar y hacer el video más dopamínico. Elige las que te cuadren.</div>`;
           h+=`<button class="btn sec" style="margin:0 0 10px;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${br.map(b=>b.url).join('\n').replace(/"/g,'&quot;')}">📋 Copiar los ${br.length} links de b-roll</button>`;
-          br.forEach((b,i)=>{ h+=`<div class="autoStep">🎬 <a href="${tkEsc(b.url)}" target="_blank" style="color:var(--accent)">${i+1}. ${tkEsc(b.url.length>70?b.url.slice(0,67)+'…':b.url)}</a>${b.title?` <span>· ${tkEsc(b.title).slice(0,80)}</span>`:''}</div>`; });
+          h+='<div class="fpGrid">';
+          br.forEach((b,i)=>{ h+=tkBrCard(b,i); });
+          h+='</div>';
         }
         document.getElementById('tkResult').innerHTML=h;
       }
@@ -799,6 +801,27 @@
         const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video) return;
         btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML=
           '<video class="fpThumb" src="/api/foreplay-video?url='+encodeURIComponent(a.video)+'" controls autoplay playsinline></video>';
+      }
+      // 🎬 tarjetas de B-ROLL con preview (mismo look que los creativos, sin botones de juez)
+      function tkBrCard(b,i){
+        const views=b.plays?`<span class="fpBadge">▶ ${b.plays>=1e6?(b.plays/1e6).toFixed(1)+'M':b.plays>=1e3?Math.round(b.plays/1e3)+'K':b.plays} views</span>`:'';
+        return `<div class="fpCard" style="cursor:default">
+          <div class="fpThumbWrap">
+            <img class="fpThumb" src="${tkEsc(b.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
+            ${views}</div>
+          <div class="fpBody"><div class="fpName">${tkEsc(b.title)||'—'}</div>
+            <div class="fpBtns">
+              <button class="fpBtn" onclick="tkBrPlay(${i},this)" title="Reproducir aquí mismo antes de copiarlo">▶️ Ver</button>
+              <button class="fpBtn" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅'" data-u="${tkEsc(b.url)}" title="Copiar el link">📋</button>
+            </div>
+            <a class="fpLink" href="${tkEsc(b.url)}" target="_blank">abrir en TikTok ↗</a>
+          </div></div>`;
+      }
+      function tkBrPlay(i,btn){
+        const b=(window._tkS?window._tkS.broll:[])[i]; if(!b) return;
+        if(!b.play){ window.open(b.url,'_blank'); return; }
+        btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML=
+          '<video class="fpThumb" src="'+tkEsc(b.play)+'" referrerpolicy="no-referrer" controls autoplay playsinline></video>';
       }
       // 🔄 cambiar (angulo=false: busca OTRO y lo pone en ese puesto) / 🎯 más así (angulo=true:
       // agrega hasta 6 creativos MÁS con el mismo ángulo de venta del que te gustó)
@@ -1257,6 +1280,7 @@
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goBrollIA" style="margin-top:10px;width:auto" onclick="buscarBrollIA()">🎭 Buscar B-roll con IA (Claude)</button>
       <button class="btn sec" id="goBroll" style="margin-top:10px;width:auto" onclick="bajarLinks('tkBrollLinks','goBroll')">📥 Bajar B-roll</button>
+      <div id="brollPrev" class="fpGrid" style="margin-top:10px"></div>
     </div>
   </div>
 
@@ -2752,9 +2776,32 @@ async function buscarBrollIA(){
     links.forEach(l=>{ brollFaseMap[l.url] = l.fase || "problema"; });
     const ta = document.getElementById("tkBrollLinks");
     ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + links.map(l=>l.url).join("\n");
-    btn.textContent = `✅ ${links.length} escenas — dale 📥 Bajar B-roll`;
+    window._brollPrev = (window._brollPrev||[]).concat(links);   // preview con tarjetas (como los creativos)
+    brollPrevPaint();
+    btn.textContent = `✅ ${links.length} escenas — míralas abajo y dale 📥 Bajar B-roll`;
   }catch(e){ btn.textContent = orig; alert("Error: "+e); }
   finally{ setTimeout(()=>{ btn.disabled=false; if(btn.textContent.startsWith("✅")) btn.textContent=orig; }, 6000); }
+}
+
+// 🎬 preview de las escenas B-roll encontradas por la IA (tarjetas con ▶️, como los creativos)
+function brollPrevPaint(){
+  const d=document.getElementById('brollPrev'); if(!d) return;
+  const F={problema:'🔴 dolor',funcionamiento:'⚙️ uso',resultado:'✨ resultado'};
+  d.innerHTML=(window._brollPrev||[]).map((b,i)=>`<div class="fpCard" style="cursor:default">
+    <div class="fpThumbWrap">
+      <img class="fpThumb" src="${tkEsc(b.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
+      <span class="fpBadge">${F[b.fase]||'🔴 dolor'}</span></div>
+    <div class="fpBody"><div class="fpName">${tkEsc(b.title||'')||'—'}</div>
+      <div class="fpBtns">
+        <button class="fpBtn" onclick="brollPrevPlay(${i},this)" title="Reproducir aquí mismo">▶️ Ver</button>
+        <a class="fpBtn" href="${tkEsc(b.url)}" target="_blank" title="Abrir en TikTok">↗</a>
+      </div></div></div>`).join('');
+}
+function brollPrevPlay(i,btn){
+  const b=(window._brollPrev||[])[i]; if(!b) return;
+  if(!b.play){ window.open(b.url,'_blank'); return; }
+  btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML=
+    '<video class="fpThumb" src="'+tkEsc(b.play)+'" referrerpolicy="no-referrer" controls autoplay playsinline></video>';
 }
 
 // Solo BAJA los videos de TikTok y los agrega a la lista de arriba (NO los corta).

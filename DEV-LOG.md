@@ -2993,3 +2993,20 @@ Todo compila (py + JS 14/14). Server reiniciado y sirviendo 200. Pendientes de l
 cortaron (blur en ruta de producción con el capitán, degradación con Gemini muerto, Colombia en
 todas las búsquedas, Radar, Ads imagen) — quedan para retomar. AVISO Juan: solo app.py + regen.py
 + index.html; nada de tu terreno de assemble/orchestrator tocado.
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🫥 Blur: el MISMO fix ahora también en la ruta CON Gemini (era la que Jack veía)
+Diagnóstico (rastreando el hallazgo #1 del auditor): hay DOS sistemas de tapado y el fix de la
+mañana solo tocó UNO. En orchestrator._mask_seg: CON gemini_key corre `smart_caption_mask.
+mask_captions_smart` (EAST localiza + Gemini clasifica caption/producto); SIN key corre mi
+`text_detect.mask_video`. Jack normalmente tiene Gemini → veía la ruta SMART, que conservaba las
+DOS fallas viejas: desenfoque gaussiano débil (línea 215, `GaussianBlur k~w/4` = texto legible) y
+cero tracking/merge (boxes por-frame → parpadeo + líneas sueltas del párrafo sin tapar).
+FIX en smart_caption_mask.py (pase 3): REUSA los helpers nuevos de text_detect — `_track`
+(bloques unidos + tramos continuos con colchón) → `_box_at` por frame → `_obscure` (miniatura
+÷36 = ilegible). Ahora las dos rutas tapan IGUAL de fuerte.
+VERIFICADO frame a frame (yo): sobre segraw_003 real, caption "Works against..." y pill "Chemical
+Free" tapados COMPLETOS y CONTINUOS en los 48 frames, ILEGIBLES a resolución nativa (recortes
+mirados). 7s el segmento. py_compile ok. Nota: la letra chica impresa EN el empaque sigue visible
+(texto físico, no caption — Gemini la excluye en producción; sin key aquí tampoco la detectó como
+bloque horizontal). AVISO Juan: solo smart_caption_mask.py (pase 3) + text_detect ya tenía los
+helpers; nada más.

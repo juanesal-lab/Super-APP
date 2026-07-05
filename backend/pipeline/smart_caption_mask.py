@@ -146,6 +146,7 @@ def mask_captions_smart(in_path: str, out_path: str, *, gemini_key: str | None =
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    NF = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
 
     # Pase 1: detectar (EAST) frame por frame; guarda cajas + algunos frames para clasificar.
     # EAST AFINADO: input más grande (640x1280) + umbral más bajo para captar TAMBIÉN captions
@@ -194,25 +195,31 @@ def mask_captions_smart(in_path: str, out_path: str, *, gemini_key: str | None =
     if not cap_boxes:
         return in_path
 
-    # Pase 3: desenfocar SOLO las captions, frame por frame
-    rep("Desenfocando solo las captions...", 65)
+    # Pase 3: TAPAR SOLO las captions — MISMO endurecimiento que text_detect.mask_video:
+    # bloques unidos (párrafo entero, no líneas sueltas) + tracking temporal (relleno de huecos =
+    # sin parpadeo) + relleno ILEGIBLE (miniatura, no el gaussiano débil que dejaba letras leíbles).
+    # Antes esta ruta (la que corre CON Gemini) tenía las 2 fallas que ya se arreglaron en la ruta EAST.
+    rep("Tapando solo las captions...", 65)
+    last_frame = (NF - 1) if NF > 0 else (max(cap_boxes) + td.DETECT_EVERY + td._PAD_FRAMES)
+    tracks = td._track(cap_boxes, last_frame)     # une bloques + tramos continuos con colchón
+    frame_boxes: dict[int, list[tuple]] = {}
+    for t in tracks:
+        for fi in range(t["start"], t["end"] + 1):
+            frame_boxes.setdefault(fi, []).append(td._box_at(t, fi))
+
     cap = cv2.VideoCapture(in_path)
     tmp = out_path + ".noaudio.mp4"
     writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
-    boxes, i = [], 0
+    i = 0
     while True:
         ok, frame = cap.read()
         if not ok:
             break
-        if i % td.DETECT_EVERY == 0:
-            boxes = cap_boxes.get(i, [])
-        for (x, y, w, h) in boxes:
+        for (x, y, w, h) in frame_boxes.get(i, []):
             x0, y0 = max(0, x), max(0, y)
             x1, y1 = min(W, x + w), min(H, y + h)
             if x1 > x0 and y1 > y0:
-                roi = frame[y0:y1, x0:x1]
-                k = max(9, (min(x1 - x0, y1 - y0) // 4) | 1)
-                frame[y0:y1, x0:x1] = cv2.GaussianBlur(roi, (k, k), 0)
+                frame[y0:y1, x0:x1] = td._obscure(frame[y0:y1, x0:x1])
         writer.write(frame)
         i += 1
     writer.release()

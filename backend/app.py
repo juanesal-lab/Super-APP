@@ -34,6 +34,7 @@ from pipeline.producto_clips import producto_a_clips
 from pipeline.disruptive_images import (generar_conceptos, generar_ads_fullprompt,
                                         generar_ad_fullprompt, _integrar_producto_ia,
                                         editar_imagen_ia, _error_amigable, _IMG_MODEL_DRAFT)
+from pipeline.image_variator import variar_imagen
 from pipeline import foreplay_search as fp
 from pipeline.hook_variator import variar_hook
 from pipeline.creative_variator import generar_variaciones
@@ -2143,6 +2144,54 @@ def disruptive_swap_concept(job_id: str = Form(...), index: int = Form(...)):
     variantes[index] = nuevo   # reemplaza el concepto viejo por el nuevo
     _persist_disruptive(job_id)
     return {"variante": nuevo}
+
+
+# ---- VARIAR IMAGEN GANADORA: subes una imagen que sirvió -> variaciones (mismo producto/ángulo) ----
+
+def _run_variar_imagen_job(job_id, src, out_dir, tipos, n, pro, producto):
+    job = JOBS[job_id]
+
+    def progress(m, p):
+        job["message"] = m
+        job["progress"] = p
+
+    try:
+        r = variar_imagen(src, out_dir, _load_env_key(), tipos=tipos, n=n, pro=pro,
+                          product_desc=producto, progress=progress)
+        job["result"] = r
+        job["status"] = "done" if r.get("ok") else "error"
+        if not r.get("ok"):
+            job["message"] = r.get("error") or "Google no devolvió imágenes (revisa créditos/clave)"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+
+
+@app.post("/api/variar-imagen")
+def variar_imagen_endpoint(imagen: UploadFile = File(...),
+                           producto: str = Form(""),
+                           tipos: str = Form("estilo,escenario,fondo"),
+                           n: int = Form(6),
+                           modelo: str = Form("rapida")):
+    """Sube UNA imagen ganadora -> genera N variaciones (mismo producto/ángulo, distinto tipo).
+    modelo: 'rapida' = Nano Banana 1 (~$0.04) | 'pro' = Nano Banana 2 (~$0.13)."""
+    if not (imagen and imagen.filename):
+        raise HTTPException(400, "Sube la imagen que te funcionó")
+    job_id = uuid.uuid4().hex[:12]
+    up = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(up, exist_ok=True)
+    src = os.path.join(up, "winner_" + os.path.basename(imagen.filename))
+    with open(src, "wb") as f:
+        shutil.copyfileobj(imagen.file, f)
+    tset = tuple(t.strip() for t in tipos.split(",") if t.strip()) or ("estilo", "escenario", "fondo")
+    n = max(1, min(int(n or 6), 10))
+    pro = str(modelo).lower() in ("pro", "hd", "2", "nano2", "nanobanana2")
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "created": time.time(), "_src": src, "_producto": producto.strip(), "_pro": pro}
+    threading.Thread(target=_run_variar_imagen_job,
+                     args=(job_id, src, os.path.join(WORK_DIR, job_id), tset, n, pro, producto.strip()),
+                     daemon=True).start()
+    return {"job_id": job_id}
 
 
 def _within(path: str, *bases: str) -> bool:

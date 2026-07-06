@@ -3263,3 +3263,22 @@ el resto es consenso de fuentes + reseñas reales por categoría. Datos fuertes:
 en incontinencia (US Chamber/NAFC); veneno de abeja tiene fraude/deepfake documentado (VeraFiles/Rappler)
 → hooks sin sobreprometer; rodillera con límites reales (Cleveland Clinic: artrosis sí, ligamento roto no).
 Referencia para narrative/scripts/creative_variator/B-roll. Solo doc; cero código.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 📸 NUEVA pestaña "Variar imagen" (variar una imagen GANADORA)
+Pedido de Jack: "le paso la imagen que me sirvió y que me dé variaciones con diferentes tipos de imagen
+de ese ángulo". Construida la capa completa sobre Nano Banana (image-to-image, como disruptive_images):
+- **NUEVO `backend/pipeline/image_variator.py`**: `variar_imagen(src, out_dir, gemini_key, tipos, n, pro,
+  product_desc, progress)`. 14 recetas en 3 grupos (estilo / escenario / fondo) que CONSERVAN producto +
+  ángulo (prompt base fuerte: mismo producto, misma cámara, foto real, sin texto) y cambian el "tipo".
+  `_repartir` reparte las N variaciones en round-robin entre los grupos elegidos (variedad). Normaliza la
+  imagen subida a PNG antes de mandarla. Barato por defecto (Nano Banana 1 ~$0.04; pro ~$0.13).
+- **`app.py`**: import + `/api/variar-imagen` (UploadFile imagen + tipos/n/modelo, job en background como
+  los demás) + `_run_variar_imagen_job`. Resultados en WORK_DIR/<job>/var_XX.png (servibles por /api/file).
+- **`frontend/index.html`**: pestaña "📸 Variar imagen" (nav + panel p-varimg): subir imagen con preview,
+  producto opcional, 3 checkboxes de tipo, ¿cuántas? (4/6/8), rápida/pro, grilla de resultados (reusa
+  disGrid/disCard) con descarga por variación. Polling a /api/status como el disruptivo.
+- **VERIFICADO SIN GASTAR**: py_compile OK; JS 15/15 bloques OK; `_repartir` reparte 2/2/2 y topa bien;
+  la app importa y `/api/variar-imagen` queda registrada (51 rutas); UI vista en navegador (screenshot) —
+  se ve consistente. NO corrí una generación real (regla de $0). Para probar de verdad hay que REINICIAR
+  el server :8420 (mi endpoint es backend nuevo). AVISO Juan: NUEVO image_variator.py; en app.py solo un
+  import + 1 endpoint + 1 job (nada tuyo tocado); en index.html 1 botón de nav + 1 panel + su script.

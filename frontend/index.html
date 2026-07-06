@@ -445,6 +445,7 @@
     <button data-p="p-producto">📦 Mi producto</button>
     <button data-p="p-editor">🎬 Editor</button>
     <button data-p="p-disruptivo">🎨 Ads imagen</button>
+    <button data-p="p-varimg">📸 Variar imagen</button>
     <button data-p="p-descargar">📥 Descargar</button>
     <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-buscar">🔍 Buscar creativos</button>
@@ -2153,6 +2154,121 @@
     }
   </script>
   </div><!-- /p-editor -->
+
+  <div class="panel" id="p-varimg" style="display:none">
+  <div class="autoHero">
+    <h2>📸 <span>Variar imagen</span> ganadora</h2>
+    <p class="lead">Sube la <b>imagen que te funcionó</b> y la IA te devuelve variaciones que
+      <b>mantienen el mismo producto y el mismo ángulo</b>, pero cambian el <b>tipo de imagen</b>
+      (estilo de anuncio, escenario/fondo o solo la luz). Ideal para probar más versiones de un ganador.</p>
+
+    <input type="file" id="viImg" accept="image/*" class="hidden">
+    <label class="autoDrop" id="viImgDrop" for="viImg" style="margin-top:6px">
+      <b id="viImgName">🖼️ Sube la imagen que te funcionó</b>
+      <div class="s">JPG o PNG. La IA copia el producto y el ángulo exactos.</div>
+    </label>
+    <img id="viPrev" alt="" style="display:none;max-width:180px;border-radius:12px;margin-top:10px;border:1px solid var(--line)">
+
+    <textarea id="viProd" class="full" rows="2" style="margin-top:12px"
+      placeholder="(Opcional) ¿Qué es tu producto? Ej: MultiBalm, barra hidratante para el rostro. Ayuda a la IA a mantenerlo fiel."></textarea>
+
+    <div class="disOfertas" style="margin-top:12px">
+      <span style="font-weight:700;font-size:13px;color:var(--muted)">Tipos de variación:</span>
+      <label><input type="checkbox" class="viTipo" value="estilo" checked> Estilos de anuncio</label>
+      <label><input type="checkbox" class="viTipo" value="escenario" checked> Escenarios / fondos</label>
+      <label><input type="checkbox" class="viTipo" value="fondo" checked> Solo fondo / luz</label>
+    </div>
+
+    <div class="disModelo">
+      <span style="font-weight:700">¿Cuántas?</span>
+      <select id="viN" style="padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-family:inherit">
+        <option value="4">4 variaciones</option>
+        <option value="6" selected>6 variaciones</option>
+        <option value="8">8 variaciones</option>
+      </select>
+      <label><input type="radio" name="viModelo" value="rapida" checked> 🐇 Rápida (~$0.04 c/u)</label>
+      <label><input type="radio" name="viModelo" value="pro"> 💎 Pro (~$0.13 c/u)</label>
+    </div>
+
+    <button class="autoBtn" id="viGo" onclick="viGo()">✨ Generar variaciones</button>
+
+    <div class="autoProg hidden" id="viProg">
+      <div class="autoBarWrap"><div class="autoBar" id="viBar"></div></div>
+      <div class="autoMsg" id="viMsg">Iniciando…</div>
+    </div>
+    <div id="viResult"></div>
+  </div>
+
+  <script>
+    (function(){
+      const f=document.getElementById('viImg');
+      f && f.addEventListener('change',e=>{
+        const x=e.target.files[0];
+        document.getElementById('viImgName').textContent = x?'🖼️ '+x.name:'🖼️ Sube la imagen que te funcionó';
+        const pv=document.getElementById('viPrev');
+        if(x){ pv.src=URL.createObjectURL(x); pv.style.display='block'; } else pv.style.display='none';
+      });
+    })();
+    function viTipos(){ return [...document.querySelectorAll('.viTipo:checked')].map(c=>c.value); }
+    let viCacheBust=0;
+    async function viGo(){
+      const img=document.getElementById('viImg').files[0];
+      const msg=document.getElementById('viMsg'), prog=document.getElementById('viProg');
+      if(!img){ prog.classList.remove('hidden'); document.getElementById('viBar').style.width='0%'; msg.textContent='Sube la imagen que te funcionó 👆'; return; }
+      const tipos=viTipos();
+      if(!tipos.length){ prog.classList.remove('hidden'); msg.textContent='Marca al menos un tipo de variación 👆'; return; }
+      const fd=new FormData();
+      fd.append('imagen',img);
+      fd.append('producto',document.getElementById('viProd').value.trim());
+      fd.append('tipos',tipos.join(','));
+      fd.append('n',document.getElementById('viN').value);
+      fd.append('modelo',(document.querySelector('input[name="viModelo"]:checked')||{}).value||'rapida');
+      document.getElementById('viGo').disabled=true;
+      document.getElementById('viResult').innerHTML='';
+      prog.classList.remove('hidden'); document.getElementById('viBar').style.width='8%';
+      msg.textContent='🎨 Generando variaciones con Nano Banana…';
+      try{
+        const r=await fetch('/api/variar-imagen',{method:'POST',body:fd}); const j=await r.json();
+        if(!j.job_id){ document.getElementById('viGo').disabled=false; msg.innerHTML='<span style="color:var(--warn)">'+(j.detail||'Error')+'</span>'; return; }
+        window._viJob=j.job_id; viPoll();
+      }catch(e){ document.getElementById('viGo').disabled=false; msg.textContent='Error: '+e; }
+    }
+    async function viPoll(){
+      try{
+        const s=await (await fetch('/api/status/'+window._viJob)).json();
+        document.getElementById('viBar').style.width=Math.max(8,s.progress||0)+'%';
+        document.getElementById('viMsg').textContent=s.message||'';
+        if(s.status==='running'){ setTimeout(viPoll,1500); return; }
+        document.getElementById('viGo').disabled=false;
+        if(s.status==='error'){ document.getElementById('viMsg').innerHTML='<span style="color:var(--warn)">'+(s.message||'Error')+'</span>'; return; }
+        viCacheBust=Date.now();
+        viRender((s.result||{}).variantes||[]);
+      }catch(e){ document.getElementById('viGo').disabled=false; document.getElementById('viMsg').textContent='Error: '+e; }
+    }
+    function viRender(vs){
+      const box=document.getElementById('viResult'), enc=encodeURIComponent;
+      if(!vs.length){ box.innerHTML='<div class="pmsg" style="margin-top:12px">No salieron variaciones. Reintenta o revisa tus créditos de Google.</div>'; return; }
+      const etq={estilo:'Estilo de anuncio',escenario:'Escenario / fondo',fondo:'Fondo / luz'};
+      let h='<div class="disGrid">';
+      vs.forEach((v,i)=>{
+        if(v.imagen){
+          const u='/api/file?path='+enc(v.imagen);
+          h+=`<div class="disCard"><img src="${u}&_cb=${viCacheBust}" alt="">
+            <div class="body"><div class="disAng">${v.estilo||'Variación'}</div>
+            <div class="disWhy">${etq[v.grupo]||''}</div></div>
+            <div class="disActions"><a class="disAct disDl" style="grid-column:1/-1" href="${u}" download="variacion_${i+1}.png">⬇️ Descargar</a></div></div>`;
+        } else {
+          h+=`<div class="disCard"><div class="body"><div class="disAng">${v.estilo||'Variación'}</div>
+            <div class="disWhy" style="color:var(--warn)">✗ No se generó (reintenta)</div></div></div>`;
+        }
+      });
+      h+='</div>';
+      box.innerHTML=h;
+      const ok=vs.filter(v=>v.imagen).length;
+      document.getElementById('viMsg').textContent='✅ '+ok+' variación(es) lista(s).';
+    }
+  </script>
+  </div><!-- /p-varimg -->
 
   <div class="panel" id="p-descargar" style="display:none">
   <div class="autoHero">

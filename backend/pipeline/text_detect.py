@@ -16,9 +16,13 @@ import numpy as np
 from .ffmpeg_utils import run
 
 # Los objetos de OpenCV compartidos (_net EAST, _face Haar) NO son thread-safe.
-# El masking corre en paralelo (varios cortes a la vez), así que serializamos las
-# llamadas nativas no-seguras con este lock (si no, dos threads a la vez -> SIGSEGV).
+# El masking corre en paralelo (varios cortes a la vez). cv2.dnn.Net y CascadeClassifier NO son
+# thread-safe si se COMPARTE la misma instancia (por eso antes un lock global serializaba TODOS
+# los forward de EAST → mataba el paralelismo justo en el 40% más caro). Solución: cada thread su
+# PROPIA instancia (threading.local); readNet cuesta ~0.11s y así 3 threads corren su forward EN
+# PARALELO de verdad. El lock queda solo para la descarga del modelo (una vez).
 _CV_LOCK = threading.Lock()
+_tls = threading.local()
 
 _MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "models", "east.pb")
@@ -76,26 +80,25 @@ def available() -> bool:
 
 
 def _load():
-    global _net
-    if _net is None:
-        with _CV_LOCK:                       # evita doble-init desde varios threads
-            if _net is None:
-                _net = cv2.dnn.readNet(_MODEL_PATH)
-    return _net
+    """Net de EAST POR-THREAD (cada thread su instancia → forward en paralelo real, sin lock).
+    Antes: un Net global + lock que serializaba TODOS los forward entre los workers de masking."""
+    net = getattr(_tls, "net", None)
+    if net is None:
+        net = cv2.dnn.readNet(_MODEL_PATH)   # ~0.11s, barato; una instancia por thread es thread-safe
+        _tls.net = net
+    return net
 
 
 def _faces(frame):
-    """Detecta caras (para NO taparlas aunque EAST se confunda)."""
-    global _face
-    if _face is None:
-        with _CV_LOCK:
-            if _face is None:
-                _face = cv2.CascadeClassifier(
-                    cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    """Detecta caras (para NO taparlas aunque EAST se confunda). CascadeClassifier POR-THREAD."""
+    face = getattr(_tls, "face", None)
+    if face is None:
+        face = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        _tls.face = face
     try:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        with _CV_LOCK:                       # CascadeClassifier NO es thread-safe -> serializar
-            return _face.detectMultiScale(gray, 1.1, 5, minSize=(60, 60))
+        return face.detectMultiScale(gray, 1.1, 5, minSize=(60, 60))
     except Exception:
         return []
 
@@ -117,11 +120,9 @@ def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH) -> list[tuple]:
     rW, rH = W / float(_INW), H / float(_INH)
     blob = cv2.dnn.blobFromImage(frame, 1.0, (_INW, _INH),
                                  (123.68, 116.78, 103.94), swapRB=True, crop=False)
-    # setInput + forward tocan el estado del net compartido: deben ir juntos bajo el lock
-    # (si otro thread hace setInput entremedio, este forward usaría la entrada equivocada -> crash).
-    with _CV_LOCK:
-        net.setInput(blob)
-        scores, geo = net.forward(_LAYERS)
+    # net es POR-THREAD (threading.local) → setInput+forward sin lock, corren en paralelo real.
+    net.setInput(blob)
+    scores, geo = net.forward(_LAYERS)
     nR, nC = scores.shape[2:4]
     rects, confs = [], []
     for y in range(nR):

@@ -3217,3 +3217,39 @@ lógica tuya tocada.
 - Pendiente menor detectado: /api/foreplay-clips tampoco llama _stash_regen (como pasaba en Mi producto),
   pero aquí NO filtra _regen (process_job sin voz no lo genera igual) → sin bug visible. Vigilar si algún
   día muestran "Regenerar" en esa pestaña.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🔴 FIX crash de Clonar Ganador + ⚡ EAST en paralelo real (2.5-3 min menos) + música paralela
+Sesión de optimización autónoma (agentes de performance + robustez con datos medidos). Aplicado (seguro, mi terreno):
+- **🔴→✅ "Clonar Ganador" estaba MUERTO 100%** por un typo: `app.py:892` usaba `s.get("voz")` pero la
+  función `_run_clone_job` recibe `settings` (no hay `s`) → `NameError` en cada corrida, video del clon
+  descartado, job en error críptico. Fix: `s`→`settings`. (La línea 1172 tiene `s.get` pero AHÍ es válido:
+  `s = job["settings"]` está definido en _run_render_job — no se tocó.)
+- **⚡→✅ EAST en PARALELO real** (hallazgo #1 del agente de perf, con datos): el `_CV_LOCK` global
+  serializaba TODOS los forward de EAST entre los 3 workers de masking — pero el lock solo existía para
+  evitar el SIGSEGV de COMPARTIR el mismo objeto Net. Fix en `text_detect.py`: `threading.local()` → cada
+  thread su propio Net + CascadeClassifier (readNet cuesta 0.11s), sin lock en el hot path. STRESS TEST:
+  36 masks en paralelo (3 rondas × 12, 8 workers) → CERO crashes. Ahorro estimado ~25% del tiempo de
+  masking (el 40% de EAST pasa de serial a 3x) = ~2.5-3 min en job chico, ~12 min en job grande.
+- **⚡→✅ Música/SFX en paralelo** (`app.py::_agregar_musica_sfx`): era el último post-proceso por versión
+  en serie; ahora ThreadPoolExecutor como banner/voz. ~10-20s menos por job.
+- Ya hecho antes en la sesión: auto-limpieza de disco (16GB liberados + auto-GC), E2E Cortar clips +
+  Foreplay→clips verificados, Foreplay 5 nichos validados.
+
+### 📋 PARA JUAN — robustez con Gemini agotado (auditoría, 11 🔴 detectados; TU terreno, no toqué)
+El agente probó OFFLINE con 429. Cuando Gemini/Claude fallan, varios flujos MIENTEN o entregan basura como
+"listo". Los que tocan tus archivos (te los dejo para que decidas):
+- 🔴 `/api/auto` (auto_studio.py:488 + app.py:584): devuelve `ok:True` incondicional → UI dice "✅ 1/1
+  listo" aunque Narrativa/Doblaje/Subtítulos fallaron (entrega el original re-encodeado). Fix: `ok` real.
+- 🔴 winner_clone: con Gemini caído, "Detectar producto" + "Reemplazo" fallan → devuelve el producto del
+  COMPETIDOR casi intacto como "5/9 pasos OK". Debe dar ok:False (rompe tu Regla de Juan).
+- 🔴 scripts.py:383: traga el 429 y devuelve [] → job "Guiones listos" con 0 guiones, y el front culpa a
+  "Gemini" cuando el motor real es CLAUDE. Fix: error explícito + texto correcto.
+- 🔴 swap (app.py:1226): si detect_product_ranges da [] (por 429 O por producto ausente) → dice "describe
+  mejor tu producto" culpando a Jack cuando es la cuota. Fix: distinguir cuota vs no-encontrado.
+- 🔴 regen.py:71 motivo "guion": si Claude/Gemini fallan, re-monta con el guion VIEJO marcado "regenerado".
+- 🔴 subtitle_band / narrative / hook auto / orchestrator "traducir": reportan ✓ o entregan sin avisar
+  cuando la IA no corrió (detalle por archivo en el reporte del agente).
+- Transversal: `has_gemini_key` solo checa que la key EXISTA, no que funcione → pill "configurada ✓" con
+  la key 429. Y ningún ffmpeg valida tamaño del mp4 de salida (posible mp4 truncado como "ok").
+- ✅ Bien diseñados (patrón a copiar): disruptive_images (_error_amigable), dub_colombia, tiktok_search
+  (mensaje honesto), text_translate (no escribe si falla), hook_variator (valida keys temprano).

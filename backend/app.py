@@ -221,7 +221,8 @@ def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress,
 
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
     """Cortar clips: música de fondo (baja) + SFX variados en los cortes, conservando el audio del clip."""
-    from pipeline.assemble import add_music_sfx
+    from pipeline.assemble import add_music_sfx, WORKERS
+    from concurrent.futures import ThreadPoolExecutor
     sfx = list_sfx()
     ek = _load_eleven_key()
     music_path = None
@@ -233,7 +234,8 @@ def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, 
                       f"{product_desc or 'producto'}, viral, sin voz", music_path, length_ms=30000)
         except Exception:  # noqa: BLE001
             music_path = None
-    for v in versions:
+    # EN PARALELO (antes en serie): cada versión es un remux de audio independiente (-c:v copy).
+    def _mx_one(v):
         cuts = list(v.get("cut_times") or [])   # tiempos REALES post-dissolve (build_variations)
         if not cuts:
             acc = 0.0
@@ -248,6 +250,9 @@ def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, 
                                       cut_times=cuts, sfx_events=events)
         except Exception:  # noqa: BLE001
             pass
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_mx_one, versions))
 
 
 def _run_job(job_id: str, paths: list[str], settings: dict):
@@ -889,7 +894,7 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
             gemini_key=_load_env_key(), eleven_key=_load_eleven_key(),
             work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
         )
-        _stash_regen(job, result, job_id, {"voz": s.get("voz")})
+        _stash_regen(job, result, job_id, {"voz": settings.get("voz")})   # era s.get → NameError (crash 100%)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):

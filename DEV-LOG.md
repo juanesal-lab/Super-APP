@@ -3151,3 +3151,20 @@ con el video ya cargado, dejando la búsqueda original abierta para seguir busca
   _es_colombiano, tiktok region!="CO") y Foreplay prioriza español (languages="spanish"). Guardado en
   memoria del proyecto. PENDIENTE opcional: fallback a otros idiomas cuando se acaben los de español.
 - Verificado: JS node --check 14/14 ok; funciones globales enlazadas (abrirDoblarNuevaPestana x3).
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🏆 Foreplay trae VALIDADOS por defecto + patrón ganador documentado
+Jack mostró 3 creativos (repelente de plagas) como "así los quiero: validados Y bien hechos" y pidió
+buscar en Foreplay/Meta con su API los que llevan +1 mes prendidos, analizarlos e integrarlos.
+- **Búsqueda REAL con su API** (foreplay_search.buscar_ads, order=longest_running, running_min_days=30):
+  30 ganadores del repelente con +30 días → Bakanoforth-a 499d, Superzebra 590d en FB/IG. El pipeline
+  ya existía; solo faltaba usarlo con el filtro de días.
+- **INTEGRACIÓN 1 (UI)**: la pestaña Foreplay ahora arranca con "🏆 Mín. días = 30" (antes 0) → cada
+  búsqueda trae ads con +1 mes prendidos = validados. Orden "Más días corriendo" ya era el default.
+- **INTEGRACIÓN 2 (doc)**: `assets/patron-ganador-validado.md` — el ADN exacto de los 3 ejemplos
+  (HOOK producto+plaga+texto 0-3s → DOLOR b-roll asco → PRODUCTO caja en mano → DEMO enchufado →
+  CTA), los 6 elementos que hacen que conviertan y no se vean feos, y el pipeline montado
+  (Foreplay validados → ✂️ cortar en clips → reconstruir en las 8 versiones con Hormozi + b-roll dolor
+  + demo). Referencia para narrative/scripts/captions.
+- El flujo completo YA funciona: Foreplay (validados) → "✂️ Cortar seleccionados en clips"
+  (/api/foreplay-clips) → Cortar clips arma el patrón. Solo frontend (1 default) + doc nueva.
+AVISO Juan: cero backend tuyo tocado; fpDays default 0→30 + assets/patron-ganador-validado.md.

@@ -89,8 +89,12 @@ def safe_top_y(video_path: str, gemini_key: str | None) -> float:
 
 def add_offer_banner(video_path: str, out_path: str, work_dir: str, *,
                      line1: str = "ENVÍO GRATIS · PAGAS AL RECIBIR", line2: str = "OFERTA 2X1",
+                     start: float = 0.0, dur: float = 0.0,
                      gemini_key: str | None = None) -> str:
-    """Pone el banner arriba (en la y que la IA juzgó libre). Devuelve out_path o el original si falla."""
+    """Pone el banner arriba (en la y que la IA juzgó libre). Devuelve out_path o el original si falla.
+
+    `start`>0: el banner APARECE en ese segundo (no desde el inicio → no choca con el gancho).
+    `dur`>0: se queda visible `dur` segundos desde `start`; 0 = hasta el final."""
     try:
         info = probe(video_path)
         W, H = info.width, info.height
@@ -99,8 +103,16 @@ def add_offer_banner(video_path: str, out_path: str, work_dir: str, *,
         # (app._agregar_banner_oferta) y con un nombre fijo se pisaban entre sí.
         png = os.path.join(work_dir, os.path.basename(out_path) + ".banner.png")
         render_banner(W, H, y_frac=y, line1=line1, line2=line2).save(png)
+        if start and start > 0:
+            cond = (f"between(t,{float(start):.2f},{float(start) + float(dur):.2f})"
+                    if dur and dur > 0 else f"gte(t,{float(start):.2f})")
+            ov = f"[0:v][1:v]overlay=0:0:enable='{cond}'[v]"
+        elif dur and dur > 0:
+            ov = f"[0:v][1:v]overlay=0:0:enable='lt(t,{float(dur):.2f})'[v]"
+        else:
+            ov = "[0:v][1:v]overlay=0:0[v]"
         run(["ffmpeg", "-y", "-i", video_path, "-i", png,
-             "-filter_complex", "[0:v][1:v]overlay=0:0[v]", "-map", "[v]", "-map", "0:a?",
+             "-filter_complex", ov, "-map", "[v]", "-map", "0:a?",
              "-c:a", "copy", *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path])
         return out_path
     except Exception:  # noqa: BLE001

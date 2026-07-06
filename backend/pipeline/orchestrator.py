@@ -189,6 +189,7 @@ def render_versions(
     enhance: bool = False,
     hook_text: str = "",
     hook_pos: str = "arriba",
+    hook_seconds: float = 0.0,
     auto_hook: bool = False,
     page_url: str = "",
     product_desc: str = "",
@@ -536,7 +537,8 @@ def render_versions(
     if final_hook.strip():
         for v in versions:
             hook_out = v["path"].replace(".mp4", "_hook.mp4")
-            new_path, burned = burn_hook(v["path"], hook_out, work_dir, final_hook, hook_pos)
+            new_path, burned = burn_hook(v["path"], hook_out, work_dir, final_hook, hook_pos,
+                                         seconds=hook_seconds)
             v["path"] = new_path
 
     # Voz en off: una sola para todas, o UNA DISTINTA por version (version_vos)
@@ -795,6 +797,7 @@ def process_job(
     aspect: str = "1:1",
     hook_text: str = "",
     hook_pos: str = "arriba",
+    hook_seconds: float = 0.0,
     auto_hook: bool = False,
     page_url: str = "",
     enhance: bool = False,
@@ -825,6 +828,7 @@ def process_job(
     return render_versions(
         a["selected"], a["has_audio_by_src"], work_dir,
         aspect=aspect, enhance=enhance, hook_text=hook_text, hook_pos=hook_pos,
+        hook_seconds=hook_seconds,
         auto_hook=auto_hook, page_url=page_url, product_desc=product_desc,
         gemini_key=gemini_key, voiceover_path=voiceover_path, version_vos=version_vos,
         sfx_paths=sfx_paths, music_path=music_path, effects=effects,

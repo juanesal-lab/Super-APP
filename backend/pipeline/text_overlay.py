@@ -49,20 +49,28 @@ def _wrap(text: str, font: ImageFont.FreeTypeFont, max_w: int) -> list[str]:
     return lines or [text]
 
 
-def _render_png(text: str, vw: int, vh: int, font_path: str, png_path: str) -> int:
-    """Renderiza el texto centrado a un PNG del ancho del video. Devuelve alto del bloque."""
-    font_size = max(28, int(vh * 0.052))
-    font = ImageFont.truetype(font_path, font_size)
-    lines = _wrap(text.upper(), font, int(vw * 0.84))
+def _render_png(text: str, vw: int, vh: int, font_path: str, png_path: str,
+                max_frac: float = 0.20) -> int:
+    """Renderiza el texto centrado a un PNG del ancho del video. Devuelve alto del bloque.
 
+    El bloque NUNCA ocupa más de `max_frac` del alto (default 1/5): arranca en un tamaño MEDIANO
+    y encoge la letra hasta que quepa (antes salía gigante — hasta 1/3 de pantalla — y se veía feo)."""
     meas = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
-    ascent, descent = font.getmetrics()
-    line_h = ascent + descent
-    gap = int(line_h * 0.18)
-    pad = int(font_size * 0.55)
+    font_size = max(24, int(vh * 0.040))          # medio (antes 0.052 = gigante)
+    max_h = int(vh * max_frac)
+    for _ in range(14):                            # encoge hasta caber en 1/5 de pantalla
+        font = ImageFont.truetype(font_path, font_size)
+        lines = _wrap(text.upper(), font, int(vw * 0.84))
+        ascent, descent = font.getmetrics()
+        line_h = ascent + descent
+        gap = int(line_h * 0.18)
+        pad = int(font_size * 0.5)
+        block_h = line_h * len(lines) + gap * (len(lines) - 1) + pad * 2
+        if block_h <= max_h or font_size <= 26:
+            break
+        font_size = int(font_size * 0.9)
     text_w = max(meas.textlength(l, font=font) for l in lines)
     block_w = int(text_w) + pad * 2
-    block_h = line_h * len(lines) + gap * (len(lines) - 1) + pad * 2
 
     img = Image.new("RGBA", (vw, block_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -90,8 +98,11 @@ def _y_pos(position: str, vh: int, block_h: int) -> int:
 
 
 def burn_hook(video_path: str, out_path: str, work_dir: str, text: str,
-              position: str = "arriba") -> tuple[str, bool]:
-    """Quema el texto de gancho en el video. Devuelve (ruta, ok)."""
+              position: str = "arriba", seconds: float = 0.0) -> tuple[str, bool]:
+    """Quema el texto de gancho en el video. Devuelve (ruta, ok).
+
+    `seconds`>0: el gancho SOLO aparece durante los primeros `seconds` segundos (después se quita).
+    0 = toda la duración (como antes)."""
     text = (text or "").strip()
     if not text:
         return video_path, False
@@ -105,10 +116,11 @@ def burn_hook(video_path: str, out_path: str, work_dir: str, text: str,
     try:
         block_h = _render_png(text, vw, vh, font, png)
         y = _y_pos(position, vh, block_h)
+        enable = f":enable='lt(t,{float(seconds):.2f})'" if seconds and seconds > 0 else ""
         from .assemble import venc   # GPU si hay (antes libx264 CPU: ~4x más lento por versión)
         run([
             "ffmpeg", "-y", "-i", video_path, "-i", png,
-            "-filter_complex", f"[0:v][1:v]overlay=0:{y}",
+            "-filter_complex", f"[0:v][1:v]overlay=0:{y}{enable}",
             *venc(),
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             "-c:a", "copy",

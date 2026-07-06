@@ -167,13 +167,16 @@ def _load_shopify() -> tuple[str | None, str | None, str | None]:
             _load_key("SHOPIFY_THEME_ID"))
 
 
-def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress) -> None:
+def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress,
+                           start: float = 0.0, dur: float = 0.0) -> None:
     """Cortar clips: pill 'ENVÍO GRATIS · PAGAS AL RECIBIR' + 'OFERTA 2X1' arriba (como la foto
-    de Jack). La IA elige la altura para no tapar caras/producto (offer_banner.safe_top_y)."""
+    de Jack). La IA elige la altura para no tapar caras/producto (offer_banner.safe_top_y).
+    `start`/`dur`: el banner aparece en ese segundo por esa duración (no choca con el gancho)."""
     from pipeline.offer_banner import add_offer_banner
     from pipeline.assemble import WORKERS
     from concurrent.futures import ThreadPoolExecutor
-    progress("🏷️ Poniendo el banner de oferta (2x1 · envío gratis)...", 97)
+    cuando = f" (aparece al seg {start:.0f})" if start and start > 0 else ""
+    progress(f"🏷️ Poniendo el banner de oferta (2x1 · envío gratis){cuando}...", 97)
     gk = _load_env_key()
 
     # EN PARALELO (antes en serie: 1 llamada Gemini + 1 re-encode por versión, una tras otra).
@@ -181,7 +184,7 @@ def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress) -> Non
     def _banner_one(v):
         try:
             out = v["path"][:-4] + "_of.mp4"
-            v["path"] = add_offer_banner(v["path"], out, work_dir, gemini_key=gk)
+            v["path"] = add_offer_banner(v["path"], out, work_dir, start=start, dur=dur, gemini_key=gk)
         except Exception:  # noqa: BLE001
             pass
 
@@ -238,6 +241,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             aspect=settings["aspect"],
             hook_text=settings["hook_text"],
             hook_pos=settings["hook_pos"],
+            hook_seconds=settings.get("hook_seconds", 0.0),
             auto_hook=settings["auto_hook"],
             page_url=settings["page_url"],
             enhance=settings["enhance"],
@@ -255,7 +259,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
                                 settings.get("product_desc", ""), progress)
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
-            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress,
+                                   start=settings.get("banner_start", 0.0),
+                                   dur=settings.get("banner_dur", 0.0))
         _stash_regen(job, result, job_id)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -402,6 +408,9 @@ def process(
     text_mode: str = Form("tapar"),
     caption_pos: str = Form("abajo"),
     banner_oferta: bool = Form(False),
+    banner_start: float = Form(0.0),
+    banner_dur: float = Form(0.0),
+    hook_seconds: float = Form(0.0),
     destino: str = Form("tiktok"),
 ):
     job_id = uuid.uuid4().hex[:12]
@@ -439,6 +448,9 @@ def process(
         "effects": bool(effects),
         "blur_captions": bool(blur_captions),
         "banner_oferta": bool(banner_oferta),
+        "banner_start": max(0.0, float(banner_start)),
+        "banner_dur": max(0.0, float(banner_dur)),
+        "hook_seconds": max(0.0, float(hook_seconds)),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "broll_fases": broll_fases,
@@ -1383,7 +1395,9 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
         )
         # Banner de oferta ARRIBA (2x1 · envío gratis · pagas al recibir), igual que en Cortar clips
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
-            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress,
+                                   start=settings.get("banner_start", 0.0),
+                                   dur=settings.get("banner_dur", 0.0))
         # Estado para "🔄 Regenerar UNA versión" (faltaba SOLO aquí → daba 404 y filtraba el pool
         # pesado _regen al frontend). Mismo patrón que Cortar clips / render con voz.
         _stash_regen(job, result, job_id, {"voz": settings.get("voz")})
@@ -1474,6 +1488,9 @@ def producto_clips(
     voz_kate: int = Form(0),
     oferta_2x1: bool = Form(False),
     banner_oferta: bool = Form(False),
+    banner_start: float = Form(0.0),
+    banner_dur: float = Form(0.0),
+    hook_seconds: float = Form(0.0),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
@@ -1520,6 +1537,9 @@ def producto_clips(
         "voz_kate": max(0, min(8, int(voz_kate))),
         "oferta_2x1": bool(oferta_2x1),
         "banner_oferta": bool(banner_oferta),
+        "banner_start": max(0.0, float(banner_start)),
+        "banner_dur": max(0.0, float(banner_dur)),
+        "hook_seconds": max(0.0, float(hook_seconds)),
         "caption_style": caption_style if caption_style in (
             "hormozi", "karaoke", "highlight_box", "bold_outline", "yellow_highlight")
             else "hormozi",

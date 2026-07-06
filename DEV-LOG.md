@@ -3093,3 +3093,18 @@ Front verificado en navegador (toggle ON esconde opciones, OFF las muestra).
   SIN cambios); auto_studio.generar_creativo_auto y app.py /api/auto ganaron el param OPCIONAL
   `modo_ganador` (default False = retrocompat, tu código no se afecta); index.html solo panel p-auto.
   Archivo NUEVO de datos: backend/pipeline/blueprint_ganador.json (blueprint de ganadores).
+- **[Revisión]** (Claude, jackingshop1-cell): revisado el MODO GANADOR completo. Contratos OK (firmas
+  elegir_hook / add_hook_banner_top / add_offer_banner_bottom / Form modo_ganador / toggle front, todo
+  cuadra nombre a nombre). Retrocompat VERIFICADA (modo_ganador=False = comportamiento idéntico; únicos
+  callers: app._run_auto_job y el __main__ de auto_studio; winner_clone/producto NO llaman). Regla de
+  oro VERIFICADA: probé elegir_hook con 6 respuestas que meten precio ($29.900, 50%, "3 mil pesos",
+  100K COP, "PRECIO", 2X1 a precio mínimo) → TODAS bloqueadas por _MONEY, cae al fallback limpio; "7
+  DÍAS" (no es dinero) pasa bien. Banners no crashean con video SIN audio ni con dims raras (642x360);
+  hook larguísimo se envuelve en 5 líneas dentro de la barra (que crece) sin desbordar.
+  ARREGLADO EL SOLAPE (limitación 2 de arriba): en modo_ganador ahora fijo `caption_styles.set_destino
+  ("meta")` justo antes de quemar los subtítulos y lo restauro después (NO afecta a Juan ni a otros
+  flujos — es global pero se restaura). Meta sube la zona de subtítulos a ~60% (safe zone Reels, que ES
+  lo que pide el blueprint), así la última línea ya NO choca con el banner naranja inferior. Verificado
+  con composición lado a lado (ANTES tiktok = "DE QUE SE AGOTE" encima del naranja / DESPUÉS meta =
+  subtítulos limpios arriba del banner). Cambios SOLO en auto_studio.py (2 bloques dentro del if
+  modo_ganador). NO commiteado.

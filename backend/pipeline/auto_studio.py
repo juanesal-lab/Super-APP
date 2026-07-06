@@ -381,6 +381,14 @@ def generar_creativo_auto(
     # 5) SUBTÍTULOS -----------------------------------------------------------
     #   Si hay tiempos por-palabra (del doblaje) -> subtítulos PALABRA POR PALABRA sincronizados
     #   (estilo adapta). Si no -> subtítulos por fase (bloque).
+    # 🏆 MODO GANADOR: el blueprint es para Meta/Reels (35% inferior libre) y ADEMÁS abajo va el
+    #   banner naranja de oferta. Subimos la zona de subtítulos a la safe zone de Meta (~60%) para que
+    #   la última línea NO se solape con el banner inferior. Se restaura después (no afecta a Juan).
+    _prev_destino = None
+    if modo_ganador:
+        from . import caption_styles as _cs
+        _prev_destino = _cs._DESTINO
+        _cs.set_destino("meta")
     report("💬 Poniendo subtítulos...", 70)
     subs = dub_segments or (blueprint.get("segments") if blueprint else [])
     if word_timings:
@@ -400,6 +408,11 @@ def generar_creativo_auto(
             paso("Subtítulos", False, str(e))
     else:
         paso("Subtítulos", False, "sin texto de guion")
+
+    # restaurar la safe zone global (para no filtrar "meta" a otros flujos que comparten caption_styles)
+    if modo_ganador and _prev_destino is not None:
+        from . import caption_styles as _cs
+        _cs.set_destino(_prev_destino)
 
     # 6b) CAPAS PERSISTENTES del blueprint ganador
     if modo_ganador:

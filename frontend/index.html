@@ -1391,7 +1391,12 @@
     </div>
     <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Textos del proveedor</label>
-      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="chkBanner"> 🏷️ Oferta 2x1 · envío gratis (banner arriba)</label>
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="chkBanner" onchange="document.getElementById('bannerTimeWrap').style.display=this.checked?'inline-flex':'none'"> 🏷️ Oferta 2x1 · envío gratis (banner arriba)</label>
+      <span id="bannerTimeWrap" style="display:none;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)">aparece al seg
+        <input type="number" id="bannerStart" value="5" min="0" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">
+        · dura <input type="number" id="bannerDur" value="0" min="0" step="1" title="0 = hasta el final" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
+      <span style="align-items:center;gap:6px;font-size:12.5px;color:var(--muted);display:inline-flex">🪝 gancho dura
+        <input type="number" id="hookSecs" value="4" min="0" step="1" title="0 = todo el video" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
       <span id="textModeWrap" style="display:none;align-items:center;gap:8px">
         <select id="textMode" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
           <option value="tapar">🟦 Tapar con blur</option>
@@ -1484,7 +1489,12 @@
       <label><input type="checkbox" id="prodMusica" checked> 🎵 Música automática (la IA elige el género)</label>
       <label><input type="checkbox" id="prodBajarVol" checked> 🔉 Bajar el volumen de los clips</label>
       <label><input type="checkbox" id="prodVO" onchange="document.getElementById('prodVOOpts').style.display=this.checked?'flex':'none'"> 🎙️ Voz en off (guion IA + voz colombiana + subtítulos)</label>
-      <label title="Banner rojo arriba del video: OFERTA 2X1 · ENVÍO GRATIS · PAGAS AL RECIBIR (la IA lo ubica sin tapar nada)"><input type="checkbox" id="prodBanner"> 🏷️ Banner arriba: 2x1 · envío gratis · pagas al recibir</label>
+      <label title="Banner rojo arriba del video: OFERTA 2X1 · ENVÍO GRATIS · PAGAS AL RECIBIR (la IA lo ubica sin tapar nada)"><input type="checkbox" id="prodBanner" onchange="document.getElementById('prodBannerTime').style.display=this.checked?'inline-flex':'none'"> 🏷️ Banner arriba: 2x1 · envío gratis · pagas al recibir</label>
+      <span id="prodBannerTime" style="display:none;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)">aparece al seg
+        <input type="number" id="prodBannerStart" value="5" min="0" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">
+        · dura <input type="number" id="prodBannerDur" value="0" min="0" step="1" title="0 = hasta el final" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
+      <span style="align-items:center;gap:6px;font-size:12.5px;color:var(--muted);display:inline-flex">🪝 gancho dura
+        <input type="number" id="prodHookSecs" value="4" min="0" step="1" title="0 = todo el video" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
     </div>
     <div id="prodVOOpts" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
       <select id="prodVoz" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
@@ -1623,6 +1633,9 @@
         fd.append('voz_jc',mez[0]||'0'); fd.append('voz_kate',mez[1]||'0');
         fd.append('oferta_2x1',document.getElementById('prod2x1').checked);
         fd.append('banner_oferta',document.getElementById('prodBanner').checked);
+        fd.append('banner_start',document.getElementById('prodBannerStart').value||'0');
+        fd.append('banner_dur',document.getElementById('prodBannerDur').value||'0');
+        fd.append('hook_seconds',document.getElementById('prodHookSecs').value||'0');
         (window._prodLocal||[]).forEach(f=>fd.append('winner_files',f));
         if(img) fd.append('product_image',img);
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
@@ -2779,6 +2792,9 @@ function buildForm(){
   fd.append("effects", document.getElementById("effects").checked);
   fd.append("blur_captions", document.getElementById("blurCaptions").checked);
   fd.append("banner_oferta", document.getElementById("chkBanner").checked);
+  fd.append("banner_start", document.getElementById("bannerStart").value||"0");
+  fd.append("banner_dur", document.getElementById("bannerDur").value||"0");
+  fd.append("hook_seconds", document.getElementById("hookSecs").value||"0");
   fd.append("text_mode", document.getElementById("textMode").value);
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);

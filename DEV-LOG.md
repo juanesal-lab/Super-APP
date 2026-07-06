@@ -3136,3 +3136,18 @@ Jack pidió que el 2x1 sea opcional dentro del Modo Ganador (antes se forzaba ON
 - Verificado: py_compile + JS node --check ok; render de banners CON y SIN 2x1 mirado en frames (ON: pill
   naranja + "· 2X1" abajo; OFF: sin pill, "¡ENVÍO GRATIS! · PAGAS AL RECIBIR"). La voz usa oferta_2x1 vía
   generar_dub como siempre. AVISO Juan: solo params opcionales nuevos (con_2x1), nada rompe.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🎙️➡️ Botón "Doblar" en Foreplay abre Doblar en PESTAÑA NUEVA (video precargado)
+Jack: en los creativos de Foreplay, un botón para doblar que abra la pestaña Doblar en una VENTANA NUEVA
+con el video ya cargado, dejando la búsqueda original abierta para seguir buscando.
+- fpDoblar (pestaña 🔥 Foreplay) y nuevo tkFpDoblar (🔍 Buscar creativos) ahora llaman
+  `abrirDoblarNuevaPestana(video, nombre)` → `window.open('/?doblar=<url>&nombre=<n>','_blank')`.
+- Boot handler en DOMContentLoaded: si la URL trae `?doblar=`, la pestaña nueva salta directo a Doblar,
+  fija `window._dubForeplayUrl` (el backend /api/dub ya acepta video_url de Foreplay), pone el nombre,
+  habilita el botón, limpia el `?doblar` de la barra y NO restaura estado viejo. La pestaña original
+  queda intacta para seguir buscando.
+- Botón "🎙️ Doblar" agregado a las tarjetas de Foreplay en Buscar creativos (tkFpCard).
+- Recordatorio de Jack reforzado (ya se cumple): la búsqueda SIEMPRE excluye Colombia (foreplay
+  _es_colombiano, tiktok region!="CO") y Foreplay prioriza español (languages="spanish"). Guardado en
+  memoria del proyecto. PENDIENTE opcional: fallback a otros idiomas cuando se acaben los de español.
+- Verificado: JS node --check 14/14 ok; funciones globales enlazadas (abrirDoblarNuevaPestana x3).

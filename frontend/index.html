@@ -867,6 +867,7 @@
             <div class="fpDesc">${tkEsc((a.description||'').slice(0,120))}</div>
             <div class="fpBtns">
               <button class="fpBtn" onclick="tkFpPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
+              <button class="fpBtn" onclick="tkFpDoblar(${i})" title="Doblar este creativo: abre Doblar en una pestaña nueva con el video ya cargado (esta queda para seguir buscando)">🎙️ Doblar</button>
               <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar el video">⬇️</a>
               <button class="fpBtn" onclick="tkMore('foreplay',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
               <button class="fpBtn" onclick="tkMore('foreplay',${i},this,true)" title="Me gusta: busca 5 MÁS basados en este (salen en su propia sección abajo)">🎯 5 más así</button>
@@ -878,6 +879,11 @@
         const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video) return;
         btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML=
           '<video class="fpThumb" src="/api/foreplay-video?url='+encodeURIComponent(a.video)+'" controls autoplay playsinline></video>';
+      }
+      function tkFpDoblar(i){
+        const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video){ alert('Este creativo no tiene video'); return; }
+        // Abre Doblar en pestaña NUEVA con el video ya cargado; Buscar creativos queda para seguir buscando.
+        abrirDoblarNuevaPestana(a.video, a.name||'Creativo de Foreplay');
       }
       // 🎬 tarjetas de B-ROLL con preview (mismo look que los creativos, sin botones de juez)
       function tkBrCard(b,i){
@@ -2476,12 +2482,13 @@
     }
     function fpDoblar(i){
       const a=_fpAds[i]; if(!a.video){ alert('Este ad no tiene video'); return; }
-      window._dubForeplayUrl=a.video; window._dubForeplayName=a.name||'Creativo de Foreplay';
-      window.dubFile=null;
-      document.querySelector('#tabs button[data-p="p-dub"]').click();
-      const nm=document.getElementById('dubName'); if(nm) nm.textContent='🎬 Foreplay: '+window._dubForeplayName;
-      const go=document.getElementById('dubGo'); if(go) go.disabled=false;
-      window.scrollTo(0,0);
+      // Abre Doblar en una VENTANA NUEVA con el video ya cargado; esta pestaña queda para seguir buscando.
+      abrirDoblarNuevaPestana(a.video, a.name||'Creativo de Foreplay');
+    }
+    // Abre la app en una pestaña nueva directo en Doblar con el creativo de Foreplay precargado.
+    function abrirDoblarNuevaPestana(videoUrl, nombre){
+      const u='/?doblar='+encodeURIComponent(videoUrl)+'&nombre='+encodeURIComponent(nombre||'Creativo de Foreplay');
+      window.open(u, '_blank');
     }
     function fpActions(){
       document.getElementById('fpActions').classList.toggle('hidden', _fpSel.size===0);
@@ -3276,6 +3283,18 @@ async function dubPoll(id){
   // ── Restaurar al cargar ──
   addEventListener('DOMContentLoaded', ()=>{ setTimeout(async ()=>{
     try{
+      // ¿Abrieron esta pestaña desde "Doblar" de un creativo de Foreplay? → ir directo a Doblar precargado
+      const _qs=new URLSearchParams(location.search);
+      const _dobUrl=_qs.get('doblar');
+      if(_dobUrl){
+        window._dubForeplayUrl=_dobUrl; window._dubForeplayName=_qs.get('nombre')||'Creativo de Foreplay';
+        window.dubFile=null;
+        const b=document.querySelector('#tabs button[data-p="p-dub"]'); if(b) b.click();
+        const nm=document.getElementById('dubName'); if(nm) nm.textContent='🎬 Foreplay: '+window._dubForeplayName;
+        const go=document.getElementById('dubGo'); if(go) go.disabled=false;
+        history.replaceState(null,'',location.pathname);   // limpia el ?doblar de la barra
+        return;                                            // no restaurar estado viejo en esta pestaña nueva
+      }
       const tab=l('cm_tab');
       if(tab && document.querySelector(`#tabs button[data-p="${tab}"]`)) window.homeEnter(tab, true);
       const fp=l('cm_fp');

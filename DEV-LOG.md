@@ -3168,3 +3168,21 @@ buscar en Foreplay/Meta con su API los que llevan +1 mes prendidos, analizarlos 
 - El flujo completo YA funciona: Foreplay (validados) → "✂️ Cortar seleccionados en clips"
   (/api/foreplay-clips) → Cortar clips arma el patrón. Solo frontend (1 default) + doc nueva.
 AVISO Juan: cero backend tuyo tocado; fpDays default 0→30 + assets/patron-ganador-validado.md.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🎯 BÚSQUEDA EXACTA + controles de video (gancho/banner/blur)
+Sesión larga con Jack. Cambios grandes (todos probados con frames/prueba real, en main):
+- **Buscar creativos EXACTO** (tiktok_search + creative_search): antes confirmaba por PORTADA (engaña) y
+  rellenaba hasta el count con NO verificados → salían "nada que ver". Ahora: portada = pre-filtro barato →
+  confirma por CONTENIDO del video (deep, mira frames de adentro) → jueces ESTRICTOS con campo `confianza`
+  (exijo != baja) → Claude veta → **CERO relleno** (param solo_confirmados=True default). Aplica a TikTok,
+  Foreplay y buscar_mas ("traer más"/"5 más así"); cuentas vendedoras también deep-verificadas.
+  PROBADO REAL: almohadilla de tela, count=6 → 6/6 exactas (toallas de tela reutilizables), 0 impostoras.
+  _verificar_video ahora acepta play(tikwm) o video(Foreplay). Jueces (_verificar/_verificar_video/
+  _verificar_claude) reescritos: MISMO producto por rasgos de ficha, "cualquier duda = false".
+- **Ads imagen advertorial**: barra+titular con PIL local (texto perfecto, sin 'PAÑAELES'). [commit previo]
+- **Cortar clips / Mi producto**: gancho ≤1/5 pantalla + duración configurable; banner 2X1 aparece al
+  segundo N (default 5, no choca con el gancho) + duración; controles nuevos en la UI de ambas pestañas.
+  Blur de textos SÓLIDO (relleno color de fondo, no mosaico) y QUIETO (caja fija por track, no se desliza).
+- AVISO Juan: toqué text_detect (_obscure sólido, _box_at fijo), text_overlay (gancho), offer_banner
+  (timing), orchestrator/producto_clips/app.py (params hook_seconds/banner_start/dur), tiktok_search +
+  creative_search (verificación exacta), index.html (controles). Nada de tu terreno de guiones/radar.

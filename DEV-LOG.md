@@ -3028,3 +3028,26 @@ handles distintos (vanity vs canónico, o el vendedor se renombró) → URL dist
   → agrega solo [111,222], 0 errores de consola. py_compile 2/2 + node --check 14/14.
 - AVISO Juan: toqué tiktok_search (norm_tk_id/_tk_key/campo id + dedup por id — hook_variator solo itera,
   no se afecta) y creative_search.buscar_mas. Shape de resultados SOLO ganó la clave `id` (aditiva).
+
+### 2026-07-05 · Claude (jackingshop1-cell) · 🧭 Navegación a barra LATERAL izquierda + 📰 advertorial con TEXTO PERFECTO (PIL)
+Dos pedidos de Jack:
+1. "las secciones a la izquierda para que quede más organizado" → la navegación pasó de barra
+   horizontal arriba (14+ pestañas apretadas) a un SIDEBAR vertical a la izquierda con el logo arriba.
+   `.wrap` ahora es grid [212px | contenido]; nuevos `<aside class="side">` (logo+nav) y
+   `<main class="appmain">` (todos los paneles). Responsive: <820px la nav vuelve arriba en fila.
+   Verificado en navegador: cambia de pestaña OK, 0 errores de consola, paneles intactos. (La vista
+   móvil real no se pudo forzar por el tooling, pero el media query es estándar.)
+2. "los advertoriales están re mal escritos" (PAÑAELES, CARCAIJAADAS, VOLVERNO): el MODELO dibujaba
+   el texto de la barra y no sabe deletrear español largo. FIX: el modelo ya NO dibuja texto (deja la
+   franja inferior LIMPIA), y la barra negra + etiqueta + titular se RENDERIZAN LOCALMENTE con PIL
+   (Poppins-ExtraBold), con la frase `destacado` en amarillo. Texto SIEMPRE perfecto.
+   - NUEVO `_render_barra_advertorial()` + `_marcar_destacado()` + `_wrap_palabras()` en
+     disruptive_images.py; se llama en generar_ad_fullprompt para es_adv y se SALTA _verificar_ortografia
+     (ya no hay texto del modelo que verificar). Ajustados _SISTEMA_ADV/_CIERRE_ADV (franja limpia,
+     sin texto) + hint full-bleed. La barra cubre cualquier texto que el modelo dibuje igual (robusto).
+   - PROBADO REAL (almohadillas de tela, Gemini): titular "ESTAS TOALLAS DE TELA LAVABLES SE VOLVIERON
+     VIRALES Y LAS MUJERES DICEN QUE SON 'SUAVES Y NO SE SIENTEN'" perfecto, VIRAL en cajita, destacado
+     en amarillo. Imagen en scratchpad/adv_test.png.
+- AVISO Juan: index.html (sidebar: .wrap grid + .side/.appmain + .tabs vertical + media query) y
+  disruptive_images.py (3 funciones nuevas + integración adv + prompts adv). NO toqué el pipeline
+  disruptivo normal ni la integración del producto. py_compile + node --check 14/14 OK.

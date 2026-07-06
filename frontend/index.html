@@ -27,7 +27,13 @@
   ::-webkit-scrollbar{width:11px;height:11px}
   ::-webkit-scrollbar-thumb{background:#3a342b;border-radius:8px;border:2px solid var(--bg)}
   ::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-  .wrap{max-width:1000px;margin:0 auto;padding:34px 20px 90px}
+  .wrap{max-width:1240px;margin:0 auto;padding:26px 20px 90px;
+    display:grid;grid-template-columns:212px minmax(0,1fr);gap:0 30px;align-items:start}
+  .side{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:12px;
+    max-height:calc(100vh - 32px);animation:fadeUp .5s ease both}
+  .side h1{font-size:21px;margin:2px 6px 2px;line-height:1.08}
+  .side .sub{display:none}   /* el subtítulo largo no va en la barra lateral angosta */
+  .appmain{min-width:0}      /* clave: deja que los grids internos se encojan sin desbordar */
   h1{font-size:30px;margin:0 0 4px;font-weight:800;letter-spacing:-.4px;animation:fadeUp .6s ease both}
   h1 span{background:linear-gradient(90deg,#d4af37,#f7e6ad,#d4af37);background-size:200% auto;
     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
@@ -40,15 +46,25 @@
   .card:hover{transform:translateY(-3px);box-shadow:var(--glow);border-color:rgba(212,175,55,.45)}
   .card h2{font-size:16px;margin:0 0 14px;font-weight:700;color:var(--txt);letter-spacing:-.2px}
   /* Pestañas */
-  .tabs{display:flex;flex-wrap:wrap;gap:6px;background:rgba(23,21,27,.82);backdrop-filter:blur(10px);
-    border:1px solid var(--line);border-radius:14px;padding:6px;margin-bottom:22px;box-shadow:var(--shadow);
-    position:sticky;top:12px;z-index:20;animation:fadeUp .5s ease both}
-  .tabs button{flex:1;min-width:120px;border:0;background:transparent;color:var(--muted);
-    font-size:13.5px;font-weight:600;padding:11px 10px;border-radius:10px;cursor:pointer;
-    transition:.2s;white-space:nowrap}
-  .tabs button:hover{background:var(--card2);color:var(--txt);transform:translateY(-1px)}
+  /* Navegación: barra LATERAL izquierda (antes era horizontal arriba) */
+  .tabs{display:flex;flex-direction:column;gap:3px;background:rgba(23,21,27,.82);backdrop-filter:blur(10px);
+    border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:var(--shadow);
+    overflow-y:auto;min-height:0}
+  .tabs button{width:100%;text-align:left;border:0;background:transparent;color:var(--muted);
+    font-size:13.5px;font-weight:600;padding:10px 12px;border-radius:10px;cursor:pointer;
+    transition:.16s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tabs button:hover{background:var(--card2);color:var(--txt)}
   .tabs button.active{background:var(--gold);color:var(--ink);font-weight:700;
     box-shadow:0 4px 16px rgba(212,175,55,.42)}
+  /* Móvil / pantalla angosta: la navegación vuelve arriba en fila */
+  @media(max-width:820px){
+    .wrap{grid-template-columns:1fr;gap:0}
+    .side{position:static;max-height:none;margin-bottom:14px;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px}
+    .side h1{font-size:22px;margin:0 8px 0 2px}
+    .side .sub{display:none}
+    .tabs{flex-direction:row;flex-wrap:wrap;overflow:visible;width:100%}
+    .tabs button{width:auto;flex:1;min-width:118px;text-align:center}
+  }
   .panel{animation:fade .32s ease}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   @keyframes fadeUp{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
@@ -420,6 +436,7 @@
 </script>
 
 <div class="wrap" style="display:none">
+  <aside class="side">
   <h1 onclick="homeBack()" style="cursor:pointer" title="⌂ Volver al inicio">Creative<span>Maxing</span></h1>
   <p class="sub">Tu estudio de creativos con IA para dropshipping — clips, versiones, doblaje, GIFs y más, en un solo lugar.</p>
 
@@ -441,7 +458,9 @@
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
   </nav>
+  </aside>
 
+  <main class="appmain">
   <!-- ✨ MODO AUTOMÁTICO (sección nueva, autocontenida) -->
   <style>
     .autoHero{position:relative;border-radius:20px;padding:26px;margin:0 0 22px;
@@ -2559,6 +2578,7 @@
       <div class="tip"><span class="em">🎞️</span><span>Cada clip suelto trae su <b>GIF (WebM 1:1, ≤500KB)</b> liviano — organizados por fase (problema/solución/producto) para que cuenten la historia. Descárgalo con el botón bajo el clip.</span></div>
     </div>
   </div><!-- /p-guia -->
+  </main>
 </div>
 
 <script>

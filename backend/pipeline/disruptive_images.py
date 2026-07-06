@@ -222,10 +222,10 @@ la calle, un parque, la cocina, la oficina), luz natural, look de foto de celula
 La persona se ve feliz/relajada/natural. El PRODUCTO se ve CLARO en uso.
 - RECUADRO CIRCULAR en una esquina superior (borde blanco grueso): un plano héroe del producto \
 sostenido en la mano (o primer plano limpio del producto). Es el clásico "inset" de las notas virales.
-- ABAJO (≈22%): una BARRA NEGRA sólida. Centrada, una etiquetita blanca (rectángulo o texto entre \
-líneas finas) con una palabra tipo "VIRAL" / "TENDENCIA" / "RECOMENDADO" en mayúsculas. Debajo, el \
-TITULAR en mayúsculas, sans-serif CONDENSADA y GRUESA, blanco, 2-3 líneas, con UNA frase resaltada \
-en AMARILLO y entre comillas simples (lo más emocional/coloquial).
+- ABAJO (≈25%): DEJA ESTA FRANJA LIMPIA Y DESPEJADA (idealmente una banda oscura sólida SIN NADA de \
+texto ni logos). NO dibujes ahí ninguna etiqueta ni titular: el titular y la etiqueta se sobreponen \
+DESPUÉS por software (texto perfecto). Mantén a la persona y el producto en el 75% de ARRIBA para que \
+esta franja inferior quede libre.
 
 REGLA MADRE: debe parecer CONTENIDO EDITORIAL / NOTICIA, jamás un anuncio con banda de colores. El \
 titular es PERIODÍSTICO/CHISMOSO, no publicitario: "por qué todos están comprando…", "esto se volvió \
@@ -242,16 +242,15 @@ antes/después SOLO por lifestyle creíble, jamás clínico.
 Cada 'prompt' que entregues:
 - UN SOLO párrafo en INGLÉS, fotorrealista. Empieza: "photorealistic vertical 4:5 image that looks \
 like a screenshot of a VIRAL NEWS ARTICLE (not an advertisement)". Describe la escena lifestyle real \
-con el producto EN USO + el recuadro circular con el producto en mano en la esquina superior + la \
-barra negra inferior con la etiqueta y el titular.
-- Di EXPLÍCITO qué texto va: la etiqueta (ej. "VIRAL"), el titular COMPLETO en español entre comillas, \
-y cuál frase va en AMARILLO. Textos LITERALES, cortos, bien escritos.
+con el producto EN USO + el recuadro circular con el producto en mano en la esquina superior. \
+Mantén todo (persona, producto, inset) en el 75% SUPERIOR.
+- MUY IMPORTANTE: el 25% INFERIOR es una FRANJA OSCURA LIMPIA, SIN NINGÚN TEXTO, sin etiqueta, sin \
+titular, sin logos (el titular y la etiqueta se agregan por software después). NO escribas texto en la imagen.
 - El producto se renderiza a partir de la foto de referencia del cliente (respeta forma/color/logo).
-- Termina SIEMPRE con: photorealistic, natural phone-camera lighting, believable real person, bottom \
-black bar with bold condensed uppercase white headline and one phrase in bright yellow, small "VIRAL" \
-style label, circular product inset with white border top corner, render all Spanish text crisply and \
-spelled EXACTLY. Avoid: extra fingers, deformed hands, garbled or misspelled text, studio look, \
-watermarks, nudity, low-resolution artifacts.
+- Termina SIEMPRE con: photorealistic, natural phone-camera lighting, believable real everyday person, \
+circular product inset with white border in a top corner, and a CLEAN EMPTY dark strip across the \
+bottom 25% with NO text, NO label, NO letters whatsoever. Avoid: any text or captions in the image, \
+extra fingers, deformed hands, studio look, watermarks, nudity, low-resolution artifacts.
 
 Devuelve EXACTAMENTE {n} advertorials, TODOS distintos entre sí (ángulo, escena, persona, entorno, \
 titular)."""
@@ -286,13 +285,12 @@ _TOOL_ADV = {
 
 # Cierre de calidad del advertorial (4:5 vertical, no cuadrado).
 _CIERRE_ADV = (" Photorealistic vertical 4:5 aspect ratio, natural phone-camera lighting, believable "
-               "real everyday person and setting (NOT studio, NOT a polished ad). Bottom solid black "
-               "bar with a bold CONDENSED uppercase white headline (2-3 lines) and ONE phrase in bright "
-               "yellow inside single quotes; a small white 'VIRAL'-style label above it between thin "
-               "lines. A circular product inset with a thick white border in a top corner. Render ALL "
-               "Spanish text crisply and spelled EXACTLY as written. Avoid: extra fingers, deformed "
-               "hands, garbled or misspelled text, studio look, random logos, watermarks, nudity, "
-               "low-resolution artifacts.")
+               "real everyday person and setting (NOT studio, NOT a polished ad). Keep the person and "
+               "product in the TOP 75%. A circular product inset with a thick white border in a top "
+               "corner. The BOTTOM 25% is a CLEAN EMPTY solid dark strip with absolutely NO text, NO "
+               "label, NO letters, NO captions (a headline is overlaid later by software). Avoid: ANY "
+               "text or writing anywhere in the image, extra fingers, deformed hands, studio look, "
+               "random logos, watermarks, nudity, low-resolution artifacts.")
 
 
 def generar_conceptos(producto: str, anthropic_key: str, page_text: str = "",
@@ -541,6 +539,124 @@ def editar_imagen_ia(img_path: str, instruccion: str, gemini_key: str,
     return None
 
 
+_ADV_GOLD = (247, 202, 74)   # amarillo cálido del destacado (como las notas virales reales)
+
+
+def _marcar_destacado(titular: str, destacado: str) -> list[tuple[str, bool]]:
+    """Parte el titular en palabras y marca (True) las que forman la frase `destacado` → van en amarillo.
+    Compara sin tildes/puntuación/mayúsculas; si no calza la frase exacta, marca palabra por palabra."""
+    import unicodedata
+
+    def norm(s: str) -> str:
+        s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+        return re.sub(r"[^a-z0-9]", "", s)
+
+    palabras = (titular or "").split()
+    dset_words = [norm(w) for w in (destacado or "").split() if norm(w)]
+    marcas = [False] * len(palabras)
+    if not dset_words:
+        return list(zip(palabras, marcas))
+    npal = [norm(w) for w in palabras]
+    for i in range(len(npal) - len(dset_words) + 1):     # 1º intenta la frase COMPLETA en secuencia
+        if npal[i:i + len(dset_words)] == dset_words:
+            for j in range(i, i + len(dset_words)):
+                marcas[j] = True
+            return list(zip(palabras, marcas))
+    dset = set(dset_words)                                # fallback: cualquier palabra del destacado
+    marcas = [n in dset for n in npal]
+    return list(zip(palabras, marcas))
+
+
+def _wrap_palabras(words, font, draw, max_w: int, space_w: float):
+    """Envuelve [(palabra, amarilla)] en líneas que caben en max_w. Devuelve [[(pal,amarilla,ancho)]]."""
+    lines, cur, cur_w = [], [], 0.0
+    for w, yellow in words:
+        ww = draw.textlength(w, font=font)
+        if cur and cur_w + space_w + ww > max_w:
+            lines.append(cur)
+            cur, cur_w = [], 0.0
+        cur.append((w, yellow, ww))
+        cur_w += (space_w if len(cur) > 1 else 0) + ww
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _render_barra_advertorial(img_path: str, kicker: str = "", titular: str = "",
+                              destacado: str = "") -> str:
+    """Dibuja LOCALMENTE (PIL) la barra negra inferior del advertorial: etiqueta (kicker) + titular
+    con la frase `destacado` en AMARILLO. Así el TEXTO SIEMPRE queda perfecto (el modelo de imagen no
+    sabe deletrear español largo → salía "PAÑAELES", "CARCAIJAADAS"...). Ante cualquier fallo, deja la
+    imagen como está (no rompe el lote)."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        titular = (titular or "").strip().upper()
+        if not titular or not os.path.exists(_FONT_XB):
+            return img_path
+        im = Image.open(img_path).convert("RGB")
+        W, H = im.size
+        draw = ImageDraw.Draw(im)
+        pad = int(W * 0.055)
+        max_w = W - 2 * pad
+        words = _marcar_destacado(titular, (destacado or "").upper())
+
+        # tamaño de titular: el más grande que quepa en ≤3 líneas
+        size = int(H * 0.055)
+        f = ImageFont.truetype(_FONT_XB, size)
+        space_w = draw.textlength(" ", font=f)
+        while size > int(H * 0.028):
+            f = ImageFont.truetype(_FONT_XB, size)
+            space_w = draw.textlength(" ", font=f)
+            if len(_wrap_palabras(words, f, draw, max_w, space_w)) <= 3:
+                break
+            size -= 2
+        lines = _wrap_palabras(words, f, draw, max_w, space_w)[:3]
+        line_h = int(size * 1.16)
+
+        # etiqueta (kicker) en cajita blanca
+        kf_size = max(14, int(H * 0.021))
+        kf = ImageFont.truetype(_FONT_XB, kf_size)
+        kick = (kicker or "VIRAL").strip().upper()[:16]
+        kpx, kpy = int(kf_size * 0.7), int(kf_size * 0.42)
+        kw = draw.textlength(kick, font=kf)
+        kbox_h = kf_size + 2 * kpy
+        gap = int(H * 0.017)
+
+        # alto de la barra según el contenido (acotado)
+        bar_h = kbox_h + gap + len(lines) * line_h + int(pad * 1.05)
+        bar_h = max(int(H * 0.22), min(bar_h, int(H * 0.42)))
+        y0 = H - bar_h
+
+        # transición suave (negro que aparece) + barra sólida
+        fade = int(H * 0.06)
+        if fade > 4:
+            grad = Image.new("L", (1, fade))
+            for i in range(fade):
+                grad.putpixel((0, i), int(255 * (i / fade)))
+            im.paste(Image.new("RGB", (W, fade), (0, 0, 0)), (0, y0 - fade), grad.resize((W, fade)))
+        draw.rectangle([0, y0, W, H], fill=(0, 0, 0))
+
+        ky = y0 + int(pad * 0.5)
+        try:
+            draw.rounded_rectangle([pad, ky, pad + kw + 2 * kpx, ky + kbox_h],
+                                   radius=int(kbox_h * 0.26), fill=(255, 255, 255))
+        except Exception:  # noqa: BLE001 — Pillow viejo sin rounded_rectangle
+            draw.rectangle([pad, ky, pad + kw + 2 * kpx, ky + kbox_h], fill=(255, 255, 255))
+        draw.text((pad + kpx, ky + kpy), kick, font=kf, fill=(12, 12, 14))
+
+        ty = ky + kbox_h + gap
+        for ln in lines:
+            x = pad
+            for (w, yellow, ww) in ln:
+                draw.text((x, ty), w, font=f, fill=(_ADV_GOLD if yellow else (255, 255, 255)))
+                x += ww + space_w
+            ty += line_h
+        im.save(img_path, quality=95)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  barra advertorial (local) falló, queda la imagen cruda: {e}")
+    return img_path
+
+
 def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                           product_image_path: str | None = None, verify: bool = True,
                           max_regen: int = 1, integrar_producto: bool = False,
@@ -553,6 +669,9 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
     if not prompt:
         return None
     es_adv = variant.get("formato") == "advertorial"
+    if es_adv:   # full-bleed: la foto llena TODO (sin marco gris ni márgenes) — el modelo tiende a enmarcar
+        prompt = (prompt + " The lifestyle photo is FULL-BLEED, filling the entire frame edge to edge with "
+                  "no gray borders, no frame, no margins.")
     textos = [variant.get("titular", ""), variant.get("apoyo", ""),
               variant.get("boton_cta", ""), variant.get("precio_cta", "")]
     errs: list = []
@@ -574,11 +693,15 @@ def generar_ad_fullprompt(variant: dict, out_path: str, *, gemini_key: str,
                 return None
             break                # ya hay una imagen previa buena en out_path
         got = True
-        if not verify or _verificar_ortografia(out_path, textos, gemini_key)[0]:
+        # ADVERTORIAL: el titular NO lo dibuja el modelo (lo ponemos con PIL) → no se verifica ortografía.
+        if es_adv or not verify or _verificar_ortografia(out_path, textos, gemini_key)[0]:
             break
     if not got:
         return None
     if es_adv:
+        # el titular + etiqueta se DIBUJAN LOCALMENTE (texto perfecto, sin "PAÑAELES")
+        _render_barra_advertorial(out_path, variant.get("kicker", ""),
+                                  variant.get("titular", ""), variant.get("destacado", ""))
         variant["producto_integrado"] = True     # el producto ya va renderizado en la escena
         return out_path                           # advertorial es 4:5: NO se fuerza a cuadrado
     _a_cuadrado(out_path)

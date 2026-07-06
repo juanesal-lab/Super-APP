@@ -278,22 +278,32 @@ def buscar_mas(fuente: str, nombre: str = "", terminos: list[str] | None = None,
                 "terminos": terms}
 
     if ref_bytes and gemini_key:
-        pool = lst[:max(12, n * 3)]                       # tope chico: costo acotado por clic
-        conf, resto = [], []
+        ref_desc = desc or nombre or angulo
+        # portada = pre-filtro barato (prioriza); confirma por CONTENIDO del video (EXACTO, como buscar())
+        pf = lst[:max(20, n * 4)]
+        cov: dict[int, dict] = {}
         with ThreadPoolExecutor(max_workers=8) as ex:
-            futs = {ex.submit(_verificar, c, ref_bytes, desc or nombre or angulo, gemini_key): c
-                    for c in pool}
+            futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, gemini_key): c for c in pf}
+            for fut in as_completed(futs):
+                v = fut.result()
+                if v:
+                    cov[id(futs[fut])] = v
+
+        def _pf(c):
+            v = cov.get(id(c)) or {}
+            return (1 if v.get("match") else 0, {"alta": 2, "media": 1}.get(v.get("confianza"), 0),
+                    c.get("plays", 0))
+        a_deep = sorted([c for c in pf if c.get("play")], key=_pf, reverse=True)[:max(10, n * 2)]
+        conf = []
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, gemini_key): c for c in a_deep}
             for fut in as_completed(futs):
                 v, c = fut.result(), futs[fut]
-                if v and v.get("match"):
+                if v and v.get("match") and v.get("confianza") != "baja":
                     c["verificado_producto"] = True
                     conf.append(c)
-                else:
-                    c["verificado_producto"] = False
-                    resto.append(c)
-        for c in lst[len(pool):]:
-            c["verificado_producto"] = False
-        items = (conf + resto + lst[len(pool):])[:n]
+        conf.sort(key=lambda c: c.get("plays", 0), reverse=True)
+        items = conf[:n]                                  # SOLO exactos (nada de relleno)
     else:
         for c in lst:
             c["verificado_producto"] = False

@@ -247,19 +247,20 @@ def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | Non
         prompt = (
             f"{etiq} (descripción: \"{ref_desc}\"). "
             f"La ÚLTIMA foto = portada de un video de TikTok (título: \"{titulo}\"). "
-            "match=true si la PORTADA muestra el MISMO PRODUCTO en lo que IMPORTA: la MISMA CATEGORÍA/FORMATO "
-            "(crema=crema, gel=gel, cápsulas=cápsulas, aparato=aparato) Y el MISMO PROPÓSITO/beneficio que la "
-            "REFERENCIA (ej. crema de veneno de abeja para lunares/verrugas). NO exijas la misma MARCA/etiqueta/"
-            "envase: OTRO vendedor con el MISMO producto (misma categoría + mismo propósito) SÍ cuenta "
-            "(match=true) — así encontramos más creativos del mismo producto. "
-            "match=false si es OTRA categoría/formato (crema vs pastillas/spray/bótox/inyección), otro "
-            "propósito, u otro tipo de producto. Si es un APARATO/dispositivo, además debe tener la MISMA "
-            "FORMA física (cuadrado vs lápiz/pistola = false). OJO con aparatos PARECIDOS pero de OTRO USO: "
-            "usa el TÍTULO para desempatar (ej. lámpara de SECAR esmalte/gel ≠ láser para HONGOS; masajeador "
-            "≠ depilador) → si el título indica otro uso, match=false. Si la ficha trae 'NO CONFUNDIR CON' y "
-            "el producto del video parece UNO DE ESOS → match=false. Compara también los rasgos distintivos "
-            "de la ficha (forma, colores, bisagra/botón/luz). Si no se ve el producto o hay duda de "
-            "categoría/propósito → match=false. "
+            "Tu trabajo es ser un JUEZ MUY ESTRICTO: solo aprobar el EXACTO MISMO producto. "
+            "match=true SOLO si la portada muestra el MISMO PRODUCTO físico: misma CATEGORÍA/FORMATO "
+            "(crema=crema, gel=gel, cápsulas=cápsulas, aparato=aparato) Y los MISMOS RASGOS DISTINTIVOS de la "
+            "ficha (la MISMA forma exacta, los MISMOS colores por parte, el MISMO mecanismo/botón/luz/bisagra). "
+            "Otro VENDEDOR con el producto IDÉNTICO (misma forma y rasgos, aunque otra marca/etiqueta) SÍ cuenta. "
+            "PERO un producto solo PARECIDO o de la misma familia pero distinto (otra forma, otra presentación, "
+            "otro uso, otro beneficio) = match=FALSE. "
+            "match=false si: otra categoría/formato (crema vs pastillas/spray/bótox/inyección), otra forma "
+            "física, otro propósito, un aparato parecido de OTRO USO (usa el TÍTULO: lámpara de SECAR esmalte ≠ "
+            "láser para HONGOS; masajeador ≠ depilador), algo de 'NO CONFUNDIR CON' de la ficha, o si NO se ve "
+            "claro el producto. REGLA DE ORO: ante CUALQUIER duda, o si no puedes verificar los rasgos "
+            "distintivos → match=FALSE (mejor descartar uno bueno que colar uno malo). "
+            "confianza: 'alta' solo si estás MUY seguro (apostarías dinero) que es el mismo producto; 'media' "
+            "si es probable pero no confirmaste todos los rasgos; 'baja' si dudoso o la portada no lo deja claro. "
             "TEXTO SOBREPUESTO: distingue el texto AÑADIDO DIGITALMENTE encima del video (subtítulos, "
             "captions, títulos, stickers de texto — lo típico que pone el creador de TikTok) del texto que "
             "es parte REAL de la escena (la etiqueta o empaque del producto, letreros del lugar). SOLO cuenta "
@@ -267,7 +268,8 @@ def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | Non
             "\"nada\" (sin texto sobrepuesto, o casi imperceptible), \"poco\" (algo de texto pero pequeño/discreto), "
             "o \"mucho\" (subtítulos/títulos grandes que tapan el video). "
             "Responde SOLO JSON: "
-            '{"match":true/false,"muestra_producto":true/false,"es":true/false,"texto_overlay":"nada"/"poco"/"mucho"}')
+            '{"match":true/false,"confianza":"alta"/"media"/"baja","muestra_producto":true/false,'
+            '"es":true/false,"texto_overlay":"nada"/"poco"/"mucho"}')
         contents = [prompt] + [types.Part.from_bytes(data=b, mime_type="image/jpeg") for b in refs]
         contents.append(types.Part.from_bytes(data=cimg, mime_type="image/jpeg"))
         resp = _client(api_key).models.generate_content(model=_MODEL, contents=contents)
@@ -277,7 +279,8 @@ def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | Non
         d = json.loads(m.group(0))
         ov = str(d.get("texto_overlay", "poco")).strip().lower()
         return {"match": bool(d.get("match")), "muestra": bool(d.get("muestra_producto")),
-                "es": bool(d.get("es")), "overlay": _OVERLAY_SCORE.get(ov, 1)}
+                "es": bool(d.get("es")), "overlay": _OVERLAY_SCORE.get(ov, 1),
+                "confianza": str(d.get("confianza", "media")).strip().lower()}
     except Exception:  # noqa: BLE001
         return None
 
@@ -515,7 +518,7 @@ def _verificar_video(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict
     Con multi-foto usa SOLO la 1ª referencia (los frames ya son varios: tope de costo).
     Devuelve el mismo dict que _verificar, o None si no se pudo."""
     import tempfile
-    play = cand.get("play")
+    play = cand.get("play") or cand.get("video")   # tikwm (play) o Foreplay (video): ambos descargables
     refs = _refs(ref_bytes)
     if not (play and api_key and refs):
         return None
@@ -558,13 +561,19 @@ def _verificar_video(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict
         prompt = (
             f"Foto 1 = el producto de REFERENCIA que quiero (descripción: \"{ref_desc}\"). "
             f"Las demás fotos son FRAMES DE ADENTRO de un video de TikTok (título: \"{titulo}\"). "
-            "match=true si en ALGÚN frame se ve el MISMO producto: misma categoría/formato, mismo propósito "
-            "y (si es aparato) la MISMA FORMA física y los RASGOS de la ficha (colores, bisagra/botón/luz). "
-            "No exijas la misma marca. Aparatos parecidos de OTRO uso (lámpara de secar esmalte ≠ láser "
-            "para hongos) → false. Si la ficha trae 'NO CONFUNDIR CON' y lo del video parece uno de esos → "
-            "false. Si en ningún frame se ve el producto o hay duda → false. "
-            'Responde SOLO JSON: {"match":true/false,"muestra_producto":true/false,"es":true/false,'
-            '"texto_overlay":"nada"/"poco"/"mucho"}')
+            "Eres un JUEZ MUY ESTRICTO: solo aprobar el EXACTO MISMO producto. "
+            "match=true SOLO si en algún frame se ve CLARAMENTE el MISMO producto físico que la referencia: "
+            "misma categoría/formato Y los MISMOS RASGOS DISTINTIVOS de la ficha (la MISMA forma exacta, los "
+            "MISMOS colores por parte, el MISMO mecanismo/botón/luz/bisagra). Otro vendedor con el producto "
+            "IDÉNTICO (misma forma y rasgos) SÍ cuenta, aunque sea otra marca. PERO un producto solo PARECIDO "
+            "o de la misma familia pero distinto (otra forma, otra presentación, otro uso) = FALSE. "
+            "Aparatos parecidos de OTRO uso (lámpara de secar esmalte ≠ láser para hongos), 'NO CONFUNDIR CON' "
+            "de la ficha, o si en NINGÚN frame se ve claro el producto = FALSE. REGLA DE ORO: ante CUALQUIER "
+            "duda o si no confirmas los rasgos distintivos → match=FALSE. "
+            "confianza: 'alta' solo si estás MUY seguro (viste los rasgos y coinciden); 'media' si probable "
+            "pero no confirmaste todo; 'baja' si dudoso. "
+            'Responde SOLO JSON: {"match":true/false,"confianza":"alta"/"media"/"baja",'
+            '"muestra_producto":true/false,"es":true/false,"texto_overlay":"nada"/"poco"/"mucho"}')
         contents = [prompt, types.Part.from_bytes(data=ref_uno, mime_type="image/jpeg")]
         for fb in frames:
             contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
@@ -575,7 +584,8 @@ def _verificar_video(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict
         d = json.loads(m.group(0))
         ov = str(d.get("texto_overlay", "poco")).strip().lower()
         return {"match": bool(d.get("match")), "muestra": bool(d.get("muestra_producto")),
-                "es": bool(d.get("es")), "overlay": _OVERLAY_SCORE.get(ov, 1)}
+                "es": bool(d.get("es")), "overlay": _OVERLAY_SCORE.get(ov, 1),
+                "confianza": str(d.get("confianza", "media")).strip().lower()}
     except Exception:  # noqa: BLE001
         return None
     finally:
@@ -631,15 +641,17 @@ def _verificar_claude(cand: dict, ref_bytes, ref_desc: str, anthropic_key: str) 
         prompt = (
             f"{etiq} (descripción: \"{ref_desc}\"). "
             f"La ÚLTIMA foto = portada de un video de TikTok (título: \"{titulo}\"). "
-            "Compara FÍSICAMENTE. ¿La PORTADA muestra CLARAMENTE el MISMO producto que la REFERENCIA — "
-            "mismo tipo de objeto y la MISMA forma/formato físico (un aparato cuadrado ≠ rectangular ≠ tipo "
-            "lápiz/pistola; una crema ≠ pastillas ≠ spray)? NO exijas la misma marca/etiqueta: otro vendedor "
-            "con el MISMO producto sí cuenta. OJO con aparatos parecidos de OTRO USO: usa el título para "
-            "desempatar (lámpara de SECAR esmalte ≠ láser para HONGOS) → otro uso = match=false. Si la ficha "
-            "trae 'NO CONFUNDIR CON' y lo del video parece uno de esos → match=false. "
-            "Si es otro producto, otra forma, no se ve claro "
-            "el producto en la portada, o hay CUALQUIER duda → match=false. Sé ESTRICTO pero justo (es UGC: "
-            "puede estar en la mano, en ángulo o con otra luz).")
+            "Eres un JUEZ MUY ESTRICTO: solo aprobar el EXACTO MISMO producto. Compara FÍSICAMENTE. "
+            "match=true SOLO si la PORTADA muestra CLARAMENTE el MISMO producto que la REFERENCIA: mismo tipo "
+            "de objeto, la MISMA forma/formato físico exacto (un aparato cuadrado ≠ rectangular ≠ tipo "
+            "lápiz/pistola; crema ≠ pastillas ≠ spray) Y los MISMOS rasgos distintivos (colores por parte, "
+            "botón/luz/bisagra). Otro vendedor con el producto IDÉNTICO sí cuenta (aunque otra marca), pero un "
+            "producto solo PARECIDO o de la misma familia pero distinto = match=false. Aparatos parecidos de "
+            "OTRO USO (lámpara de SECAR esmalte ≠ láser para HONGOS; masajeador ≠ depilador) = false; usa el "
+            "título para desempatar. Algo de 'NO CONFUNDIR CON' de la ficha = false. "
+            "REGLA DE ORO: si es otro producto, otra forma, no se ve claro el producto, no puedes confirmar los "
+            "rasgos, o hay CUALQUIER duda → match=false (mejor descartar un bueno que colar un malo). Es UGC: "
+            "el producto puede estar en la mano, en ángulo o con otra luz, pero los RASGOS deben coincidir.")
         from anthropic import Anthropic
         client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         content = [{"type": "text", "text": prompt}]
@@ -662,7 +674,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
            count: int = 20, anthropic_key: str | None = None,
            analisis: dict | None = None, foreplay_key: str | None = None,
            image_paths: list[str] | None = None, explorar_cuentas: bool = True,
-           landing_text: str = "") -> dict:
+           landing_text: str = "", solo_confirmados: bool = True) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -739,60 +751,58 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         # producto" descarta hartos, hay que revisar un pool grande para LLEGAR al count pedido.
         pool_n = min(len(cand_list), max(60, count * 4))
         pool = cand_list[:pool_n]             # los más RELEVANTES primero (título > hispano > views)
-        matches: list[dict] = []
+        # ── VERIFICACIÓN EXACTA: por CONTENIDO del video, no por portada ─────────────────────
+        # 1) PORTADA = pre-filtro BARATO. NO confirma sola (engaña: antes/después, cara, pie): solo
+        #    PRIORIZA a cuáles vale la pena bajar el video para juzgarlo por dentro.
+        cover_res: dict[int, dict] = {}
         with ThreadPoolExecutor(max_workers=10) as ex:
             futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c for c in pool}
             for fut in as_completed(futs):
                 v = fut.result()
-                if v and v.get("match"):
-                    c = futs[fut]
-                    # muestra producto → SIN texto sobrepuesto (2 nada > 1 poco > 0 mucho) → español → más views
-                    c["_rank"] = (v.get("muestra", False), v.get("overlay", 1),
-                                  v.get("es", False), c.get("plays", 0))
-                    matches.append(c)
-        # VERIFICACIÓN PROFUNDA (2ª pasada): la portada muchas veces NO muestra el producto (sale el
-        # pie, el antes/después, la cara) → falsos rechazos. Para los candidatos con TÍTULO prometedor
-        # que la portada no confirmó, se baja el video y se juzgan 3 frames de ADENTRO.
-        if len(matches) < count:
-            ya = {_tk_key(c) for c in matches}
-            pendientes = [c for c in pool if _tk_key(c) not in ya and c.get("play") and _title_score(c) >= 2]
-            pendientes = pendientes[:12]      # tope: 12 descargas (costo/tiempo acotado)
-            if pendientes:
-                with ThreadPoolExecutor(max_workers=4) as ex:
-                    futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c
-                            for c in pendientes}
-                    for fut in as_completed(futs):
-                        v = fut.result()
-                        if v and v.get("match"):
-                            c = futs[fut]
-                            c["_deep"] = True   # confirmado mirando el video por DENTRO (no re-juzgar portada)
-                            c["_rank"] = (v.get("muestra", False), v.get("overlay", 1),
-                                          v.get("es", False), c.get("plays", 0))
-                            matches.append(c)
+                if v:
+                    cover_res[id(futs[fut])] = v
+        _CONF = {"alta": 2, "media": 1, "baja": 0}
 
-        # muestra el producto → sin texto sobrepuesto → español → más views
+        def _prio(c):
+            v = cover_res.get(id(c)) or {}
+            return (1 if v.get("match") else 0, _CONF.get(v.get("confianza"), 0),
+                    _title_score(c), c.get("plays", 0))
+
+        def _confirmar_contenido(cands):
+            """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja."""
+            out = []
+            cands = [c for c in cands if (c.get("play") or c.get("video"))]
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
+                for fut in as_completed(futs):
+                    v = fut.result()
+                    if v and v.get("match") and v.get("confianza") != "baja":
+                        c = futs[fut]
+                        c["_rank"] = (_CONF.get(v.get("confianza"), 0), v.get("muestra", False),
+                                      v.get("overlay", 1), v.get("es", False), c.get("plays", 0))
+                        out.append(c)
+            return out
+
+        # a DEEP: portada aprobó O título fuerte (la portada a veces no muestra el producto), por prioridad.
+        a_deep = [c for c in pool if (c.get("play") or c.get("video")) and
+                  ((cover_res.get(id(c)) or {}).get("match") or _title_score(c) >= 2)]
+        a_deep.sort(key=_prio, reverse=True)
+        a_deep = a_deep[:min(len(a_deep), max(28, count * 2))]   # presupuesto de descargas
+        matches = _confirmar_contenido(a_deep)
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
 
-        # DOBLE JUEZ: Claude confirma los que Gemini aprobó (solo los mejores, para no gastar de más).
-        # Solo quedan "confirmados" los que AMBOS dan como el mismo producto; si Claude falla
-        # técnicamente (None), el veredicto de Gemini se respeta.
+        # 2) DOBLE JUEZ: Claude VETA (2º juez estricto) lo confirmado por contenido. False = fuera;
+        #    True o None (fallo técnico) = se queda (ya pasó el filtro ESTRICTO de contenido).
         if anthropic_key and matches:
-            deep = [c for c in matches if c.get("_deep")]          # confirmados por CONTENIDO: no re-juzgar portada
-            por_juzgar = [c for c in matches if not c.get("_deep")][:20]
-            resto = [c for c in matches if not c.get("_deep")][20:]
-            confirmados, rechazados = [], []
+            res_cl: dict[int, object] = {}
             with ThreadPoolExecutor(max_workers=5) as ex:
-                cf = {ex.submit(_verificar_claude, c, ref_bytes, ref_desc, anthropic_key): c
-                      for c in por_juzgar}
+                cf = {ex.submit(_verificar_claude, c, ref_bytes, ref_desc, anthropic_key): c for c in matches}
                 for fut in as_completed(cf):
-                    r, c = fut.result(), cf[fut]
-                    (rechazados if r is False else confirmados).append(c)
-            matches = sorted(confirmados + deep, key=lambda c: c.get("_rank", ()), reverse=True) + resto
+                    res_cl[id(cf[fut])] = fut.result()
+            matches = [c for c in matches if res_cl.get(id(c)) is not False]
 
-        # CUENTAS VENDEDORAS (plan 30/30): si aún faltan videos para el count, explora las cuentas
-        # de los CONFIRMADOS (los vendedores suben el MISMO producto 10-30 veces). Máx 3 cuentas,
-        # dedup contra TODO lo ya visto, sin Colombia, y cada candidato se juzga SOLO por portada
-        # (sin verificación profunda ni Claude: tope de costo).
+        # 3) CUENTAS VENDEDORAS: si faltan, explora las cuentas de los confirmados y DEEP-verifica sus
+        #    posts con el MISMO filtro exacto (no solo portada) para que no se cuele nada.
         if explorar_cuentas and matches and len(matches) < count:
             vistos_urls = {_tk_key(c) for c in cand_list} | {_tk_key(c) for c in matches}
             cuentas: list[str] = []
@@ -810,33 +820,20 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     for res in ex.map(lambda u: _posts_cuenta(u, count=30), cuentas):
                         for c in res:
                             if (_tk_key(c) not in vistos_urls and c.get("region") != "CO"
-                                    and 4 <= c.get("dur", 0) <= 120):
+                                    and 4 <= c.get("dur", 0) <= 120 and c.get("play")):
                                 vistos_urls.add(_tk_key(c))
                                 extra_cands.append(c)
-            extra_cands = extra_cands[:max(60, count * 4)]   # mismo tope que el pool principal
-            if extra_cands:
-                de_cuentas: list[dict] = []
-                with ThreadPoolExecutor(max_workers=10) as ex:
-                    futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c
-                            for c in extra_cands}
-                    for fut in as_completed(futs):
-                        v = fut.result()
-                        if v and v.get("match"):
-                            c = futs[fut]
-                            c["_cuenta"] = True
-                            c["_rank"] = (v.get("muestra", False), v.get("overlay", 1),
-                                          v.get("es", False), c.get("plays", 0))
-                            de_cuentas.append(c)
-                de_cuentas.sort(key=lambda c: c.get("_rank", ()), reverse=True)
-                matches.extend(de_cuentas)        # después de los ya confirmados (doble juez primero)
+            extra_cands.sort(key=lambda c: _title_score(c), reverse=True)
+            de_cuentas = _confirmar_contenido(extra_cands[:max(20, count * 2)])
+            de_cuentas.sort(key=lambda c: c.get("_rank", ()), reverse=True)
+            matches.extend(de_cuentas)
 
         for c in matches:
-            c["verificado_producto"] = True       # pasó la verificación visual (uno o ambos jueces)
+            c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)
         links = matches[:count]
-        # Completa hasta `count` con candidatos NO verificados pero SIEMPRE marcados como tales — la UI
-        # los separa en "⚠️ revísalos tú" (nunca más mezclar en silencio: fue la causa de que salieran
-        # clínicas/productos equivocados como si fueran buenos).
-        if len(links) < count:
+        # SIN relleno en modo exacto: NO se completa con no-verificados (los "nada que ver"). El llamador
+        # puede pedir el relleno viejo con solo_confirmados=False (siempre etiquetado como no verificado).
+        if not solo_confirmados and len(links) < count:
             vistos = {l["url"] for l in links}
             extra = [dict(c, verificado_producto=False) for c in cand_list if c["url"] not in vistos]
             links = (links + extra)[:count]

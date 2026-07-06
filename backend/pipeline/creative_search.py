@@ -22,7 +22,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import foreplay_search as fp
-from .tiktok_search import _expandir, _verificar, analizar_foto, buscar
+from .tiktok_search import _expandir, _verificar, _verificar_video, analizar_foto, buscar
 
 # tope de thumbnails de Foreplay verificados con Gemini (costo acotado; flash es barato pero no gratis)
 _FP_VERIFY_MAX = 24
@@ -67,7 +67,7 @@ def _terminos_foreplay(info: dict, max_terms: int = _FP_TERMS) -> list[str]:
 def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | None,
                      gemini_key: str | None, count: int = 20,
                      verify_max: int = _FP_VERIFY_MAX,
-                     excluir: set[str] | None = None) -> dict:
+                     excluir: set[str] | None = None, solo_confirmados: bool = True) -> dict:
     """Busca en Foreplay con varios términos (paralelo), deduplica y verifica el MISMO producto.
     Devuelve {ok, ads:[...], n_confirmados, verificado, terminos, error?}."""
     if not foreplay_key:
@@ -97,15 +97,12 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
         return {"ok": not errores, "error": (errores[0] if errores else ""), "ads": [],
                 "n_confirmados": 0, "verificado": False, "terminos": terms}
 
-    # 2) verificar MISMO producto sobre los thumbnails (mismo juez que TikTok), con tope de costo.
-    #    match=True → confirmado; match=False → se descarta; no se pudo juzgar (sin thumbnail /
-    #    CDN falló) → queda SIN VERIFICAR (badge), sin inventar nada.
+    # 2) verificar EXACTO: portada (pre-filtro ESTRICTO) → CONTENIDO del video (deep) de los que pasan.
     verificado = bool(ref_bytes and gemini_key)
     if verificado:
         ref_desc = str(info.get("desc") or "")
         pool = ad_list[:verify_max]
-        fuera = ad_list[verify_max:]
-        confirmados, sin_verificar = [], []
+        cover_ok = []
         with ThreadPoolExecutor(max_workers=8) as ex:
             futs = {}
             for a in pool:
@@ -114,20 +111,35 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 futs[ex.submit(_verificar, cand, ref_bytes, ref_desc, gemini_key)] = a
             for fut in as_completed(futs):
                 v, a = fut.result(), futs[fut]
-                if v is None:                      # no se pudo juzgar → honesto: sin verificar
-                    a["verificado_producto"] = False
-                    sin_verificar.append(a)
-                elif v.get("match"):
+                if v and v.get("match") and v.get("confianza") != "baja":
+                    cover_ok.append(a)
+        # CONTENIDO: baja el video del ad y lo juzga por DENTRO (exacto = match + confianza no baja).
+        confirmados = []
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futs = {}
+            for a in cover_ok:
+                cand = {"video": a.get("video") or "", "play": a.get("video") or "",
+                        "title": (a.get("name") or a.get("headline") or "")[:120]}
+                futs[ex.submit(_verificar_video, cand, ref_bytes, ref_desc, gemini_key)] = a
+            for fut in as_completed(futs):
+                v, a = fut.result(), futs[fut]
+                if v is None:                    # no se pudo bajar/juzgar el video → cae al veredicto
+                    a["verificado_producto"] = True   # de portada, que ya pasó el filtro ESTRICTO
+                    confirmados.append(a)
+                elif v.get("match") and v.get("confianza") != "baja":
                     a["verificado_producto"] = True
                     confirmados.append(a)
-                # match=False → otro producto: fuera de la lista
-        for a in fuera:                            # más allá del tope: sin verificar (badge)
-            a["verificado_producto"] = False
-        # ganadores primero: confirmados (más días corriendo primero) → sin verificar
+                # match=False por contenido → fuera (no es el producto)
         confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
-        sin_verificar.sort(key=lambda a: a.get("dias", 0), reverse=True)
-        fuera.sort(key=lambda a: a.get("dias", 0), reverse=True)
-        ad_list = confirmados + sin_verificar + fuera
+        if solo_confirmados:
+            ad_list = confirmados                # SOLO exactos, sin relleno de "por si acaso"
+        else:
+            ids = {id(a) for a in confirmados}
+            resto = [a for a in ad_list if id(a) not in ids]
+            for a in resto:
+                a["verificado_producto"] = False
+            resto.sort(key=lambda a: a.get("dias", 0), reverse=True)
+            ad_list = confirmados + resto
     else:
         for a in ad_list:
             a["verificado_producto"] = False

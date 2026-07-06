@@ -3206,3 +3206,14 @@ Sesión de optimización autónoma. Hallazgos y arreglos:
   archivos de Juan → coordinar).
 AVISO Juan: solo app.py (función _gc_disk nueva + 1 hilo en lifespan) + docs nuevas en assets/. Cero
 lógica tuya tocada.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · ✅ Workflow completo de Jack PROBADO end-to-end + Foreplay 5 nichos
+- **Foreplay 5 productos** (con la API real de Jack, filtro +30 días prendidos = validados): plagas 50
+  (Superzebra 590d), almohadillas 39, leggin cargo 50, veneno abeja 50 (wildflowerplantmagic 539d),
+  rodillera 50. Abiertos cada uno en su pestaña. Gasto ~239 créditos (quedan 3298/10000).
+- **Foreplay ganador → cortar en clips PROBADO**: bajé el ganador de 590 días → /api/foreplay-clips →
+  8 versiones + 6 clips sueltos en ~30s, sin fuga de _regen. El workflow core de Jack (validado → clips
+  → reconstruir) FUNCIONA punta a punta.
+- Pendiente menor detectado: /api/foreplay-clips tampoco llama _stash_regen (como pasaba en Mi producto),
+  pero aquí NO filtra _regen (process_job sin voz no lo genera igual) → sin bug visible. Vigilar si algún
+  día muestran "Regenerar" en esa pestaña.

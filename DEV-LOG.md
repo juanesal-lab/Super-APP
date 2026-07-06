@@ -3253,3 +3253,13 @@ El agente probó OFFLINE con 429. Cuando Gemini/Claude fallan, varios flujos MIE
   la key 429. Y ningún ffmpeg valida tamaño del mp4 de salida (posible mp4 truncado como "ok").
 - ✅ Bien diseñados (patrón a copiar): disruptive_images (_error_amigable), dub_colombia, tiktok_search
   (mensaje honesto), text_translate (no escribe si falla), hook_variator (valida keys temprano).
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🗂️ Playbook por NICHO (los 5 productos de Jack)
+`assets/playbook-por-nicho.md`: ficha por nicho (plagas, incontinencia, leggin cargo, veneno abeja,
+rodillera) con dolor #1, hook exacto en español (sin precio, contraentrega), arco con tiempos, b-roll
+de dolor, demo obligatoria, objeciones y 4-6 ángulos de variación — + tabla "cómo lo usa la app" (qué
+escribir en producto/ángulo por pestaña). Honesto: solo PestLab.co verificado en Meta Ad Library en vivo;
+el resto es consenso de fuentes + reseñas reales por categoría. Datos fuertes: estigma social = dolor #1
+en incontinencia (US Chamber/NAFC); veneno de abeja tiene fraude/deepfake documentado (VeraFiles/Rappler)
+→ hooks sin sobreprometer; rodillera con límites reales (Cleveland Clinic: artrosis sí, ligamento roto no).
+Referencia para narrative/scripts/creative_variator/B-roll. Solo doc; cero código.

@@ -266,17 +266,31 @@ def _box_at(track: dict, i: int) -> tuple:
 
 
 def _obscure(roi):
-    """Deja el texto 100% ILEGIBLE (el blur gaussiano solo dejaba las letras legibles).
+    """Tapa el texto con un RELLENO SÓLIDO (no mosaico pixelado, que se veía feo).
 
-    Reduce la zona a una miniatura (ninguna letra sobrevive a esa resolución), la re-agranda
-    con interpolación suave y pasa un blur final para que no se noten bloques. Como la caja
-    del track es continua y el contenido de un caption es estático, el resultado no parpadea.
-    """
+    Rellena la caja con el COLOR DE FONDO de la propia zona = la MEDIANA de sus píxeles: como el
+    texto es minoría frente al fondo, la mediana ≈ el fondo → el texto desaparece bajo un bloque
+    sólido del mismo color, que se ve limpio y se funde con el entorno. Los bordes se difuminan
+    apenas ~2 px para que el rectángulo no tenga un canto duro (queda 'perfecto', sin parche). Como
+    la caja del track es continua y el fondo del caption es estable, no parpadea."""
+    import numpy as np
     h, w = roi.shape[:2]
-    small = cv2.resize(roi, (max(2, w // 36), max(2, h // 36)), interpolation=cv2.INTER_AREA)
-    big = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
-    k = min(51, max(9, (min(w, h) // 4) | 1))   # solo suaviza bloques; capado (kernel gigante = lento y no aporta)
-    return cv2.GaussianBlur(big, (k, k), 0)
+    if h < 2 or w < 2:
+        return roi
+    flat = roi.reshape(-1, roi.shape[2]) if roi.ndim == 3 else roi.reshape(-1, 1)
+    med = np.median(flat, axis=0)
+    solid = np.empty_like(roi)
+    solid[:] = med.astype(roi.dtype)
+    # feather de ~2 px SOLO en el borde para fundir el bloque sólido con el entorno (sin canto duro)
+    b = max(1, min(4, min(w, h) // 20))
+    if b >= 1 and w > 4 * b and h > 4 * b:
+        mask = np.zeros((h, w), np.float32)
+        mask[b:h - b, b:w - b] = 1.0
+        mask = cv2.GaussianBlur(mask, (2 * b + 1, 2 * b + 1), 0)
+        if roi.ndim == 3:
+            mask = mask[:, :, None]
+        return (solid * mask + roi * (1.0 - mask)).astype(roi.dtype)
+    return solid
 
 
 def _iou(a: tuple, b: tuple) -> float:

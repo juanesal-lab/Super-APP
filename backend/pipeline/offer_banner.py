@@ -127,7 +127,8 @@ def add_offer_banner(video_path: str, out_path: str, work_dir: str, *,
 # Ambos van TODO el video (overlay 0:0 sin enable). Motor PIL común con render_banner.
 
 
-def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045) -> Image.Image:
+def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045,
+                    con_2x1: bool = True) -> Image.Image:
     """PNG full-frame: barra SÓLIDA oscura arriba con el HOOK (MAYÚSCULAS, bold, alto contraste,
     auto-ajustado a varias líneas) + pill naranja 'OFERTA 2X1' justo debajo.
 
@@ -158,7 +159,9 @@ def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045) -> Im
                stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
         y += line_h
 
-    # pill naranja "OFERTA 2X1" centrada justo bajo la barra
+    # pill naranja "OFERTA 2X1" centrada justo bajo la barra (opcional)
+    if not con_2x1:
+        return img
     tag = "OFERTA 2X1"
     ts = max(20, int(H * 0.030))
     tf = ImageFont.truetype(fp, ts)
@@ -174,12 +177,15 @@ def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045) -> Im
 
 
 def render_offer_bottom(W: int, H: int, y_frac: float = 0.815,
-                        text: str = "¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR   ·   2X1") -> Image.Image:
+                        text: str | None = None, con_2x1: bool = True) -> Image.Image:
     """PNG full-frame: barra NARANJA alto contraste ABAJO (dentro de la safe zone: su base queda
     ~13% por encima del borde inferior para que la UI de Reels/Stories no la tape)."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     fp = _fontpath(True)
+    if text is None:
+        text = ("¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR   ·   2X1" if con_2x1
+                else "¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR")
     txt = (text or "").strip().upper()
 
     margin_x = int(W * 0.04)
@@ -216,24 +222,25 @@ def _overlay_full(video_path: str, png: str, out_path: str) -> str:
         return video_path
 
 
-def add_hook_banner_top(video_path: str, out_path: str, work_dir: str, hook_text: str) -> str:
-    """🏆 Banner SUPERIOR persistente = HOOK (MAYÚSCULAS) + 'OFERTA 2X1'. Todo el video."""
+def add_hook_banner_top(video_path: str, out_path: str, work_dir: str, hook_text: str,
+                        con_2x1: bool = True) -> str:
+    """🏆 Banner SUPERIOR persistente = HOOK (MAYÚSCULAS) + 'OFERTA 2X1' (si con_2x1). Todo el video."""
     try:
         info = probe(video_path)
         png = os.path.join(work_dir, os.path.basename(out_path) + ".hook.png")
-        render_hook_top(info.width, info.height, hook_text).save(png)
+        render_hook_top(info.width, info.height, hook_text, con_2x1=con_2x1).save(png)
         return _overlay_full(video_path, png, out_path)
     except Exception:  # noqa: BLE001
         return video_path
 
 
 def add_offer_banner_bottom(video_path: str, out_path: str, work_dir: str,
-                            text: str = "¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR   ·   2X1") -> str:
-    """🏆 Banner INFERIOR persistente = envío gratis · pagas al recibir · 2x1 (naranja). Todo el video."""
+                            text: str | None = None, con_2x1: bool = True) -> str:
+    """🏆 Banner INFERIOR persistente = envío gratis · pagas al recibir (· 2x1 si con_2x1), naranja."""
     try:
         info = probe(video_path)
         png = os.path.join(work_dir, os.path.basename(out_path) + ".oferta.png")
-        render_offer_bottom(info.width, info.height, text=text).save(png)
+        render_offer_bottom(info.width, info.height, text=text, con_2x1=con_2x1).save(png)
         return _overlay_full(video_path, png, out_path)
     except Exception:  # noqa: BLE001
         return video_path

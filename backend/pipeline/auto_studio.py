@@ -285,7 +285,8 @@ def generar_creativo_auto(
     hook_ganador = ""
     if modo_ganador:
         verticalizar = True
-        oferta_2x1 = True
+        # oferta_2x1 es OPCIONAL: se respeta lo que elija el usuario (la voz lo menciona y los banners
+        # muestran el "2X1" solo si está activo). Default del blueprint = ON, pero se puede apagar.
         caption_style = "hormozi"            # keyword amarilla (blueprint: subtítulo con keyword de color)
         banner_oferta = False                # los banners viejos se reemplazan por las 2 capas nuevas
 
@@ -423,10 +424,11 @@ def generar_creativo_auto(
             from .winner_blueprint import elegir_hook
             hook_ganador = elegir_hook(product_desc, gemini_key)
             out1 = os.path.join(work_dir, "hook_top.mp4")
-            current = add_hook_banner_top(current, out1, work_dir, hook_ganador)
+            current = add_hook_banner_top(current, out1, work_dir, hook_ganador, con_2x1=oferta_2x1)
             out2 = os.path.join(work_dir, "oferta_bottom.mp4")
-            current = add_offer_banner_bottom(current, out2, work_dir)
-            paso("Banner HOOK + oferta", True, f"«{hook_ganador}» + envío gratis/2x1 abajo")
+            current = add_offer_banner_bottom(current, out2, work_dir, con_2x1=oferta_2x1)
+            _dt = "envío gratis · pagas al recibir" + (" · 2x1" if oferta_2x1 else "")
+            paso("Banner HOOK + oferta", True, f"«{hook_ganador}» + {_dt} abajo")
         except Exception as e:  # noqa: BLE001
             paso("Banner HOOK + oferta", False, str(e))
     # 6b·bis) BANNER DE OFERTA ARRIBA (modo clásico, opcional) — la IA lo pone donde no tape nada

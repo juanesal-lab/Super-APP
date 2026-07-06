@@ -3122,3 +3122,17 @@ Front verificado en navegador (toggle ON esconde opciones, OFF las muestra).
   "Modo Ganador" y auto-guardado a la vez; git los intercaló lineal y limpio (commits b057177 + 75bc060).
   Quedó todo compilando (py 4/4, JSON ok). Si Juan NO quiere el auto-push, que borre el bloque "Stop" de
   .claude/settings.json (o lo pase a settings.local). AVISO: solo archivos .claude/ + esta nota.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🎁 Modo Ganador: el 2X1 ahora es OPCIONAL
+Jack pidió que el 2x1 sea opcional dentro del Modo Ganador (antes se forzaba ON).
+- auto_studio: quité el `oferta_2x1 = True` forzado en modo_ganador → se respeta lo que elija el usuario.
+  El flag se pasa a los banners como `con_2x1`.
+- offer_banner: render_hook_top / add_hook_banner_top y render_offer_bottom / add_offer_banner_bottom
+  ganan `con_2x1: bool = True`. Con OFF: el pill "OFERTA 2X1" de arriba NO se dibuja y el banner de
+  abajo dice solo "¡ENVÍO GRATIS! · PAGAS AL RECIBIR" (sin "· 2X1"). Firmas retrocompatibles (default True).
+- Front p-auto: casilla nueva "🎁 Oferta 2x1 — opcional" (autoGanador2x1, default ON) que SÍ se ve con
+  el Modo Ganador encendido (las demás opciones siguen ocultas). autoRun manda oferta_2x1 desde esa
+  casilla cuando modo_ganador está ON, o desde la de siempre (auto2x1) en modo clásico.
+- Verificado: py_compile + JS node --check ok; render de banners CON y SIN 2x1 mirado en frames (ON: pill
+  naranja + "· 2X1" abajo; OFF: sin pill, "¡ENVÍO GRATIS! · PAGAS AL RECIBIR"). La voz usa oferta_2x1 vía
+  generar_dub como siempre. AVISO Juan: solo params opcionales nuevos (con_2x1), nada rompe.

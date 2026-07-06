@@ -516,8 +516,19 @@
       <div class="s">MP4/MOV · uno o VARIOS a la vez · hace un creativo por cada video</div>
     </label>
 
-    <div class="autoOpts">
-      <input type="text" id="autoDesc" class="full" placeholder="¿Qué producto es? (ej. crema para dolor de espalda)">
+    <label id="modoGanadorBox" style="display:flex;align-items:center;gap:14px;margin:14px 0;padding:16px 18px;border-radius:16px;cursor:pointer;
+        background:linear-gradient(135deg,#3a2a05,#5a3d00);border:2px solid #d4a01e;box-shadow:0 0 0 1px rgba(212,160,30,.25)">
+      <input type="checkbox" id="autoModoGanador" checked onchange="autoToggleGanador()" style="width:26px;height:26px;flex:0 0 auto;accent-color:#e8b820;cursor:pointer">
+      <span>
+        <b style="font-size:16px;color:#ffd766">🏆 Modo Ganador — aplica la fórmula de tus creativos que SÍ vendieron</b>
+        <div style="font-size:12.5px;color:#e8cf9a;margin-top:3px">Todo automático: hook arriba, oferta 2x1 · envío gratis · pagas al recibir abajo,
+        subtítulos con la palabra clave resaltada y 9:16. No tienes que decidir nada.</div>
+      </span>
+    </label>
+
+    <input type="text" id="autoDesc" class="full" placeholder="¿Qué producto es? (ej. crema para dolor de espalda)" style="margin-bottom:10px">
+
+    <div class="autoOpts" id="autoOptsBox">
       <select id="autoVoz">
         <option value="juan_carlos">Voz: Juan Carlos</option>
         <option value="kate">Voz: Kate</option>
@@ -536,7 +547,7 @@
       <select id="autoCapSize" class="full" title="Tamaño de los subtítulos" onchange="document.getElementById('autoCapPrev').src='/api/caption-preview?style='+document.getElementById('autoCapStyle').value+'&size='+this.value" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px"><option value="pequeno">Tamaño: Pequeño</option><option value="mediano" selected>Tamaño: Mediano</option><option value="grande">Tamaño: Grande</option></select>
       <img id="autoCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" class="full" title="Así se ven los subtítulos" style="max-height:120px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#222">
     </div>
-    <div class="autoChk">
+    <div class="autoChk" id="autoChk">
       <label><input type="checkbox" id="auto2x1"> Oferta 2x1 (en la voz)</label>
       <label><input type="checkbox" id="autoBanner"> 🏷️ Banner arriba: 2x1 · envío gratis · pagas al recibir</label>
     </div>
@@ -562,11 +573,21 @@
       ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
       drop.addEventListener('drop',e=>{ if(e.dataTransfer.files.length) pick(e.dataTransfer.files); });
     })();
+    // 🏆 Modo Ganador ON = todo automático, se ocultan las opciones sueltas (el usuario no decide nada).
+    function autoToggleGanador(){
+      const on=document.getElementById('autoModoGanador').checked;
+      const box=document.getElementById('autoOptsBox'), chk=document.getElementById('autoChk');
+      if(box) box.style.display = on ? 'none' : '';
+      if(chk) chk.style.display = on ? 'none' : '';
+    }
+    autoToggleGanador();
     async function autoRun(){
       const arr=window._autoFiles||[]; if(!arr.length) return;
+      const ganador=document.getElementById('autoModoGanador').checked;
       const fd=new FormData();
       arr.forEach(f=>fd.append('files',f));
       fd.append('product_desc',document.getElementById('autoDesc').value);
+      fd.append('modo_ganador',ganador);
       fd.append('voz',document.getElementById('autoVoz').value);
       fd.append('caption_style',document.getElementById('autoCapStyle').value);
       fd.append('caption_size',document.getElementById('autoCapSize').value);

@@ -268,13 +268,27 @@ def generar_creativo_auto(
     caption_size: str = "mediano",
     oferta: str = "",
     banner_oferta: bool = False,
+    modo_ganador: bool = False,
     work_dir: str | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Corre TODA la cadena sobre un video ganador. Cada paso está aislado (si falla, sigue).
 
+    `modo_ganador=True` (🏆): aplica SOLO la fórmula del blueprint ganador (todo automático, cero
+    decisiones para el usuario): fuerza 9:16, oferta 2x1 en la voz, subtítulos keyword (hormozi) y
+    agrega las 2 CAPAS PERSISTENTES (banner HOOK arriba + banner oferta abajo). El resto de params
+    sueltos se ignoran. `modo_ganador=False` = comportamiento EXACTO de siempre (retrocompatible).
+
     Devuelve {"ok":True,"video":ruta_final,"pasos":[{paso,ok,detalle}],"blueprint":..}.
     """
+    # 🏆 MODO GANADOR: forzar la fórmula validada (el usuario no decide nada).
+    hook_ganador = ""
+    if modo_ganador:
+        verticalizar = True
+        oferta_2x1 = True
+        caption_style = "hormozi"            # keyword amarilla (blueprint: subtítulo con keyword de color)
+        banner_oferta = False                # los banners viejos se reemplazan por las 2 capas nuevas
+
     pasos: list[dict] = []
 
     def report(msg, pct):
@@ -387,8 +401,23 @@ def generar_creativo_auto(
     else:
         paso("Subtítulos", False, "sin texto de guion")
 
-    # 6b) BANNER DE OFERTA ARRIBA (opcional) — la IA lo pone donde no tape nada
-    if banner_oferta:
+    # 6b) CAPAS PERSISTENTES del blueprint ganador
+    if modo_ganador:
+        # 🏆 Banner HOOK arriba (autoridad/problema/curiosidad, MAYÚSCULAS + 2X1) + banner oferta abajo.
+        report("🏆 Poniendo el HOOK arriba (2x1) y el envío gratis abajo...", 86)
+        try:
+            from .offer_banner import add_hook_banner_top, add_offer_banner_bottom
+            from .winner_blueprint import elegir_hook
+            hook_ganador = elegir_hook(product_desc, gemini_key)
+            out1 = os.path.join(work_dir, "hook_top.mp4")
+            current = add_hook_banner_top(current, out1, work_dir, hook_ganador)
+            out2 = os.path.join(work_dir, "oferta_bottom.mp4")
+            current = add_offer_banner_bottom(current, out2, work_dir)
+            paso("Banner HOOK + oferta", True, f"«{hook_ganador}» + envío gratis/2x1 abajo")
+        except Exception as e:  # noqa: BLE001
+            paso("Banner HOOK + oferta", False, str(e))
+    # 6b·bis) BANNER DE OFERTA ARRIBA (modo clásico, opcional) — la IA lo pone donde no tape nada
+    elif banner_oferta:
         report("🏷️ Poniendo el banner de oferta (2x1 · envío gratis)...", 88)
         try:
             from .offer_banner import add_offer_banner

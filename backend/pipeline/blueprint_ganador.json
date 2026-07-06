@@ -1,0 +1,248 @@
+{
+  "meta": {
+    "nombre": "Blueprint de Creativos Ganadores — BuenaTienda COD Colombia",
+    "version": "1.0",
+    "fecha_generacion": "2026-07-06",
+    "fuente": "Ingenieria inversa de creativos con ventas reales confirmadas",
+    "ganadores_analizados": [
+      {"producto": "BEE VENOM", "campaña": "26.06 BEE CREATIVOS Copia 8", "ventas": 26, "roas": 7.5, "duracion_s": 37.3, "cpc": 1058, "ctr_pct": 3.16},
+      {"producto": "PLAGAS", "campaña": "02.07 PLAGAS CREATIVOS Copia", "ventas": 13, "roas": 9.3, "duracion_s": 9.75}
+    ],
+    "moneda": "COP",
+    "mercado": "Colombia",
+    "modelo": "COD (pago contra entrega)",
+    "objetivo": "Generar creativos desde cero que conviertan replicando la anatomia validada"
+  },
+
+  "principios_fundamentales": [
+    "El HOOK de los primeros 1s decide todo: si no engancha, no vende (validado por embudo: creativos sin hook fuerte = CTR <1.5% = 0 ventas).",
+    "Texto en pantalla desde el frame 0 — nunca depender del audio (mayoria mira sin sonido).",
+    "La oferta 2X1 + 'pagas al recibir' debe estar visible TODO el video (confianza COD = mata la friccion de pagar por adelantado).",
+    "Estetica cruda/UGC rinde mas que produccion cara en audiencia broad Colombia.",
+    "Subtitulos quemados palabra-por-palabra con la keyword resaltada en color.",
+    "Duracion flexible (9s o 37s funcionan) siempre que el hook pegue en 1s.",
+    "Ritmo rapido: cortes cada 1-2 segundos, nunca planos largos estaticos.",
+    "Cerrar SIEMPRE con urgencia/escasez y recap de oferta."
+  ],
+
+  "capas_persistentes": {
+    "descripcion": "Elementos que permanecen en pantalla durante casi todo el video (overlays fijos).",
+    "banner_superior": {
+      "posicion": "top",
+      "contenido": "Hook principal (pregunta o afirmacion) + etiqueta de oferta '2X1'",
+      "estilo": {
+        "fondo": "barra solida (dorado/oscuro para BEE, blanco para PLAGAS)",
+        "texto": "MAYUSCULAS, bold, alto contraste",
+        "color_oferta": "naranja o rojo para '2X1' / 'OFERTA'",
+        "duracion": "todo el video"
+      },
+      "ejemplos_reales": [
+        "¿POR QUE DERMATOLOGOS RECOMIENDAN ESTA CREMA? HOY EN OFERTA 2X1",
+        "ACABA CON EL PROBLEMA DE PLAGAS"
+      ]
+    },
+    "subtitulos": {
+      "posicion": "centro-abajo",
+      "estilo": {
+        "tipo": "palabra por palabra (karaoke)",
+        "fuente": "sans-serif bold grande",
+        "color_base": "blanco con borde negro",
+        "keyword_resaltada": "amarillo o verde lima",
+        "burned_in": true
+      },
+      "regla": "Cada frase clave lleva UNA palabra resaltada en color (la emocional o el beneficio)."
+    },
+    "banner_inferior_oferta": {
+      "posicion": "bottom",
+      "contenido": ["¡ENVIO GRATIS!", "PAGAS AL RECIBIR", "OFERTA 2X1", "PRECIO MINIMO HISTORICO"],
+      "estilo": {
+        "fondo": "naranja/amarillo alto contraste",
+        "aparicion": "desde el segundo tercio del video en adelante, o fijo"
+      }
+    },
+    "producto_visible": {
+      "regla": "El envase/producto debe aparecer en esquina o banner desde la mitad del video (reconocimiento de marca)."
+    }
+  },
+
+  "estructura_por_bloques": {
+    "descripcion": "Timestamps expresados como fraccion (0.0-1.0) para adaptarse a cualquier duracion.",
+    "bloques": [
+      {
+        "id": "hook",
+        "rango": [0.0, 0.08],
+        "objetivo": "Frenar el scroll en 1 segundo",
+        "requisitos": [
+          "Texto grande en pantalla desde el primer frame",
+          "Visual impactante o rostro atractivo en close-up",
+          "Plantear pregunta o mostrar el problema crudo YA"
+        ],
+        "variantes": {
+          "pregunta": "¿Por que [autoridad] recomienda [producto]?",
+          "shock_visual": "Mostrar el problema en su peor forma (plaga viva, piel envejecida, fuga)",
+          "resultado_adelantado": "Mostrar el antes-despues en 1s y luego explicar"
+        }
+      },
+      {
+        "id": "problema_agitacion",
+        "rango": [0.08, 0.30],
+        "objetivo": "Que el espectador se identifique con el dolor",
+        "contenido": "Close-up del problema real (piel sin firmeza / plaga en casa / incomodidad). Lenguaje emocional en subtitulos."
+      },
+      {
+        "id": "mecanismo_demo",
+        "rango": [0.30, 0.70],
+        "objetivo": "Explicar COMO funciona + demo satisfactoria",
+        "contenido": "Animacion del mecanismo (panal 3D para BEE, ondas para el device) o demostracion en vivo del producto funcionando. Debe ser visualmente satisfactorio.",
+        "banner": "Aparece '¡Envio Gratis!' + producto"
+      },
+      {
+        "id": "prueba_resultado",
+        "rango": [0.70, 0.90],
+        "objetivo": "Prueba tangible",
+        "contenido": "Antes-despues (arruga que desaparece / casa protegida / testimonio). Genera creencia."
+      },
+      {
+        "id": "cierre_oferta",
+        "rango": [0.90, 1.0],
+        "objetivo": "Convertir con urgencia",
+        "contenido": "Recap de oferta: '2X1' + 'Envio gratis' + 'Precio minimo historico' + producto grande + variantes (ej. 'crema facial, ojos y cuello 3 en 1'). Flecha o CTA visual hacia abajo."
+      }
+    ]
+  },
+
+  "libreria_hooks": {
+    "pregunta_autoridad": [
+      "¿Por que los dermatologos recomiendan esta crema?",
+      "¿Por que miles de mujeres cambiaron su crema por esta?",
+      "¿Sabias por que esto se agota cada semana?"
+    ],
+    "problema_directo": [
+      "Acaba con el problema de plagas para siempre",
+      "Si tu piel perdio firmeza, mira esto",
+      "Deja de gastar en desechables cada mes"
+    ],
+    "shock_visual": [
+      "Mostrar plagas vivas en la trampa (primer frame)",
+      "Close-up de arrugas profundas antes del producto",
+      "La fuga/incomodidad en el peor momento"
+    ],
+    "curiosidad": [
+      "Esto es lo que nadie te cuenta sobre [problema]",
+      "El secreto 2X1 que se volvio viral"
+    ],
+    "regla_de_oro": "El hook debe tener texto + visual fuerte en el frame 0. Probar 3-4 hooks distintos por lote de testeo."
+  },
+
+  "formulas_copy_body": {
+    "descripcion": "Texto del post (primary text) — patrones de los ganadores.",
+    "estructura": "[DOLOR/GANCHO emoji] + [3-5 bullets con check] + [oferta 2x1] + [envio gratis / pago contraentrega] + [prueba social] + [CTA]",
+    "ejemplos_reales": {
+      "BEE": "TU PIEL DEJO DE SER FIRME Y LO NOTAS CADA VEZ QUE TE MIRAS AL ESPEJO 😔\n✅ El secreto que usan las coreanas para recuperar piel firme en 7 dias\n✅ Veneno de abeja que estimula el colageno desde adentro\n✅ Resultados visibles sin cirugias, sin agujas, sin dolor\n✅ 2X1 por tiempo limitado — lleva una y regala la otra\n✅ Envio gratis + pagas al recibirlo 📦\nMas de 2.490.000 mujeres ya lo comprobaron. ¿Cuando lo vas a probar tu? 👉",
+      "PLAGAS": "🐛 ¿Cansado de las plagas en tu hogar? El repelente ultrasonico 2x1 elimina insectos y roedores sin quimicos. ¡Pedi el tuyo hoy!",
+      "ALMOHADILLAS": "Deje de ir a ciertos eventos por miedo a que me pasara algo incomodo. Todo cambio cuando encontre esto.\n\n'Las lavo y duran meses. No volveria a las desechables.' — Lucia, Bogota\n\n🛡️ Almohadillas Antifugas Reutilizables 2x1 — proteccion real, todo el dia.\n📦 Pago contraentrega · 2x1 por tiempo limitado"
+    },
+    "elementos_obligatorios": ["emoji en el gancho", "bullets con ✅", "2X1", "envio gratis / pago contraentrega", "prueba social (numero o testimonio)", "CTA final"]
+  },
+
+  "plantillas_por_producto": {
+    "BEE_VENOM": {
+      "landing": "https://buenatienda.com.co/products/crema-bee-venom-2x1-reafirmante-para-la-piel-en-7-dias-🐝",
+      "cuenta_recomendada": "Z1",
+      "duracion_optima_s": [30, 40],
+      "angulo": "antiedad / firmeza en 7 dias / secreto coreano",
+      "hook_top": "pregunta_autoridad (dermatologos)",
+      "mecanismo_visual": "animacion panal de abeja 3D penetrando la piel",
+      "prueba": "antes-despues de arrugas",
+      "cierre": "3 en 1 (facial, ojos, cuello) + 2x1 + precio minimo historico"
+    },
+    "PLAGAS": {
+      "landing": "https://buenatienda.com.co/products/repelente-de-plagas-ultrasonico-con-ia-2x1-para-eliminar-molestas-plagas-🐭-2",
+      "cuenta_recomendada": "Z3",
+      "duracion_optima_s": [9, 15],
+      "angulo": "elimina plagas sin quimicos / protege toda la casa",
+      "hook_top": "shock_visual (plagas vivas)",
+      "mecanismo_visual": "device ultrasonico encendido + ondas",
+      "prueba": "casa sin plagas / demostracion",
+      "cierre": "protege tu casa entera + 2x1 + pagas al recibir"
+    },
+    "ALMOHADILLAS": {
+      "landing": "https://buenatienda.com.co/products/almohadillas-antifugas-2x1-reutilizables",
+      "cuenta_recomendada": "Z2",
+      "duracion_optima_s": [15, 30],
+      "angulo": "reutilizable / adios desechables / proteccion todo el dia",
+      "hook_top": "problema_directo (miedo a fugas en publico)",
+      "mecanismo_visual": "mostrar absorcion / lavado / textura",
+      "prueba": "testimonio (Lucia, Bogota) + duracion meses",
+      "cierre": "2x1 + pago contraentrega"
+    },
+    "RODILLERA": {
+      "landing": "https://buenatienda.com.co/products/rodillera-meniscal-2x1",
+      "cuenta_recomendada": "Z2",
+      "duracion_optima_s": [10, 20],
+      "angulo": "alivio dolor de rodilla / soporte al caminar y ejercicio",
+      "hook_top": "problema_directo (dolor al subir escaleras)",
+      "estado": "en testeo (nuevo)"
+    },
+    "LEGGIN_CARGO": {
+      "landing": "https://buenatienda.com.co/products/leggins-cargo-levanta-🍑-y-control-abdominal",
+      "cuenta_recomendada": "Z3",
+      "duracion_optima_s": [10, 20],
+      "angulo": "levanta cola / control abdominal / realza figura",
+      "estado": "en testeo (nuevo)"
+    }
+  },
+
+  "especificaciones_tecnicas": {
+    "aspect_ratio": "9:16",
+    "resolucion_min": "1080x1920",
+    "fps": 30,
+    "formato": "mp4 (H.264)",
+    "subtitulos": "quemados (burned-in), no SRT",
+    "audio": "opcional pero recomendado voz en off; el video debe funcionar SIN audio",
+    "safe_zones": "dejar margen superior e inferior para que Meta no tape texto con UI de Reels/Stories"
+  },
+
+  "reglas_meta_upload": {
+    "object_story_spec": "video_data (NO asset_feed_spec / NO DCO)",
+    "multi_advertiser_enabled": false,
+    "degrees_of_freedom_spec_OPT_OUT": ["adapt_to_placement","text_optimizations","image_touchups","image_uncrop","image_brightness_and_contrast","image_templates"],
+    "call_to_action": "SHOP_NOW con link a la landing del producto",
+    "ads_por_campaña": [4, 6]
+  },
+
+  "validacion_metricas": {
+    "descripcion": "Umbrales para decidir si un creativo sirve — medir, no opinar.",
+    "hook_rate_3s_pct": {"bueno": ">=25", "malo": "<15"},
+    "ctr_pct": {"bueno": ">=3.0", "aceptable": ">=1.8", "malo": "<1.5"},
+    "cpc_cop": {"bueno": "<=1100", "alerta": ">3000"},
+    "landing_page_views_min_para_juzgar": 12,
+    "cvr_referencia": "1 venta cada ~12 landing page views (del ganador BEE)",
+    "diagnostico": {
+      "ctr_bajo": "El hook fallo → cambiar primeros 1-2s",
+      "ctr_bueno_sin_venta": "Problema de landing u oferta, no del creativo",
+      "cpc_3x_ganador": "Cuenta saturada (canibalizacion), no es el video → mover a cuenta despejada"
+    }
+  },
+
+  "anti_patrones": {
+    "descripcion": "Lo que MATO a los creativos que no vendieron (BEE vidaria: $29K, 327 impresiones, 0 ventas).",
+    "lista": [
+      "Meter 8-10 campañas broad en la misma cuenta → CPM sube 3-5x → creativos nuevos casi no reciben trafico → 0 ventas por falta de alcance, no por ser malos.",
+      "Hook debil o sin texto en el primer frame.",
+      "Depender del audio para entender el mensaje.",
+      "No mostrar la oferta 2x1 / pago contraentrega (friccion COD).",
+      "Produccion demasiado pulida que 'parece anuncio' → menos confianza.",
+      "Planos largos estaticos sin cortes.",
+      "Juzgar/pausar antes de 12 landing page views."
+    ]
+  },
+
+  "proceso_testeo": {
+    "creativos_por_lote": [4, 6],
+    "presupuesto_por_campaña_cop": [20000, 25000],
+    "reparto": "1 producto por cuenta para no canibalizar (max 3-4 campañas activas broad por cuenta).",
+    "criterio_ganador": "ROAS promedio 3 dias >= 4.5x con ventas reales → escalar +20%/+30%.",
+    "criterio_pausa": "ROAS 3d < 4.44x sostenido, o test que gasto >=$30K sin conversion."
+  }
+}

@@ -9,11 +9,12 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .caption_styles import _fontpath
+from .caption_styles import _fontpath, _fit
 from .ffmpeg_utils import probe, run
 from .assemble import venc
 
 _ROJO = (226, 45, 44, 255)
+_NARANJA = (240, 120, 18, 255)      # naranja alto contraste (banner inferior de oferta)
 _MODEL = "gemini-2.5-flash"
 
 
@@ -115,5 +116,124 @@ def add_offer_banner(video_path: str, out_path: str, work_dir: str, *,
              "-filter_complex", ov, "-map", "[v]", "-map", "0:a?",
              "-c:a", "copy", *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path])
         return out_path
+    except Exception:  # noqa: BLE001
+        return video_path
+
+
+# ==================================================================== 🏆 MODO GANADOR
+# Dos capas persistentes que exige el blueprint de ganadores:
+#   - banner SUPERIOR = HOOK (autoridad/problema/curiosidad) en MAYÚSCULAS + etiqueta "OFERTA 2X1".
+#   - banner INFERIOR = "¡ENVÍO GRATIS! · PAGAS AL RECIBIR · 2X1" naranja, en la safe zone de abajo.
+# Ambos van TODO el video (overlay 0:0 sin enable). Motor PIL común con render_banner.
+
+
+def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045) -> Image.Image:
+    """PNG full-frame: barra SÓLIDA oscura arriba con el HOOK (MAYÚSCULAS, bold, alto contraste,
+    auto-ajustado a varias líneas) + pill naranja 'OFERTA 2X1' justo debajo.
+
+    La barra sólida va en la safe zone superior: como es un fondo opaco no importa qué haya detrás,
+    y al estar pegada arriba no tapa la cara/producto (que van al centro)."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    fp = _fontpath(True)
+    hook = (hook_text or "").strip().upper() or "MÍRALO ANTES DE QUE SE AGOTE"
+
+    margin_x = int(W * 0.045)
+    max_w = W - 2 * margin_x
+    size0 = int(H * 0.032)
+    font, lines, line_h, size = _fit(d, hook, fp, max_w, int(H * 0.22), size0,
+                                     min_size=max(20, int(H * 0.020)))
+
+    pad = int(size * 0.55)
+    bar_top = int(H * y_frac)
+    text_h = line_h * len(lines)
+    bar_h = text_h + 2 * pad
+    # barra sólida oscura (dorado/oscuro estilo BEE), full-width, alto contraste
+    d.rectangle([0, bar_top, W, bar_top + bar_h], fill=(22, 19, 14, 236))
+    stroke = max(2, size // 14)
+    y = bar_top + pad
+    for ln in lines:
+        w = d.textlength(ln, font=font)
+        d.text(((W - w) / 2, y), ln, font=font, fill=(255, 255, 255, 255),
+               stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        y += line_h
+
+    # pill naranja "OFERTA 2X1" centrada justo bajo la barra
+    tag = "OFERTA 2X1"
+    ts = max(20, int(H * 0.030))
+    tf = ImageFont.truetype(fp, ts)
+    tw = d.textlength(tag, font=tf)
+    px, py = int(ts * 0.65), int(ts * 0.34)
+    tag_top = bar_top + bar_h + int(H * 0.008)
+    x0 = (W - tw) / 2 - px
+    x1 = (W + tw) / 2 + px
+    d.rounded_rectangle([x0, tag_top, x1, tag_top + ts + 2 * py],
+                        radius=int((ts + 2 * py) / 2), fill=_NARANJA)
+    d.text(((W - tw) / 2, tag_top + py), tag, font=tf, fill=(255, 255, 255, 255))
+    return img
+
+
+def render_offer_bottom(W: int, H: int, y_frac: float = 0.815,
+                        text: str = "¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR   ·   2X1") -> Image.Image:
+    """PNG full-frame: barra NARANJA alto contraste ABAJO (dentro de la safe zone: su base queda
+    ~13% por encima del borde inferior para que la UI de Reels/Stories no la tape)."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    fp = _fontpath(True)
+    txt = (text or "").strip().upper()
+
+    margin_x = int(W * 0.04)
+    max_w = W - 2 * margin_x
+    size0 = int(H * 0.028)
+    font, lines, line_h, size = _fit(d, txt, fp, max_w, int(H * 0.12), size0,
+                                     min_size=max(18, int(H * 0.018)))
+
+    pad = int(size * 0.5)
+    bar_h = line_h * len(lines) + 2 * pad
+    bar_top = int(H * y_frac)
+    # no dejar que se salga por abajo
+    if bar_top + bar_h > int(H * 0.97):
+        bar_top = int(H * 0.97) - bar_h
+    d.rectangle([0, bar_top, W, bar_top + bar_h], fill=_NARANJA)
+    stroke = max(2, size // 16)
+    y = bar_top + pad
+    for ln in lines:
+        w = d.textlength(ln, font=font)
+        d.text(((W - w) / 2, y), ln, font=font, fill=(255, 255, 255, 255),
+               stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        y += line_h
+    return img
+
+
+def _overlay_full(video_path: str, png: str, out_path: str) -> str:
+    """Overlay del PNG (full-frame) TODO el video. Devuelve out_path o el original si falla."""
+    try:
+        run(["ffmpeg", "-y", "-i", video_path, "-i", png,
+             "-filter_complex", "[0:v][1:v]overlay=0:0[v]", "-map", "[v]", "-map", "0:a?",
+             "-c:a", "copy", *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path])
+        return out_path
+    except Exception:  # noqa: BLE001
+        return video_path
+
+
+def add_hook_banner_top(video_path: str, out_path: str, work_dir: str, hook_text: str) -> str:
+    """🏆 Banner SUPERIOR persistente = HOOK (MAYÚSCULAS) + 'OFERTA 2X1'. Todo el video."""
+    try:
+        info = probe(video_path)
+        png = os.path.join(work_dir, os.path.basename(out_path) + ".hook.png")
+        render_hook_top(info.width, info.height, hook_text).save(png)
+        return _overlay_full(video_path, png, out_path)
+    except Exception:  # noqa: BLE001
+        return video_path
+
+
+def add_offer_banner_bottom(video_path: str, out_path: str, work_dir: str,
+                            text: str = "¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR   ·   2X1") -> str:
+    """🏆 Banner INFERIOR persistente = envío gratis · pagas al recibir · 2x1 (naranja). Todo el video."""
+    try:
+        info = probe(video_path)
+        png = os.path.join(work_dir, os.path.basename(out_path) + ".oferta.png")
+        render_offer_bottom(info.width, info.height, text=text).save(png)
+        return _overlay_full(video_path, png, out_path)
     except Exception:  # noqa: BLE001
         return video_path

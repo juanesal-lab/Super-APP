@@ -547,6 +547,7 @@ def _run_auto_job(job_id: str, video_paths: list[str], settings: dict):
                 caption_size=settings.get("caption_size", "mediano"),
                 oferta=settings.get("oferta", ""),
                 banner_oferta=settings.get("banner_oferta", False),
+                modo_ganador=settings.get("modo_ganador", False),
                 work_dir=os.path.join(WORK_DIR, job_id, f"c{i}"),
                 progress=progress,
             )
@@ -574,6 +575,7 @@ def auto(
     caption_size: str = Form("mediano"),
     oferta: str = Form(""),
     banner_oferta: bool = Form(False),
+    modo_ganador: bool = Form(False),
 ):
     if not files:
         raise HTTPException(400, "Sube al menos un video ganador")
@@ -589,6 +591,7 @@ def auto(
         "caption_size": caption_size,
         "oferta": oferta.strip(),
         "banner_oferta": bool(banner_oferta),
+        "modo_ganador": bool(modo_ganador),
     }
     threading.Thread(target=_run_auto_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}

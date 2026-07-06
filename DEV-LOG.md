@@ -3051,3 +3051,45 @@ Dos pedidos de Jack:
 - AVISO Juan: index.html (sidebar: .wrap grid + .side/.appmain + .tabs vertical + media query) y
   disruptive_images.py (3 funciones nuevas + integración adv + prompts adv). NO toqué el pipeline
   disruptivo normal ni la integración del producto. py_compile + node --check 14/14 OK.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🏆 MODO GANADOR en "✨ Crear creativo" (aplica el blueprint SOLO)
+Pedido de Jack (no técnico, "no me pongas a hacer nada"): un botón que aplique SOLA la fórmula de
+sus 2 creativos GANADORES reales. Base: `backend/pipeline/blueprint_ganador.json` NUEVO (ingeniería
+inversa de BEE VENOM ROAS 7.5 + PLAGAS ROAS 9.3 — la biblia de esto). Implementadas las 4 capas
+persistentes que exige el blueprint y que faltaban:
+- **NUEVO `winner_blueprint.py`**: `load_blueprint()` (cachea el JSON) + `elegir_hook(product_desc,
+  gemini_key)` — 1 llamada Gemini flash (thinkingBudget=0, barata) que ELIGE/ADAPTA un hook de
+  `blueprint.libreria_hooks` según el producto; MAYÚSCULAS, 1 línea, SIN precio/cifras (regla de oro,
+  regex `_MONEY`). Fallback a un hook del blueprint si no hay Gemini o falla. (En prueba real eligió
+  "DEJA DE GASTAR EN DESECHABLES CADA MES" para almohadillas reutilizables — perfecto.)
+- **`offer_banner.py`** (AMPLIADO, `add_offer_banner` intacta — otros callers la usan): NUEVAS
+  `render_hook_top`/`add_hook_banner_top(video,out,wd,hook_text)` = barra oscura sólida arriba con el
+  HOOK + pill naranja "OFERTA 2X1"; y `render_offer_bottom`/`add_offer_banner_bottom(video,out,wd)` =
+  barra NARANJA abajo "¡ENVÍO GRATIS! · PAGAS AL RECIBIR · 2X1" en safe zone (base a ~0.90H para que
+  Reels no la tape). Helper común `_overlay_full` (overlay 0:0 todo el video). Ambas persistentes.
+- **`auto_studio.generar_creativo_auto`**: NUEVO param `modo_ganador: bool = False`. En True: FUERZA
+  verticalizar=9:16, oferta_2x1=True (voz), caption_style="hormozi" (keyword amarilla) y agrega los 2
+  banners nuevos (paso "Banner HOOK + oferta"); `banner_oferta` clásico se salta. En False =
+  comportamiento EXACTO de siempre (RETROCOMPAT verificada: mismo listado de pasos, respeta el
+  caption_style pasado, sin banners nuevos).
+- **`app.py` /api/auto + _run_auto_job**: `modo_ganador: bool = Form(False)` → settings → cadena.
+  Los demás endpoints/flujos intactos.
+- **`frontend/index.html` (p-auto)**: interruptor GRANDE dorado "🏆 Modo Ganador" DEFAULT ON; ON oculta
+  las opciones sueltas (autoOptsBox + autoChk) y manda `modo_ganador=true`; OFF muestra lo de siempre.
+  El "¿Qué producto es?" queda SIEMPRE visible (lo usa el hook). `autoToggleGanador()`.
+VERIFICADO: py_compile 4/4 + node --check 14/14. Banners AISLADOS sobre frame real (Read del PNG):
+hook arriba en mayúsculas alto contraste + 2X1, naranja abajo, centro/producto libre, ambos en safe
+zone. E2E modo_ganador=True (eleven_key=None para NO gastar; Gemini flash para hook+narrativa) sobre
+una almohadilla de ~/Downloads → 7/8 pasos OK (solo Doblaje CO saltado por no ElevenLabs), 3 frames
+mirados: las 4 capas encima (hook+2x1, subs hormozi keyword amarilla, naranja abajo), ffprobe 1080x1920.
+Front verificado en navegador (toggle ON esconde opciones, OFF las muestra).
+- LIMITACIONES HONESTAS: (1) NO toqué el motor de montaje/estructura por bloques (capa 5) — el orden
+  ya lo dan las fases de narrativa; era riesgoso, se dejó. (2) El motor de subtítulos coloca los subs
+  bien abajo (centro-abajo) y la ÚLTIMA línea del subtítulo puede solaparse con el banner inferior
+  naranja. Cosmético (la línea principal se lee), pero para pulir habría que subir un pelín la posición
+  del caption — NO lo toqué porque el motor caption_styles es compartido (terreno de reorden). Queda
+  anotado por si Jack lo pide.
+- AVISO Juan: NUEVO winner_blueprint.py; offer_banner.py ganó 3 funciones + helper (add_offer_banner
+  SIN cambios); auto_studio.generar_creativo_auto y app.py /api/auto ganaron el param OPCIONAL
+  `modo_ganador` (default False = retrocompat, tu código no se afecta); index.html solo panel p-auto.
+  Archivo NUEVO de datos: backend/pipeline/blueprint_ganador.json (blueprint de ganadores).

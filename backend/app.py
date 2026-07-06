@@ -47,12 +47,39 @@ ENV_FILE = os.path.join(BASE, ".env")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 
+
+def _gc_disk(days: int = 3, keep_recent: int = 25) -> None:
+    """Limpia del DISCO los trabajos viejos de work/ y uploads/ (la app solo limpiaba MEMORIA →
+    el disco crecía sin límite; se medían ~50GB de renders viejos). Borra subcarpetas con más de
+    `days` días SIN tocar las `keep_recent` más nuevas ni nada modificado hace poco. 100% seguro:
+    solo carpetas (no archivos sueltos), con try/except, y nunca las recientes."""
+    import shutil
+    import time as _t
+    corte = _t.time() - days * 86400
+    for base in (WORK_DIR, UPLOAD_DIR):
+        try:
+            subdirs = [os.path.join(base, d) for d in os.listdir(base)
+                       if os.path.isdir(os.path.join(base, d)) and not d.startswith("_")]
+        except OSError:
+            continue
+        # conserva SIEMPRE las más nuevas (por si el usuario vuelve a un trabajo reciente)
+        subdirs.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0, reverse=True)
+        for p in subdirs[keep_recent:]:
+            try:
+                if os.path.getmtime(p) < corte:
+                    shutil.rmtree(p, ignore_errors=True)
+            except OSError:
+                pass
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Baja el modelo EAST (~92 MB) la primera vez, en segundo plano para no
     # frenar el arranque del servidor. Así el usuario no hace nada manual.
     from pipeline.text_detect import ensure_model
     threading.Thread(target=ensure_model, daemon=True).start()
+    # Auto-limpieza de disco al arrancar (renders viejos >3 días) — evita que work/ crezca a decenas
+    # de GB. En segundo plano para no frenar el arranque.
+    threading.Thread(target=_gc_disk, daemon=True).start()
     yield
 
 

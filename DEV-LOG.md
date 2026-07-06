@@ -3186,3 +3186,23 @@ Sesión larga con Jack. Cambios grandes (todos probados con frames/prueba real, 
 - AVISO Juan: toqué text_detect (_obscure sólido, _box_at fijo), text_overlay (gancho), offer_banner
   (timing), orchestrator/producto_clips/app.py (params hook_seconds/banner_start/dur), tiktok_search +
   creative_search (verificación exacta), index.html (controles). Nada de tu terreno de guiones/radar.
+
+### 2026-07-06 · Claude (jackingshop1-cell) · 🧹 Auto-limpieza de disco (work/ pesaba 44GB) + ✅ E2E Cortar clips verificado + 📚 research
+Sesión de optimización autónoma. Hallazgos y arreglos:
+- **🔴→✅ DISCO: work/ = 44GB + uploads/ = 5.5GB (~50GB de renders viejos comiéndose el Mac).** La app
+  solo limpiaba MEMORIA (_gc_jobs), nunca disco. NUEVO `_gc_disk(days=3, keep_recent=25)` en app.py:
+  al arrancar (hilo aparte) borra subcarpetas de work/ y uploads/ con +3 días, conservando SIEMPRE las
+  25 más nuevas (por si el usuario vuelve a un trabajo reciente). 100% seguro (solo carpetas, try/except,
+  nunca recientes). Limpieza inicial liberó ~16GB (work 44→30, uploads 5.5→3.6).
+- **✅ E2E Cortar clips verificado** (3 videos plagas, 9:16, blur+banner, sin voz, $0): 8 versiones
+  diversas en ~75s, banner "ENVÍO GRATIS · PAGAS AL RECIBIR / OFERTA 2X1" arriba en todas, producto
+  visible, b-roll de dolor (ratas/trampas), demo (dedo/enchufado), texto del proveedor tapado sólido e
+  ilegible (verifiqué grid de frames). El pipeline completo SANO tras todos los cambios en paralelo.
+- Vi que Juan refinó el blur ENCIMA de mi fix (sólido mediana + caja fija = ilegible y quieto) — unificado
+  y funcionando en las 2 rutas. No lo toco.
+- **📚 research** (agente): `assets/research-hooks-y-formatos-2026.md` — catálogo de 15 hooks, hallazgo
+  clave: los arcos deberían VARIAR por nicho (pest 20-35s pattern-interrupt · bee venom/knee brace 45-60s
+  con bloque MECANISMO · leggings 12-18s visual), hoy scripts.py usa duración fija. Pendiente (toca
+  archivos de Juan → coordinar).
+AVISO Juan: solo app.py (función _gc_disk nueva + 1 hilo en lifespan) + docs nuevas en assets/. Cero
+lógica tuya tocada.

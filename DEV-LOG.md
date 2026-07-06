@@ -3143,7 +3143,7 @@ con el video ya cargado, dejando la búsqueda original abierta para seguir busca
 - fpDoblar (pestaña 🔥 Foreplay) y nuevo tkFpDoblar (🔍 Buscar creativos) ahora llaman
   `abrirDoblarNuevaPestana(video, nombre)` → `window.open('/?doblar=<url>&nombre=<n>','_blank')`.
 - Boot handler en DOMContentLoaded: si la URL trae `?doblar=`, la pestaña nueva salta directo a Doblar,
-  fija `window._dubForeplayUrl` (el backend /api/dub ya acepta video_url de Foreplay), pone el nombre,
+  salta la PORTADA con homeEnter, fija `window._dubForeplayUrl` (el backend /api/dub ya acepta video_url de Foreplay), pone el nombre,
   habilita el botón, limpia el `?doblar` de la barra y NO restaura estado viejo. La pestaña original
   queda intacta para seguir buscando.
 - Botón "🎙️ Doblar" agregado a las tarjetas de Foreplay en Buscar creativos (tkFpCard).

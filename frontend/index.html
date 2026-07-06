@@ -3289,7 +3289,9 @@ async function dubPoll(id){
       if(_dobUrl){
         window._dubForeplayUrl=_dobUrl; window._dubForeplayName=_qs.get('nombre')||'Creativo de Foreplay';
         window.dubFile=null;
-        const b=document.querySelector('#tabs button[data-p="p-dub"]'); if(b) b.click();
+        // saltar la PORTADA y entrar directo a Doblar (homeEnter oculta el home y muestra el panel)
+        if(typeof window.homeEnter==='function') window.homeEnter('p-dub', true);
+        else { const b=document.querySelector('#tabs button[data-p="p-dub"]'); if(b) b.click(); }
         const nm=document.getElementById('dubName'); if(nm) nm.textContent='🎬 Foreplay: '+window._dubForeplayName;
         const go=document.getElementById('dubGo'); if(go) go.disabled=false;
         history.replaceState(null,'',location.pathname);   // limpia el ?doblar de la barra

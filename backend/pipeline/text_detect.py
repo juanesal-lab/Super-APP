@@ -240,29 +240,23 @@ def _track(confirmed: dict[int, list[tuple]], last_frame: int) -> list[dict]:
 
 
 def _box_at(track: dict, i: int) -> tuple:
-    """Caja del track en el frame `i`: interpola entre sus detecciones vecinas.
+    """Caja FIJA del track (unión de TODAS sus detecciones) — el tapado NO se mueve por la pantalla.
 
-    Texto estático -> cajas casi idénticas (el tapado no tiembla). Texto que se mueve con
-    la cámara/objeto -> la caja lo SIGUE suave en vez de tapar la unión de todo el recorrido
-    (que dejaba un parche gigante sobre el producto). Antes/después de la primera/última
-    detección usa esa caja fija. Devuelve la caja ya con margen de seguridad.
-    """
-    dets = track["dets"]
-    prev = dets[0]
-    nxt = dets[-1]
-    for d in dets:
-        if d[0] <= i:
-            prev = d
-        if d[0] >= i:
-            nxt = d
-            break
-    if nxt[0] <= prev[0]:
-        x, y, w, h = prev[1]
-    else:
-        f = (i - prev[0]) / float(nxt[0] - prev[0])
-        x, y, w, h = (int(round(a + (b - a) * f)) for a, b in zip(prev[1], nxt[1]))
-    px, py = int(w * _BOX_PAD_W) + 4, int(h * _BOX_PAD_H) + 4   # margen de seguridad espacial
-    return (x - px, y - py, w + 2 * px, h + 2 * py)
+    Antes interpolaba la caja frame a frame y "seguía" la caption: se veía como un bloque
+    DESLIZÁNDOSE por la pantalla (queja de Jack: 'el blur se mueve horrible'). Ahora el tapado es
+    un rectángulo ESTACIONARIO que cubre toda la zona donde el texto aparece en ese tramo, así que
+    queda quieto (el caption quemado es estático de todos modos → la unión es chica). Se cachea."""
+    box = track.get("_fixed")
+    if box is None:
+        dets = track["dets"]
+        x0 = min(d[1][0] for d in dets)
+        y0 = min(d[1][1] for d in dets)
+        x1 = max(d[1][0] + d[1][2] for d in dets)
+        y1 = max(d[1][1] + d[1][3] for d in dets)
+        w, h = x1 - x0, y1 - y0
+        px, py = int(w * _BOX_PAD_W) + 4, int(h * _BOX_PAD_H) + 4   # margen de seguridad espacial
+        box = track["_fixed"] = (x0 - px, y0 - py, w + 2 * px, h + 2 * py)
+    return box
 
 
 def _obscure(roi):

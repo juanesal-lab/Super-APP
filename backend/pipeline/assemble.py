@@ -57,7 +57,7 @@ ASPECTS = {
     "4:5": (1080, 1350),    # feed vertical Meta
     "16:9": (1920, 1080),   # horizontal
 }
-DEFAULT_ASPECT = "1:1"
+DEFAULT_ASPECT = "9:16"
 
 # Cadena de mejora de calidad: limpia ruido/compresion, afina y da un toque de color
 ENHANCE_CHAIN = "hqdn3d=1.5:1.5:6:6,unsharp=5:5:0.9:5:5:0.0,eq=contrast=1.04:saturation=1.07"

@@ -430,7 +430,7 @@ def process(
     max_clip: float = Form(2.5),
     use_gemini: bool = Form(True),
     product_desc: str = Form(""),
-    aspect: str = Form("1:1"),
+    aspect: str = Form("9:16"),
     hook_text: str = Form(""),
     hook_pos: str = Form("arriba"),
     auto_hook: bool = Form(False),
@@ -472,7 +472,7 @@ def process(
         "max_clip_seconds": min(5.0, max(1.0, float(max_clip))),
         "use_gemini": bool(use_gemini),
         "product_desc": product_desc.strip(),
-        "aspect": aspect if aspect in ("1:1", "9:16", "4:5", "16:9") else "1:1",
+        "aspect": aspect if aspect in ("1:1", "9:16", "4:5", "16:9") else "9:16",
         "hook_text": hook_text.strip(),
         "hook_pos": hook_pos if hook_pos in ("arriba", "centro", "abajo") else "arriba",
         "auto_hook": bool(auto_hook),
@@ -1768,7 +1768,7 @@ def _run_foreplay_clips_job(job_id: str, videos: list[dict], settings: dict):
 
 
 @app.post("/api/foreplay-clips")
-def foreplay_clips(videos: str = Form(...), aspect: str = Form("1:1"),
+def foreplay_clips(videos: str = Form(...), aspect: str = Form("9:16"),
                    target_seconds: float = Form(15.0), max_clip: float = Form(3.0),
                    blur_captions: bool = Form(True), text_mode: str = Form("tapar")):
     """Descarga los ads elegidos de Foreplay y los corta en clips."""
@@ -1824,7 +1824,7 @@ def editor_project(job_id: str):
         clips.append({"id": i, "path": p, "thumb": _thumb(p),
                       "duration": round(float(dur), 2),
                       "tag": seg.get("tag", ""), "score": seg.get("score")})
-    return {"clips": clips, "aspect": res.get("aspect", "1:1")}
+    return {"clips": clips, "aspect": res.get("aspect", "9:16")}
 
 
 @app.post("/api/editor-export")

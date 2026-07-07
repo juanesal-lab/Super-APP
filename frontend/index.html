@@ -131,7 +131,7 @@
     overflow:hidden;display:flex;flex-direction:column;animation:fadeUp .5s ease both;
     transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease}
   .vcard:hover{transform:translateY(-4px);box-shadow:var(--glow);border-color:rgba(212,175,55,.45)}
-  .vcard video{width:100%;aspect-ratio:1;background:#000;object-fit:cover}
+  .vcard video{width:100%;aspect-ratio:9/16;background:#000;object-fit:cover}
   .vcard .body{padding:12px 14px}
   .vcard .name{font-weight:600;font-size:14px;margin-bottom:4px}
   .vcard .meta{font-size:12px;color:var(--muted);margin-bottom:10px}
@@ -146,7 +146,7 @@
   .vcard .dl{background:var(--gold);color:var(--ink);border:0;border-radius:8px;
     padding:0 14px;font-weight:700;cursor:pointer;font-size:13px;transition:.15s}
   .vcard .dl:hover{filter:brightness(1.08)}
-  .clip{aspect-ratio:1}
+  .clip{aspect-ratio:9/16}
   .clip video{width:100%;height:100%;object-fit:cover;border-radius:10px;background:#000}
   .clip .sc{font-size:11px;color:var(--muted);text-align:center;margin-top:4px}
   .hidden{display:none}
@@ -2394,7 +2394,7 @@
 
   <div id="fpActions" class="fpActions hidden">
     <span id="fpSelCount" class="fpCred"></span>
-    <select id="fpAspect"><option value="1:1">1:1 cuadrado</option><option value="9:16">9:16 vertical</option><option value="4:5">4:5</option></select>
+    <select id="fpAspect"><option value="9:16">9:16 vertical</option><option value="4:5">4:5</option><option value="1:1">1:1 cuadrado</option></select>
     <button class="autoBtn" style="margin:0;width:auto" onclick="fpCut()">✂️ Cortar seleccionados en clips</button>
   </div>
 
@@ -3140,7 +3140,7 @@ function enc(p){ return encodeURIComponent(p); }
 
 function renderResults(res, rootId){
   const root = document.getElementById(rootId || "results");
-  const ar = ({"1:1":"1 / 1","9:16":"9 / 16","4:5":"4 / 5","16:9":"16 / 9"})[res.aspect] || "1 / 1";
+  const ar = ({"1:1":"1 / 1","9:16":"9 / 16","4:5":"4 / 5","16:9":"16 / 9"})[res.aspect] || "9 / 16";
   const gem = res.used_gemini
     ? '<span class="tag">Gemini ✓</span>'
     : '<span class="tag" style="background:var(--warn)">solo motor local</span>';

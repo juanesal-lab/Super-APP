@@ -185,7 +185,7 @@ def render_versions(
     has_audio_by_src: dict,
     work_dir: str,
     *,
-    aspect: str = "1:1",
+    aspect: str = "9:16",
     enhance: bool = False,
     hook_text: str = "",
     hook_pos: str = "arriba",
@@ -478,7 +478,7 @@ def render_versions(
                     selected[idx].end = probe(masked).duration
 
     report("Recortando clips..." + (" (mejorando calidad)" if enhance else ""), 62)
-    clip_dims = dims_for("1:1")   # los clips sueltos siempre en 1:1 (cuadrado)
+    clip_dims = dims_for(aspect)   # los clips sueltos siguen el formato elegido (por defecto 9:16 vertical)
     # Clips sueltos: los elegidos por FASE en el PLAN de arriba (ya con el masking aplicado
     # en sitio a esos mismos cortes). Las fases (loose_fases) vienen del plan (Gemini o heurística).
     loose_set = [selected[i] for i in loose_idx]
@@ -794,7 +794,7 @@ def process_job(
     max_clip_seconds: float = 3.0,
     use_gemini: bool = True,
     product_desc: str = "",
-    aspect: str = "1:1",
+    aspect: str = "9:16",
     hook_text: str = "",
     hook_pos: str = "arriba",
     hook_seconds: float = 0.0,

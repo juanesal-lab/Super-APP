@@ -3282,3 +3282,16 @@ de ese ángulo". Construida la capa completa sobre Nano Banana (image-to-image, 
   se ve consistente. NO corrí una generación real (regla de $0). Para probar de verdad hay que REINICIAR
   el server :8420 (mi endpoint es backend nuevo). AVISO Juan: NUEVO image_variator.py; en app.py solo un
   import + 1 endpoint + 1 job (nada tuyo tocado); en index.html 1 botón de nav + 1 panel + su script.
+
+### 2026-07-07 · Claude (jackingshop1-cell) · 📐 Formato por defecto 1:1 → 9:16 vertical (completado + verificado)
+Había cambios sin commitear de la sesión anterior que movían el formato por defecto de `1:1` (cuadrado)
+a `9:16` (vertical, = Reels/TikTok, alineado al blueprint). Los revisé, completé y verifiqué:
+- **assemble.py**: `DEFAULT_ASPECT = "9:16"` (resuelve 1080×1920).
+- **orchestrator.py**: defaults de `render_versions`/`process_job` a `9:16` Y **los clips sueltos ahora
+  siguen el formato elegido** (`clip_dims = dims_for(aspect)`; antes forzaban `dims_for("1:1")`).
+- **app.py**: defaults de `/api/process`, `/api/foreplay-clips` y `editor_project` a `9:16`.
+- **index.html**: tarjetas/clips con `aspect-ratio:9/16`, selects (`#aspect`, `#prodAspect`, `#fpAspect`)
+  con 9:16 como primera opción, fallback de `renderResults` a `9/16`.
+- Verificado: py_compile 3/3 OK; `ASPECTS['9:16']==(1080,1920)`; sin `1:1` sueltos que rompan coherencia
+  (el `1:1` que queda es la entrada del dict ASPECTS, que debe quedar como opción). NO corrí render E2E
+  (regla $0); son swaps de defaults + dims. AVISO Juan: cero lógica tuya tocada, solo valores por defecto.

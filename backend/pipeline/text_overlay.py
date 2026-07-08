@@ -97,6 +97,86 @@ def _y_pos(position: str, vh: int, block_h: int) -> int:
     return int(vh * 0.06)  # arriba
 
 
+def _render_pill_png(text: str, vw: int, vh: int, font_path: str, png_path: str,
+                     max_frac: float = 0.16) -> int:
+    """Pastilla BLANCA con texto NEGRO en negrita (estilo de la referencia de Jack: 'MIRA LA
+    SOLUCIÓN' arriba). Centrada, ancho ajustado al texto, alto ≤ `max_frac` de la pantalla.
+    Devuelve el alto del bloque. Igual que _render_png pero look pill blanco → alto contraste."""
+    meas = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    font_size = max(26, int(vh * 0.044))
+    max_h = int(vh * max_frac)
+    max_text_w = int(vw * 0.80)
+    for _ in range(16):
+        font = ImageFont.truetype(font_path, font_size)
+        lines = _wrap(text.upper(), font, max_text_w)
+        ascent, descent = font.getmetrics()
+        line_h = ascent + descent
+        gap = int(line_h * 0.14)
+        pad_y = int(font_size * 0.42)
+        pad_x = int(font_size * 0.75)
+        block_h = line_h * len(lines) + gap * (len(lines) - 1) + pad_y * 2
+        if block_h <= max_h or font_size <= 26:
+            break
+        font_size = int(font_size * 0.9)
+    text_w = max(meas.textlength(l, font=font) for l in lines)
+    block_w = int(text_w) + pad_x * 2
+
+    img = Image.new("RGBA", (vw, block_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    x0 = (vw - block_w) // 2
+    # sombra suave para despegar la pastilla del fondo claro/oscuro
+    sh = max(2, block_h // 22)
+    draw.rounded_rectangle([x0 + sh, sh, x0 + block_w + sh, block_h - 1],
+                           radius=int(block_h * 0.30), fill=(0, 0, 0, 70))
+    draw.rounded_rectangle([x0, 0, x0 + block_w, block_h - sh],
+                           radius=int(block_h * 0.30), fill=(255, 255, 255, 240))
+    y = pad_y
+    for l in lines:
+        lw = meas.textlength(l, font=font)
+        x = (vw - lw) / 2
+        draw.text((x, y), l, font=font, fill=(17, 17, 17, 255))
+        y += line_h + gap
+    img.save(png_path)
+    return block_h
+
+
+def burn_hook_pill(video_path: str, out_path: str, work_dir: str, text: str,
+                   seconds: float = 3.0, uid: str = "") -> tuple[str, bool]:
+    """🎯 Quema un HOOK de texto como PASTILLA BLANCA arriba (referencia de Jack), visible SOLO
+    los primeros `seconds` seg (default 3). `uid` hace único el PNG (varias versiones en paralelo).
+    Devuelve (ruta, ok). No re-codifica si no hay texto/fuente."""
+    text = (text or "").strip()
+    if not text:
+        return video_path, False
+    font = _font_path()
+    if not font:
+        return video_path, False
+    info = probe(video_path)
+    vw, vh = info.width or 1080, info.height or 1920
+    png = os.path.join(work_dir, f"_hookpill_{uid or os.path.basename(out_path)}.png")
+    try:
+        block_h = _render_pill_png(text, vw, vh, font, png)
+        y = int(vh * 0.055)   # arriba, dentro de la safe zone
+        enable = f":enable='lt(t,{float(seconds):.2f})'" if seconds and seconds > 0 else ""
+        from .assemble import venc
+        run([
+            "ffmpeg", "-y", "-i", video_path, "-i", png,
+            "-filter_complex", f"[0:v][1:v]overlay=0:{y}{enable}",
+            *venc(),
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            "-c:a", "copy",
+            out_path,
+        ])
+    except Exception:
+        return video_path, False
+    finally:
+        try:
+            os.remove(png)
+        except OSError:
+            pass
+    return out_path, True
+
+
 def burn_hook(video_path: str, out_path: str, work_dir: str, text: str,
               position: str = "arriba", seconds: float = 0.0) -> tuple[str, bool]:
     """Quema el texto de gancho en el video. Devuelve (ruta, ok).

@@ -68,6 +68,32 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     except Exception:  # noqa: BLE001
         sig_cache = {}
 
+    # 🚫 PRIORIZAR TOMAS SIN TEXTO (pedido de Jack: "cuando hay mucho texto hace mucho blur feo").
+    # Estima con EAST cuánta pantalla cubre el texto quemado de cada candidato (2 frames, barato) y
+    # PENALIZA su score → las tomas cargadas de texto caen al fondo del ranking y casi nunca se
+    # eligen si hay tomas limpias (así el blur, cuando toca, es chico). Best-effort: si no hay EAST
+    # o falla, no penaliza nada (mismo comportamiento de antes).
+    text_cov: dict[int, float] = {}
+    if east_available():
+        try:
+            from .text_detect import text_coverage
+            with ThreadPoolExecutor(max_workers=min(8, max(2, len(precalc)))) as _ex:
+                for seg, cov in zip(precalc, _ex.map(
+                        lambda s: text_coverage(s.video, s.start, s.end), precalc)):
+                    text_cov[id(seg)] = cov
+        except Exception:  # noqa: BLE001
+            text_cov = {}
+
+    def _eff_score(s) -> float:
+        # cobertura <5% (texto chico/nada) casi no resta; 15% (bloque medio) ≈ -24;
+        # 25%+ (texto grande, el que da el blur feo) lo hunde al fondo.
+        cov = text_cov.get(id(s), 0.0)
+        pen = 0.0 if cov < 0.05 else min(50.0, (cov - 0.05) * 250.0)
+        return s.score - pen
+
+    if text_cov:                       # re-ordena por score EFECTIVO (texto penalizado)
+        ranked = sorted(ranked, key=_eff_score, reverse=True)
+
     def is_duplicate(sigs) -> bool:
         # Duplicado REAL solo si: (a) algún frame es casi IDÉNTICO (<4 bits), o (b) COINCIDEN ≥2 de las
         # 3 firmas (misma escena de verdad). Con 1 sola coincidencia floja NO se descarta: con 30 videos

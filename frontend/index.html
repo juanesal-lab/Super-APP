@@ -1429,6 +1429,12 @@
         <input type="text" id="pageUrl" placeholder="🔗 Link de tu página (opcional — gancho más preciso)"
           style="flex:1;min-width:240px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
       </div>
+      <label class="toggle" style="white-space:normal;margin-top:12px;display:inline-flex;align-items:flex-start;gap:9px">
+        <input type="checkbox" id="chkHookVer" checked style="margin-top:2px">
+        <span>🎯 <b>Hook de texto por versión</b> (pastilla blanca arriba, 0-3s) — la IA escribe uno coherente
+        con cada ángulo y luego lo puedes <b>reescribir y re-aplicar</b> en cada resultado.
+        <span style="color:var(--muted)">Reemplaza el gancho de arriba.</span></span>
+      </label>
     </div>
     <div class="row" style="margin-top:16px">
       <label class="toggle"><input type="checkbox" id="useGemini" checked> Usar Gemini (selección inteligente)</label>
@@ -1437,10 +1443,11 @@
     </div>
     <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="blurCaptions"> 🟦 Textos del proveedor</label>
-      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="chkBanner" onchange="document.getElementById('bannerTimeWrap').style.display=this.checked?'inline-flex':'none'"> 🏷️ Oferta 2x1 · envío gratis (banner arriba)</label>
-      <span id="bannerTimeWrap" style="display:none;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)">aparece al seg
+      <label class="toggle" style="white-space:nowrap"><input type="checkbox" id="chkBanner" onchange="document.getElementById('bannerTimeWrap').style.display=this.checked?'inline-flex':'none'"> 🏷️ Envío gratis · pagas al recibir (banner arriba)</label>
+      <span id="bannerTimeWrap" style="display:none;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);flex-wrap:wrap">aparece al seg
         <input type="number" id="bannerStart" value="5" min="0" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">
-        · dura <input type="number" id="bannerDur" value="0" min="0" step="1" title="0 = hasta el final" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
+        · dura <input type="number" id="bannerDur" value="0" min="0" step="1" title="0 = hasta el final" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s
+        · 🎁 tu oferta <input type="text" id="bannerTexto" value="OFERTA 2X1" placeholder="ej: 3X2 · 50% OFF · vacío = solo envío gratis" title="La 2ª línea del banner. Déjalo VACÍO para mostrar solo 'ENVÍO GRATIS · PAGAS AL RECIBIR'." style="width:230px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px 9px;border-radius:8px;font-size:12.5px"></span>
       <span style="align-items:center;gap:6px;font-size:12.5px;color:var(--muted);display:inline-flex">🪝 gancho dura
         <input type="number" id="hookSecs" value="4" min="0" step="1" title="0 = todo el video" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
       <span id="textModeWrap" style="display:none;align-items:center;gap:8px">
@@ -2961,6 +2968,8 @@ function buildForm(){
   fd.append("banner_oferta", document.getElementById("chkBanner").checked);
   fd.append("banner_start", document.getElementById("bannerStart").value||"0");
   fd.append("banner_dur", document.getElementById("bannerDur").value||"0");
+  fd.append("oferta_texto", (document.getElementById("bannerTexto")||{}).value ?? "OFERTA 2X1");
+  fd.append("hooks_por_version", document.getElementById("chkHookVer").checked);
   fd.append("hook_seconds", document.getElementById("hookSecs").value||"0");
   fd.append("text_mode", document.getElementById("textMode").value);
   fd.append("blur_strength", (document.getElementById("blurStrength")||{}).value||"medio");
@@ -3226,6 +3235,10 @@ function renderResults(res, rootId){
           </select>
           <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}',this)">Descargar</button>
         </div>
+        ${(res._job_id && v.hook_text!==undefined) ? `<div class="hookRow" data-jid="${res._job_id}" data-i="${i}" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <input class="hookInp" value="${String(v.hook_text||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" placeholder="🎯 Hook de texto (0-3s, pastilla arriba)" title="Escribe el hook que quieras y dale Re-aplicar. Vacío = quitar el hook." style="flex:1;min-width:0;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 9px;font-size:12px">
+          <button class="regenBtn" onclick="reaplicarHook(this)" style="white-space:nowrap">🔁 Re-aplicar hook</button>
+        </div>` : ''}
         ${res._job_id ? `<div class="regenRow" data-jid="${res._job_id}" data-name="${v.name}">
           <select class="regenSel">
             <option value="edicion">🎬 Otra edición (efectos, cortes, ritmo)</option>
@@ -3413,6 +3426,10 @@ function appendVersions(res){
           </select>
           <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}',this)">Descargar</button>
         </div>
+        ${(res._job_id && v.hook_text!==undefined) ? `<div class="hookRow" data-jid="${res._job_id}" data-i="${k}" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <input class="hookInp" value="${String(v.hook_text||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" placeholder="🎯 Hook de texto (0-3s, pastilla arriba)" title="Escribe el hook que quieras y dale Re-aplicar. Vacío = quitar el hook." style="flex:1;min-width:0;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 9px;font-size:12px">
+          <button class="regenBtn" onclick="reaplicarHook(this)" style="white-space:nowrap">🔁 Re-aplicar hook</button>
+        </div>` : ''}
         ${res._job_id ? `<div class="regenRow" data-jid="${res._job_id}" data-name="${v.name}">
           <select class="regenSel">
             <option value="edicion">🎬 Otra edición (efectos, cortes, ritmo)</option>
@@ -3425,6 +3442,34 @@ function appendVersions(res){
       </div>`;
     grid.appendChild(div);
   });
+}
+
+// 🎯 Re-aplica el hook de texto (pastilla arriba, 0-3s) de una versión con el texto que Jack escribió.
+async function reaplicarHook(btn){
+  const row = btn.closest('.hookRow'); if(!row) return;
+  const jid = row.dataset.jid, i = row.dataset.i;
+  const inp = row.querySelector('.hookInp');
+  const texto = inp.value;
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Aplicando…';
+  try{
+    const fd = new FormData();
+    fd.append('job_id', jid); fd.append('i', i); fd.append('texto', texto);
+    const r = await fetch('/api/reaplicar-hook', {method:'POST', body:fd});
+    const j = await r.json();
+    if(!r.ok || !j.ok){ throw new Error(j.detail || 'no se pudo'); }
+    const card = row.closest('.vcard');
+    // refresca el video con la ruta nueva (cache-bust para que el navegador no muestre el viejo)
+    const vid = card && card.querySelector('video');
+    if(vid && j.path){ vid.src = '/api/file?path='+enc(j.path)+'&t='+Date.now(); vid.load(); }
+    // apunta el botón "Descargar" a la ruta nueva (si no, bajaría la versión sin el hook re-aplicado)
+    const dlb = card && card.querySelector('.dl');
+    if(dlb && j.path){ const oc = dlb.getAttribute('onclick')||''; dlb.setAttribute('onclick', oc.replace(/dl\('[^']*'/, "dl('"+enc(j.path)+"'")); }
+    if(j.hook_text!==undefined) inp.value = j.hook_text;
+    btn.textContent = '✅ Listo'; setTimeout(()=>{ btn.textContent=orig; btn.disabled=false; }, 1300);
+  }catch(e){
+    alert('No se pudo re-aplicar el hook: '+(e.message||e));
+    btn.textContent = orig; btn.disabled = false;
+  }
 }
 
 async function dl(path, selId, name, btn){

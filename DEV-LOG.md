@@ -3453,3 +3453,46 @@ hasta que quede → ahí sí generar los que pida.
 - Verificado $0: py_compile 4/4; JS 15/15; blur strength responde; /api/feedback vivo (crea .md); server
   reiniciado sano. NO corrí render E2E. AVISO Juan: params OPCIONALES nuevos (blur_strength="medio" en
   render_versions/process_job/mask_*) → tus llamadas sin ellos = idénticas. Nada tuyo tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🎯 Hook por versión (pastilla editable) + 🎁 oferta personalizada + 🚫 clips sin texto (menos blur feo)
+Jack mandó 2 screenshots reales (almohadillas): el blur salía como un BLOQUE ENORME feo cuando el clip
+usado tiene mucho texto quemado. Pidió 3 cosas (todas hechas y verificadas con VIDEO real, $0):
+
+- **🚫 PRIORIZAR CLIPS SIN TEXTO (menos blur feo)** — su queja raíz: "prioriza que los videos que se usen
+  no tengan texto, o si tienen que sea chico". `text_detect.text_coverage()` NUEVA: estima con EAST (2
+  frames, barato) qué fracción del frame cubre el texto quemado de cada candidato. `orchestrator.
+  _select_for_target` ahora PENALIZA el score por esa cobertura (cov<5% no resta; 15%≈-24; 25%+ lo hunde)
+  y re-ordena → las tomas cargadas de texto casi nunca se eligen si hay limpias, así el blur (cuando toca)
+  es chico. Best-effort: sin EAST no penaliza (= comportamiento viejo). VERIFICADO: el plagas (con
+  "CHINCHES" quemado) da text_coverage=0.21 → -41 pts. Corre en cada job (~5-7s, paralelo) porque es su
+  queja #1.
+- **🎁 OFERTA PERSONALIZADA** — "si no hay 2x1 que muestre solo envío gratis; o si tengo otra oferta que yo
+  la escriba y salga igual que el 2x1". `offer_banner.render_banner` ya soportaba line2; ahora `app.
+  _agregar_banner_oferta` recibe `line2` y `/api/process` + `/api/scripts` un Form `oferta_texto` (default
+  "OFERTA 2X1"). Campo nuevo en Cortar clips ("🎁 tu oferta"): escribe "3X2 · 50% OFF" y sale tal cual;
+  VACÍO = solo "ENVÍO GRATIS · PAGAS AL RECIBIR". VERIFICADO con PNG real (pill roja + tu texto / o sola).
+- **🎯 HOOK DE TEXTO POR VERSIÓN (pastilla blanca arriba, 0-3s, editable)** — referencia de Jack: el
+  "MIRA LA SOLUCIÓN" del plagas. Antes había UN solo gancho para todas (caja oscura). Ahora, por CADA
+  versión (cada ángulo), la IA escribe un hook COHERENTE con lo que dice esa versión (usa el guion del
+  `_regen`), se quema como PASTILLA BLANCA arriba SOLO los primeros 3s, y en los resultados hay una cajita
+  EDITABLE + botón "🔁 Re-aplicar hook" para reescribir el que quieras (o vaciarlo = quitarlo). Piezas:
+  `text_overlay.burn_hook_pill` + `_render_pill_png` (pastilla blanca, texto negro bold, PNG único por
+  versión) · `hook_gen.generate_hooks_for_versions` (1 llamada batched a Gemini → JSON array, SIN precios,
+  coherente) · `app._agregar_hooks_por_version` (se aplica AL FINAL, encima de todo; guarda v['_prehook']
+  = base sin hook para re-aplicar sin doble overlay + v['hook_text']) · endpoint `/api/reaplicar-hook` ·
+  UI en renderResults (las 2 funciones: normal + "N más") · JS `reaplicarHook` (refresca el video y el
+  botón descargar con la ruta nueva). Toggle nuevo "🎯 Hook por versión" (default ON, REEMPLAZA el gancho
+  global → no doble pastilla: cuando está ON el backend blanquea hook_text/auto_hook). Fallback honesto:
+  con key Gemini caído → `elegir_hook`; sin key → genéricos seguros de curiosidad ROTANDO (nunca off-topic
+  ni cifras), no un hook de librería que no cuadre con el producto.
+- **VERIFICADO SIN GASTAR ($0)**: py_compile 6/6; JS 15/15; `burn_hook_pill` sobre video real → pastilla
+  idéntica a la referencia (miré el frame); `text_coverage` real=0.21 en el plagas; `_agregar_hooks_por_
+  version` corrido ENTERO offline (sin key) sobre 2 clips → 2 pastillas aplicadas + _prehook + path nuevo;
+  `/api/reaplicar-hook` probado (aplicar texto nuevo + quitar=volver a base); ruta registrada (54 rutas).
+  NO corrí un render Gemini E2E (regla $0) — hay que REINICIAR :8420 para probarlo en la app.
+- AVISO Juan: NUEVOS: text_overlay.burn_hook_pill/_render_pill_png, hook_gen.generate_hooks_for_versions,
+  text_detect.text_coverage, app._agregar_hooks_por_version + /api/reaplicar-hook. OPCIONALES/aditivos:
+  offer_banner ya tenía line2; _agregar_banner_oferta gana kwarg `line2` (default = igual que antes);
+  _select_for_target penaliza texto SOLO si east_available (si no, idéntico). /api/process y /api/scripts
+  ganan Form `oferta_texto` + `hooks_por_version` (defaults retrocompatibles). Nada de tu terreno de
+  guiones/voz tocado.

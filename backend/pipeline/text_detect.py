@@ -340,6 +340,47 @@ def _confirm(detections: list[tuple], min_det: int) -> dict[int, list[tuple]]:
     return confirmed
 
 
+def text_coverage(video_path: str, start: float = 0.0, end: float | None = None,
+                  samples: int = 2) -> float:
+    """Fracción aprox. del frame cubierta por TEXTO quemado (0..1), en el tramo [start,end].
+
+    Barato: muestrea `samples` frames del tramo y corre EAST (mismo detector del blur). Sirve para
+    PRIORIZAR en la selección las tomas SIN texto (menos blur feo): un clip con texto grande da una
+    cobertura alta y se penaliza. Best-effort: si no hay modelo o falla, devuelve 0.0 (no penaliza)."""
+    if not available():
+        return 0.0
+    try:
+        net = _load()
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return 0.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30
+        W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1
+        H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1
+        nframes = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        dur = nframes / max(1.0, fps)
+        s = max(0.0, float(start))
+        e = float(end) if (end and end > s) else (dur or (s + 1.0))
+        area = float(W * H) or 1.0
+        best = 0.0
+        for k in range(max(1, samples)):
+            t = s + (e - s) * (k + 1) / (max(1, samples) + 1)
+            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
+            ok, fr = cap.read()
+            if not ok or fr is None:
+                continue
+            try:
+                boxes = _detect(net, fr)
+            except Exception:
+                boxes = []
+            cov = sum(max(0, w) * max(0, h) for (x, y, w, h) in boxes) / area
+            best = max(best, min(1.0, cov))
+        cap.release()
+        return best
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
 def mask_video(in_path: str, out_path: str,
                min_wh: float | None = None, conf: float | None = None,
                strength: str = "medio") -> str:

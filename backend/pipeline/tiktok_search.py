@@ -636,44 +636,64 @@ def _verificar_broll_video(cand: dict, punto_dolor: str, angulo: str, api_key: s
 
 def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
                  angulo: str = "", anthropic_key: str | None = None,
-                 landing_text: str = "", verificar_contenido: bool = True) -> list[dict]:
-    """Busca N escenas de B-ROLL en TikTok amarradas al ÁNGULO/PUNTO DE DOLOR del producto.
+                 landing_text: str = "", verificar_contenido: bool = True,
+                 pexels_key: str | None = None, pixabay_key: str | None = None) -> list[dict]:
+    """Busca N escenas de B-ROLL amarradas al ÁNGULO/PUNTO DE DOLOR del producto.
 
-    - `landing_text`: la LANDING manda. Si viene, el ángulo/dolor y las búsquedas se DERIVAN de ella
-      (fuente de verdad), con Claude o, sin él, con Gemini.
+    - FUENTE PRINCIPAL: BANCOS DE STOCK (Pexels/Pixabay) si hay key → b-roll LIMPIO de verdad
+      (escenas reales etiquetadas, sin memes ni texto encima). TikTok (tikwm) es solo FALLBACK:
+      para b-roll devuelve mayormente memes/comedia/anuncios, por eso solía salir cualquier cosa.
+    - `landing_text`: la LANDING manda. Si viene, el ángulo/dolor y las búsquedas se DERIVAN de ella.
     - `anthropic_key`: Claude piensa las búsquedas Y hace el pre-filtro por portada (barato).
-    - `verificar_contenido`: además mira el CONTENIDO de cada candidato (frames de adentro, Gemini)
-      para confirmar que el video de verdad ilustra la escena — no solo la portada. Descarta lo que
-      el contenido no cuadra y usa la fase confirmada por el contenido.
+    - `verificar_contenido`: mira el CONTENIDO de cada candidato (frames de adentro, Gemini) para
+      confirmar que ilustra la escena y asignar su fase.
     """
     brief = _broll_brief_claude(nombre, angulo, ref_desc, anthropic_key, landing_text) if anthropic_key else None
     punto_dolor = (brief or {}).get("punto_dolor", angulo)
     queries = ((brief or {}).get("queries")
                or _queries_broll(ref_desc, nombre, api_key, landing_text)
                or [f"{nombre} antes y después", "satisfying asmr"])
-    cands: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
-        for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
-            for c in res:
-                cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url)
-    lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
-    # más views primero (b-roll viral = más dopamínico) y variedad de autores
-    lst.sort(key=lambda c: c.get("plays", 0), reverse=True)
-    pre, autores = [], set()
-    # pool más grande cuando hay verificación (portada Y/O contenido) para que el filtro tenga de dónde
+
+    # 🎬 FUENTE PRINCIPAL: bancos de STOCK (limpio, relevante, vertical, descargable).
+    stock: list[dict] = []
+    try:
+        from .stock_broll import buscar_stock
+        stock = buscar_stock(queries, pexels_key=pexels_key, pixabay_key=pixabay_key, n=n)
+    except Exception:  # noqa: BLE001
+        stock = []
+
     hay_filtro = bool(anthropic_key) or verificar_contenido
-    for c in lst:
+    pool_obj = 28 if hay_filtro else n
+
+    # TikTok SOLO si el stock no alcanza (o no hay keys de stock): rellena el pool como fallback.
+    lst: list[dict] = []
+    if len(stock) < pool_obj:
+        cands: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
+            for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
+                for c in res:
+                    cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url)
+        lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
+        lst.sort(key=lambda c: c.get("plays", 0), reverse=True)   # más views primero
+
+    # POOL: el STOCK va PRIMERO (es la fuente buena); TikTok solo rellena. Variedad por autor/fuente.
+    pre, autores = [], set()
+    for c in stock + lst:
         autor = c["url"].split("@")[1].split("/")[0] if "@" in c["url"] else c["url"]
         if autor in autores:
             continue
         autores.add(autor)
         pre.append(c)
-        if len(pre) >= (28 if hay_filtro else n):
+        if len(pre) >= pool_obj:
             break
-    # 1) Pre-filtro barato por PORTADA (Claude visión, 1 llamada): descarta lo obvio y da una fase tentativa
+    def _es_stock(c) -> bool:
+        return c.get("source") in ("pexels", "pixabay")
+
+    # 1) Pre-filtro barato por PORTADA (Claude visión, 1 llamada): descarta lo obvio y da una fase tentativa.
+    #    El STOCK NUNCA se descarta aquí (es limpio y ya relevante a la query) — el juez es solo para TikTok.
     fases_cover = _juzgar_broll_claude(pre, nombre, punto_dolor, anthropic_key) if anthropic_key else None
     tras_cover = [(i, c) for i, c in enumerate(pre)
-                  if fases_cover is None or i in fases_cover]
+                  if fases_cover is None or i in fases_cover or _es_stock(c)]
 
     # 2) Verificación PROFUNDA por CONTENIDO (Gemini mira frames de adentro): confirma que el video
     #    de verdad ilustra la escena del ángulo. Es lo que pidió Angelo: "que los b-roll realmente
@@ -698,19 +718,26 @@ def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
                     resultados[futs[f]] = None
         for i, c in tras_cover:                            # NO cortar en n: junta todos, luego ordena
             r = resultados.get(i)
-            if r is not None and not r["sirve"]:
-                continue                                   # el CONTENIDO lo rechazó: fuera
+            # el CONTENIDO rechaza → fuera; PERO el stock NO se bota (es limpio y ya relevante:
+            # el verificador está afinado para la basura de TikTok, no para descartar stock bueno).
+            if r is not None and not r["sirve"] and not _es_stock(c):
+                continue
             fase = (r or {}).get("fase") or (fases_cover or {}).get(i, "problema")
+            # el stock no trae texto encima → cuenta como "nada" (va primero en el orden final)
+            overlay = "nada" if _es_stock(c) else (r or {}).get("texto_overlay", "poco")
             out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
                         "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
-                        "fase": fase, "verificado": r is not None and r["sirve"],
-                        "texto_overlay": (r or {}).get("texto_overlay", "poco")})
+                        "fase": fase, "source": c.get("source", "tiktok"),
+                        "verificado": (r is not None and r["sirve"]) or _es_stock(c),
+                        "texto_overlay": overlay})
     else:
         for i, c in tras_cover:
             out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
                         "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
-                        "fase": (fases_cover or {}).get(i, "problema"), "verificado": False,
-                        "texto_overlay": "poco"})
+                        "fase": (fases_cover or {}).get(i, "problema"),
+                        "source": c.get("source", "tiktok"),
+                        "verificado": _es_stock(c),
+                        "texto_overlay": "nada" if _es_stock(c) else "poco"})
     # ORDEN (pedido de Angelo): (1) SIN texto encima primero (nada<poco<mucho), (2) el DOLOR primero,
     # (3) verificados por contenido antes, (4) más views. Así los b-roll limpios y del dolor van arriba
     # y los con mucho texto solo se usan para rellenar si hace falta.

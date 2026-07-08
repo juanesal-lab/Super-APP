@@ -1343,6 +1343,20 @@
     <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, la pestaña <b>🔎 Foreplay</b> busca en su biblioteca de +100M ads ganadores (con video descargable) para cortarlos en clips. La sacas en app.foreplay.co → API. Cada búsqueda gasta créditos de tu plan.</p>
   </div>
 
+  <!-- B-roll de verdad · bancos de video (Pexels / Pixabay) -->
+  <div class="card" id="brollCard">
+    <h2>🎬 B-roll de verdad · Pexels/Pixabay <span id="brollPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow" style="margin-bottom:8px">
+      <input type="password" id="pexelsInput" placeholder="API key de Pexels (gratis, 2 min)">
+      <button class="btn sec" id="pexelsSave" style="width:auto">Guardar</button>
+    </div>
+    <div class="keyrow">
+      <input type="password" id="pixabayInput" placeholder="API key de Pixabay (gratis) — opcional, se suma">
+      <button class="btn sec" id="pixabaySave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Con esto el <b>B-roll</b> deja de salir de TikTok (que da memes) y sale de <b>bancos de video reales</b>: clips limpios, verticales y descargables del punto de dolor / la escena que pides. Saca la key GRATIS en <b>pexels.com/api</b> (y opcional <b>pixabay.com/api/docs</b>) — 2 minutos, sin tarjeta. Sin esto, el b-roll cae al modo viejo (TikTok).</p>
+  </div>
+
   <!-- Shopify (módulo Crear Landings) -->
   <div class="card" id="shopifyCard">
     <h2>🛍️ Shopify · Crear Landings <span id="shopifyPill" class="pill off">sin configurar</span></h2>
@@ -1386,7 +1400,7 @@
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
 
-      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> del producto y la IA saca de ahí el ángulo y busca el b-roll que cuadra (verifica el contenido de cada video, no solo la portada).</label>
+      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> y la IA saca el ángulo y trae b-roll <b>de bancos de video reales</b> (Pexels/Pixabay) — clips limpios, verticales y descargables. Conecta la key GRATIS en 🔑 Claves (si no, cae a TikTok, que da memes).</label>
       <input id="tkBrollLanding" type="url" placeholder="🔗 Landing del producto (recomendado) — de aquí saco el ángulo de venta y el dolor"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
       <input id="tkBrollAngulo" placeholder="🎯 …o pega aquí el link de la landing / escribe el ángulo de dolor (ej. mujer desesperada porque se orinó dormida) — sin producto"
@@ -2856,6 +2870,7 @@ async function refreshConfig(){
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);
+  setPill("brollPill", j.has_pexels_key || j.has_pixabay_key);
   setPill("shopifyPill", j.has_shopify);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
@@ -2885,6 +2900,8 @@ document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
 document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
 document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
 document.getElementById("foreplaySave").onclick = ()=>saveKey("foreplay","foreplayInput");
+document.getElementById("pexelsSave").onclick = ()=>saveKey("pexels","pexelsInput");
+document.getElementById("pixabaySave").onclick = ()=>saveKey("pixabay","pixabayInput");
 document.getElementById("shopDomainSave").onclick = ()=>saveKey("shopify_domain","shopDomainInput");
 document.getElementById("shopTokenSave").onclick = ()=>saveKey("shopify_token","shopTokenInput");
 document.getElementById("shopThemeSave").onclick = ()=>saveKey("shopify_theme","shopThemeInput");

@@ -3611,3 +3611,22 @@ NO llegaban hasta que Jack cerraba y volvía a correr ./run.sh a mano.
 - Junto con el Stop hook (autosave.sh) que YA sube el trabajo de cada quien a main, esto cierra el círculo:
   cualquiera sube → main; la app de Jack baja lo de Juan sola. AVISO Juan: solo /api/busy nuevo (aditivo) +
   run.sh reescrito (tu forma de trabajar no cambia; si NO quieres el auto-pull, corre uvicorn a mano).
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎬 B-ROLL DE VERDAD: fuente = bancos de stock (Pexels/Pixabay), NO TikTok
+Angelo con toda la razón: el b-roll salía basura. CORRÍ la búsqueda de verdad y vi el problema REAL: no
+era la verificación, era la FUENTE. TikTok (tikwm) para b-roll devuelve memes/comedia/anuncios completos
+("mujer frustrada baño" → videos de comedia; "cleaning asmr" → lavado de autos de 4 min). Toda la
+verificación estaba puliendo basura.
+- **NUEVO `pipeline/stock_broll.py`**: busca en Pexels + Pixabay (video APIs GRATIS). Clips LIMPIOS,
+  etiquetados, verticales y descargables de la escena real. Elige el mp4 vertical, filtra duración,
+  dedup. Probado con las formas reales de ambas APIs (parseo, elige vertical, filtra 90s, sin key → []).
+- **`buscar_broll`**: STOCK = fuente PRINCIPAL (params pexels_key/pixabay_key). TikTok pasa a FALLBACK
+  (solo si no hay key de stock o no alcanza). El stock NUNCA lo bota el juez de portada ni el verificador
+  (es limpio y ya relevante); cuenta como texto_overlay="nada" → va primero. Preview inline + descarga
+  ya funcionan (trae mp4 directo). Probado: con stock, 8/8 de Pexels y TikTok ni se llama; sin key, cae a TikTok.
+- **Keys**: PEXELS_API_KEY / PIXABAY_API_KEY en _KEY_ENV + _load_pexels_key/_load_pixabay_key; /api/config
+  expone has_pexels_key/has_pixabay_key; tarjeta nueva en 🔑 Claves con instrucciones (key gratis 2 min).
+- Endpoint /api/broll-dolor pasa las keys; si no hay, el error dice claramente que conecten Pexels/Pixabay.
+- **PENDIENTE probar EN VIVO**: necesita una key gratis de Pexels (2 min, sin tarjeta) — apenas la peguen
+  en Claves, el b-roll sale de stock. Verificado el código con las respuestas reales de las APIs (mock),
+  py_compile + import + JS 15/15. AVISO Jack: nuevo stock_broll.py; buscar_broll ganó 2 params opcionales.

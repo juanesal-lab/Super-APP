@@ -189,6 +189,14 @@ def _load_foreplay_key() -> str | None:
     return _load_key("FOREPLAY_API_KEY")
 
 
+def _load_pexels_key() -> str | None:
+    return _load_key("PEXELS_API_KEY")
+
+
+def _load_pixabay_key() -> str | None:
+    return _load_key("PIXABAY_API_KEY")
+
+
 def _load_shopify() -> tuple[str | None, str | None, str | None]:
     """(dominio, admin_token, theme_id opcional) para el módulo Crear Landings."""
     return (_load_key("SHOPIFY_STORE_DOMAIN"), _load_key("SHOPIFY_ADMIN_API_TOKEN"),
@@ -414,6 +422,8 @@ def get_config():
         "has_eleven_key": bool(_load_eleven_key()),
         "has_anthropic_key": bool(_load_anthropic_key()),
         "has_foreplay_key": bool(_load_foreplay_key()),
+        "has_pexels_key": bool(_load_pexels_key()),
+        "has_pixabay_key": bool(_load_pixabay_key()),
         "has_shopify": bool(_load_shopify()[0] and _load_shopify()[1]),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
@@ -443,6 +453,7 @@ def caption_preview(style: str = "hormozi", size: str = "mediano"):
 
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY",
+            "pexels": "PEXELS_API_KEY", "pixabay": "PIXABAY_API_KEY",   # bancos de video para B-ROLL
             "shopify_domain": "SHOPIFY_STORE_DOMAIN", "shopify_token": "SHOPIFY_ADMIN_API_TOKEN",
             "shopify_theme": "SHOPIFY_THEME_ID"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
@@ -771,13 +782,20 @@ def broll_dolor(producto: str = Form(""), angulo: str = Form(""),
     # arma las queries desde el landing_text de todos modos, así que el nombre es secundario).
     nombre = producto or (angulo[:60] if angulo else "producto")
     from pipeline.tiktok_search import buscar_broll
+    px, pb = _load_pexels_key(), _load_pixabay_key()
     res = buscar_broll(nombre, nombre, _load_env_key(),
                        n=max(5, min(16, n)), angulo=angulo,     # MÍNIMO 5 (pedido de Angelo)
-                       anthropic_key=_load_anthropic_key(), landing_text=landing_text)
+                       anthropic_key=_load_anthropic_key(), landing_text=landing_text,
+                       pexels_key=px, pixabay_key=pb)            # 🎬 STOCK = fuente principal de b-roll
     if not res:
-        return {"links": [], "error": "No encontré escenas que cuadren — afina la landing o el "
-                                      "punto de dolor"}
-    return {"links": res, "con_landing": bool(landing_text)}
+        err = ("No encontré escenas que cuadren — afina la landing o el punto de dolor."
+               if (px or pb) else
+               "No encontré b-roll bueno. TikTok da mayormente memes para b-roll: conecta una "
+               "API GRATIS de banco de video en 🔑 Claves (Pexels o Pixabay, 2 min) y te traigo "
+               "clips limpios y reales del ángulo.")
+        return {"links": [], "error": err}
+    return {"links": res, "con_landing": bool(landing_text),
+            "fuente": "stock" if (px or pb) else "tiktok"}
 
 
 def _gc_jobs(keep: int = 80):

@@ -292,16 +292,21 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
     return out_path
 
 
-def plan_variations(selected: list[Segment], target_seconds: float = 15.0
-                    ) -> list[tuple[str, list[int]]]:
+def plan_variations(selected: list[Segment], target_seconds: float = 15.0,
+                    n_versions: int | None = None) -> list[tuple[str, list[int]]]:
     """Decide QUÉ clips (indices de `selected`) usa cada versión, SIN renderizar nada.
 
     Separado de build_variations para poder saber ANTES qué cortes se usan de verdad
-    (así el tapado de textos procesa solo esos). Devuelve [(nombre, [indices]), ...]."""
+    (así el tapado de textos procesa solo esos). Devuelve [(nombre, [indices]), ...].
+
+    `n_versions`: opcional. Por defecto 8 (comportamiento clásico). Si viene (embudo
+    TOFU/MOFU/BOFU: una versión por guion), se generan ESA cantidad de versiones."""
     n = len(selected)
-    NV = 8
-    names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express",
-             "G_mixta", "H_alterna"]
+    NV = int(n_versions) if n_versions and int(n_versions) > 0 else 8
+    _base_names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express",
+                   "G_mixta", "H_alterna"]
+    # nombres ÚNICOS para cualquier NV (los de más allá de 8 se autogeneran V9, V10, …)
+    names = [_base_names[i] if i < len(_base_names) else f"V{i + 1}" for i in range(NV)]
     cpv = max(4, min(10, round(target_seconds / 2.2)))   # clips por version
     if n == 0:
         return []

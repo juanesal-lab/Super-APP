@@ -69,9 +69,29 @@ def _frame_bytes(seg: Segment) -> bytes | None:
     return buf.tobytes() if ok else None
 
 
+# Intención del overlay por etapa del embudo (asset funnel-tofu-mofu-bofu-2026.md): TOFU frena el
+# scroll con curiosidad/dolor, MOFU aporta prueba/mecanismo, BOFU empuja con oferta/urgencia.
+_STAGE_HOOK = {
+    "TOFU": ("ETAPA TOFU (público FRÍO): el overlay debe CURIOSEAR o nombrar el DOLOR para frenar "
+             "el scroll de un desconocido — mecánicas CURIOSIDAD/SECRETO, DOLOR EXACTO, "
+             "CONTRARIO/ADVERTENCIA o PARA EL SCROLL. PROHIBIDO oferta, precio, urgencia o "
+             "'pagas al recibir' (espantan al frío). Ej: 'NADIE TE DICE ESTO'."),
+    "MOFU": ("ETAPA MOFU (público TIBIO): el overlay debe dar PRUEBA o MECANISMO — mecánicas "
+             "ANTES/DESPUES o PRUEBA, DATO IMPACTANTE, ERROR. Ej: 'MIRA LA DIFERENCIA', "
+             "'4.8★ 12.000 RESEÑAS'. Sin oferta dura."),
+    "BOFU": ("ETAPA BOFU (público CALIENTE): el overlay debe empujar la COMPRA con OFERTA o "
+             "URGENCIA/escasez o reversión de riesgo. Ej: '2X1 SOLO HOY', 'PAGA AL RECIBIR', "
+             "'ANTES DE QUE SE AGOTE' (sin cifras de dinero)."),
+}
+
+
 def generate_hook(api_key: str | None, product_desc: str = "",
-                  page_text: str = "", sample_seg: Segment | None = None) -> str:
-    """Devuelve un gancho corto e impactante, o '' si no se pudo."""
+                  page_text: str = "", sample_seg: Segment | None = None,
+                  stage: str | None = None) -> str:
+    """Devuelve un gancho corto e impactante, o '' si no se pudo.
+
+    `stage` (opcional): 'TOFU'/'MOFU'/'BOFU' — sesga la INTENCIÓN del overlay a la etapa del
+    embudo (curiosidad/problema, prueba/mecanismo, oferta/urgencia). Sin stage → como siempre."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return ""
@@ -109,7 +129,9 @@ def generate_hook(api_key: str | None, product_desc: str = "",
         "'NO LO VAS A CREER' (solo), 'DESCUBRE EL SECRETO', 'REVOLUCIONARIO', 'CAMBIA TU VIDA', "
         "'EL MEJOR DEL MUNDO', 'IMPERDIBLE', 'ATENCION', 'MIRA ESTO' (solo, sin decir el problema). "
         "Que se entienda al instante y de ganas de seguir viendo.\n"
-        "Devuelve SOLO el texto del gancho (una linea)." + info
+        + (("PASO 3 — AJUSTA LA INTENCIÓN A LA ETAPA DEL EMBUDO: " + _STAGE_HOOK[stage] + "\n")
+           if stage in _STAGE_HOOK else "")
+        + "Devuelve SOLO el texto del gancho (una linea)." + info
     )
 
     contents = [prompt]

@@ -1045,10 +1045,13 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
             except Exception:  # noqa: BLE001
                 blueprint = None
 
-        progress("Generando 10 guiones de voz en off...", 70)
+        mix = settings.get("mix")
+        n_guiones = sum(mix.values()) if mix else 10
+        progress(f"Generando {n_guiones} guiones de voz en off"
+                 + (" (embudo TOFU/MOFU/BOFU)..." if mix else "..."), 70)
         scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
                                    settings["target_seconds"], sample, blueprint=blueprint,
-                                   oferta_2x1=settings.get("oferta_2x1", False))
+                                   oferta_2x1=settings.get("oferta_2x1", False), mix=mix)
         if not scripts:
             # Nunca terminar "Guiones listos" con 0 guiones (auditoría 2026-07-06)
             raise RuntimeError("La IA corrió pero no entregó ningún guion — reintenta.")
@@ -1090,6 +1093,9 @@ def scripts(
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     destino: str = Form("tiktok"),
+    tofu: int = Form(0),   # embudo TOFU/MOFU/BOFU: nº de guiones de cada etapa (0/0/0 = clásico)
+    mofu: int = Form(0),
+    bofu: int = Form(0),
     reference_ad: UploadFile | None = File(None),
 ):
     job_id, paths = _save_uploads(files or [])
@@ -1126,6 +1132,11 @@ def scripts(
         "reference_ad": ref_path,
         "broll_fases": broll_fases,
     }
+    # Embudo TOFU/MOFU/BOFU (seleccionable): si el usuario pidió alguna etapa, se generan guiones
+    # etiquetados por etapa (arco + hook + CTA por temperatura). Si 0/0/0 → guiones clásicos.
+    _mix = {"TOFU": max(0, int(tofu)), "MOFU": max(0, int(mofu)), "BOFU": max(0, int(bofu))}
+    if sum(_mix.values()) > 0:
+        settings["mix"] = _mix
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
 
@@ -1135,7 +1146,7 @@ N_VERSIONS = 8   # DEBE ir igual a orchestrator._N_VERSIONS: con 6, las versione
 
 
 def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
-                    voces: list[str] | None = None):
+                    voces: list[str] | None = None, stages: list[str] | None = None):
     job = JOBS[job_id]
 
     def progress(msg, pct):
@@ -1147,14 +1158,18 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         wd = job["work_dir"]
         os.makedirs(wd, exist_ok=True)
         key = _load_eleven_key()
+        # Embudo: si vienen etapas (una por guion), se hace UNA versión por guion (1:1) y cada
+        # una queda etiquetada con su etapa. Sin etapas → 8 versiones clásicas (guiones ciclados).
+        stage_mode = bool(stages) and len(stages) == len(scripts)
+        n_ver = len(scripts) if stage_mode else N_VERSIONS
         # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan).
         # EN PARALELO y pagando TTS solo por cada par (guion, voz) ÚNICO — mismo patrón
         # probado de producto_clips._guiones_y_narraciones (antes: 8 llamadas en serie).
-        chosen = [(scripts * (N_VERSIONS // max(1, len(scripts)) + 1))[i] for i in range(N_VERSIONS)]
+        chosen = [(scripts * (n_ver // max(1, len(scripts)) + 1))[i] for i in range(n_ver)]
         from pipeline.voiceover import acelerar as _acelerar_vo
         from concurrent.futures import ThreadPoolExecutor
         pares = [(chosen[i], voces[i % len(voces)] if voces else voice_key)
-                 for i in range(N_VERSIONS)]
+                 for i in range(n_ver)]
         unicos = sorted(set(pares))
         progress(f"Generando {len(unicos)} voces con ElevenLabs (en paralelo)...", 14)
         hechas_ct = [0]
@@ -1217,7 +1232,9 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
-            broll_fases=s.get("broll_fases"), progress=progress)
+            broll_fases=s.get("broll_fases"),
+            n_versions=(n_ver if stage_mode else None),
+            stages=(stages if stage_mode else None), progress=progress)
         # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
         # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1")
         if manifest.get("ok") and manifest.get("versions") and s.get("banner_oferta"):
@@ -1259,7 +1276,8 @@ def preview_voice(text: str = Form(...), voice: str = Form("kate")):
 @app.post("/api/render")
 def render(job_id: str = Form(...), voice: str = Form("kate"),
            voz_jc: int = Form(0), voz_kate: int = Form(0),
-           scripts_json: str = Form(""), script_text: str = Form("")):
+           scripts_json: str = Form(""), script_text: str = Form(""),
+           stages_json: str = Form("")):
     job = JOBS.get(job_id)
     if not job or "selected" not in job:
         raise HTTPException(404, "Sesión no encontrada (vuelve a generar los guiones)")
@@ -1274,11 +1292,22 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
         scripts = [script_text.strip()]
     if not scripts:
         raise HTTPException(400, "No hay guiones seleccionados")
+    # Embudo: etapa por guion seleccionado (paralelo a scripts_json). Si viene y calza, cada
+    # versión = un guion etiquetado con su etapa; si no, comportamiento clásico (8 versiones).
+    stages: list[str] | None = None
+    if stages_json.strip():
+        try:
+            _s = [str(x).strip().upper() for x in _json.loads(stages_json)]
+            _s = [x if x in ("TOFU", "MOFU", "BOFU") else "" for x in _s]
+            if len(_s) == len(scripts) and any(_s):
+                stages = _s
+        except Exception:
+            stages = None
     job["status"] = "running"; job["progress"] = 0; job["message"] = "Iniciando..."; job["result"] = None
     # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
     voces = (["juan_carlos"] * max(0, min(8, int(voz_jc)))
              + ["kate"] * max(0, min(8, int(voz_kate)))) or None
-    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces),
+    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces, stages),
                      daemon=True).start()
     return {"job_id": job_id}
 
@@ -1587,6 +1616,9 @@ def producto_clips(
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
     vo_guiones: int = Form(0),
+    tofu: int = Form(0),   # embudo TOFU/MOFU/BOFU (0/0/0 = clásico 8 versiones)
+    mofu: int = Form(0),
+    bofu: int = Form(0),
     destino: str = Form("tiktok"),
     winner_files: list[UploadFile] = File([]),
 ):
@@ -1642,6 +1674,10 @@ def producto_clips(
         "vo_guiones": vo_guiones if vo_guiones in (2, 4) else 0,
         "archivos_locales": locales,
     }
+    # Embudo TOFU/MOFU/BOFU (voz en off): una versión por guion, cada una etiquetada por etapa.
+    _mix = {"TOFU": max(0, int(tofu)), "MOFU": max(0, int(mofu)), "BOFU": max(0, int(bofu))}
+    if sum(_mix.values()) > 0:
+        settings["mix"] = _mix
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_producto_job,

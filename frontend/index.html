@@ -132,6 +132,9 @@
   .bar > div{height:100%;width:0;background:var(--gold);transition:width .4s;
     box-shadow:0 0 12px rgba(212,175,55,.5)}
   .pmsg{font-size:13px;color:var(--muted)}
+  .funPreset{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;
+    padding:7px 12px;font-size:12.5px;cursor:pointer;font-weight:600}
+  .funPreset:hover{border-color:var(--accent2);color:var(--accent2)}
   .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
   .vcard{background:var(--card2);border:1px solid var(--line);border-radius:14px;
     overflow:hidden;display:flex;flex-direction:column;animation:fadeUp .5s ease both;
@@ -1501,6 +1504,23 @@
         <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
       </span>
     </div>
+    <div id="funnelWrap" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+      <label class="lbl" style="margin:0 0 8px">🎯 Embudo (temperatura del público): elige cuántos guiones de cada etapa. Cada uno cambia el <b>gancho, el arco y el CTA</b>. <span style="color:var(--muted)">2/2/2 = full embudo. 0/0/0 = clásico (8 versiones, 1 solo tipo).</span></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button type="button" class="funPreset" data-mix="2,2,2">Full embudo 2·2·2</button>
+        <button type="button" class="funPreset" data-mix="6,0,0">Solo frío 🧊</button>
+        <button type="button" class="funPreset" data-mix="3,0,3">Frío + cierre</button>
+        <button type="button" class="funPreset" data-mix="0,3,3">Tibio + cierre</button>
+        <button type="button" class="funPreset" data-mix="1,1,1">Prueba 1·1·1</button>
+        <button type="button" class="funPreset" data-mix="0,0,0">Clásico (sin embudo)</button>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+        <label class="toggle" style="white-space:nowrap">🧊 TOFU (frío) <input type="number" id="funTofu" value="2" min="0" max="12" step="1" style="width:56px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px;border-radius:8px;margin-left:6px"></label>
+        <label class="toggle" style="white-space:nowrap">🌤️ MOFU (tibio) <input type="number" id="funMofu" value="2" min="0" max="12" step="1" style="width:56px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px;border-radius:8px;margin-left:6px"></label>
+        <label class="toggle" style="white-space:nowrap">🔥 BOFU (caliente) <input type="number" id="funBofu" value="2" min="0" max="12" step="1" style="width:56px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px;border-radius:8px;margin-left:6px"></label>
+        <span class="pmsg" id="funTotal" style="margin:0;color:var(--accent2)"></span>
+      </div>
+    </div>
   </div>
 
   <button class="btn" id="go" disabled>✂️  Generar clips</button>
@@ -1592,6 +1612,17 @@
         <option value="2">Guiones: 2 (el más barato)</option>
       </select>
       <img id="prodCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven los subtítulos" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
+      <div style="flex-basis:100%;height:0"></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;width:100%">
+        <span class="pmsg" style="margin:0">🎯 Embudo (opcional):</span>
+        <button type="button" class="funPreset" data-prodmix="2,2,2">2·2·2</button>
+        <button type="button" class="funPreset" data-prodmix="6,0,0">Solo frío</button>
+        <button type="button" class="funPreset" data-prodmix="0,0,0">Clásico</button>
+        <label class="toggle" style="white-space:nowrap">🧊 <input type="number" id="prodTofu" value="0" min="0" max="12" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px;margin-left:4px"></label>
+        <label class="toggle" style="white-space:nowrap">🌤️ <input type="number" id="prodMofu" value="0" min="0" max="12" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px;margin-left:4px"></label>
+        <label class="toggle" style="white-space:nowrap">🔥 <input type="number" id="prodBofu" value="0" min="0" max="12" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px;margin-left:4px"></label>
+        <span class="pmsg" style="margin:0;color:var(--muted)">0/0/0 = clásico (8 videos)</span>
+      </div>
     </div>
 
     <details class="prodAdv">
@@ -1697,6 +1728,10 @@
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
         fd.append('caption_size',document.getElementById('prodCapSize').value);
         fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
+        // 🎯 Embudo TOFU/MOFU/BOFU (solo con voz en off). 0/0/0 → clásico.
+        fd.append('tofu',document.getElementById('prodTofu').value||'0');
+        fd.append('mofu',document.getElementById('prodMofu').value||'0');
+        fd.append('bofu',document.getElementById('prodBofu').value||'0');
         const mez=(document.getElementById('prodMezcla').value||'').split(',');
         fd.append('voz_jc',mez[0]||'0'); fd.append('voz_kate',mez[1]||'0');
         fd.append('oferta_2x1',document.getElementById('prod2x1').checked);
@@ -2848,9 +2883,42 @@ blurCaptions.onchange = ()=>{
 };
 
 // --- Voz en off toggle ---
+// 🎯 Embudo TOFU/MOFU/BOFU: badge, presets y total.
+const _stageBase='display:inline-block;color:#fff;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px;letter-spacing:.3px';
+const STAGE_BADGE = {
+  TOFU:`<span style="${_stageBase};background:#2563eb">🧊 TOFU · frío</span>`,
+  MOFU:`<span style="${_stageBase};background:#d97706">🌤️ MOFU · tibio</span>`,
+  BOFU:`<span style="${_stageBase};background:#dc2626">🔥 BOFU · caliente</span>`};
+function stageBadge(st){ return st && STAGE_BADGE[st] ? STAGE_BADGE[st] : ''; }
+function funnelMix(){
+  return {TOFU:+(document.getElementById('funTofu').value||0),
+          MOFU:+(document.getElementById('funMofu').value||0),
+          BOFU:+(document.getElementById('funBofu').value||0)};
+}
+function funnelTotalUpdate(){
+  const m=funnelMix(), t=m.TOFU+m.MOFU+m.BOFU;
+  const el=document.getElementById('funTotal');
+  if(el) el.textContent = t>0 ? `→ ${t} guion(es) = ${t} video(s)` : 'Clásico: 8 versiones de un solo tipo';
+}
+['funTofu','funMofu','funBofu'].forEach(id=>{
+  const e=document.getElementById(id); if(e) e.oninput=funnelTotalUpdate;
+});
+document.querySelectorAll('.funPreset').forEach(b=>{
+  b.onclick=()=>{
+    if(b.dataset.mix!==undefined){ const [a,c,d]=b.dataset.mix.split(',');
+      document.getElementById('funTofu').value=a; document.getElementById('funMofu').value=c;
+      document.getElementById('funBofu').value=d; funnelTotalUpdate(); }
+    if(b.dataset.prodmix!==undefined){ const [a,c,d]=b.dataset.prodmix.split(',');
+      document.getElementById('prodTofu').value=a; document.getElementById('prodMofu').value=c;
+      document.getElementById('prodBofu').value=d; }
+  };
+});
+funnelTotalUpdate();
+
 const useVO = document.getElementById("useVO");
 useVO.onchange = ()=>{
   document.getElementById("voiceWrap").style.display = useVO.checked ? "flex" : "none";
+  document.getElementById("funnelWrap").style.display = useVO.checked ? "block" : "none";
   document.getElementById("go").textContent = useVO.checked ? "📝  Generar guiones de voz" : "✂️  Generar clips";
 };
 
@@ -2986,6 +3054,11 @@ function buildForm(){
   fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
   fd.append("destino", document.getElementById("destino").value);
+  // 🎯 Embudo: solo aplica al flujo de guiones (voz en off). 0/0/0 → clásico.
+  if(useVO.checked){
+    const m=funnelMix();
+    fd.append("tofu", m.TOFU); fd.append("mofu", m.MOFU); fd.append("bofu", m.BOFU);
+  }
   return fd;
 }
 
@@ -3131,16 +3204,21 @@ function renderScripts(jobId, scripts){
     root.innerHTML = `<div class="card"><p class="err">No se pudieron generar guiones — mira el mensaje de error del trabajo (puede ser cuota/key de la IA) y reintenta.</p></div>`;
     return;
   }
+  const hasStages = scripts.some(s=>s.stage);
+  const maxSel = hasStages ? scripts.length : 8;
+  const introTxt = hasStages
+    ? `Embudo <b>TOFU/MOFU/BOFU</b>: se genera <b>un video por guion</b> (${scripts.length} en total), cada uno con su gancho, arco y CTA según su etapa. Marca los que quieras. Puedes escuchar cada uno antes.`
+    : `Se generan <b>8 versiones</b>, cada una con un guion distinto. Marca hasta 8 (vienen marcados los primeros 8). Puedes escuchar cada uno antes.`;
   let html = `<div class="card"><h2>📝 Guiones de voz en off</h2>
-    <p class="pmsg" style="margin:-6px 0 14px">Se generan <b>8 versiones</b>, cada una con un guion distinto. Marca hasta 8 (vienen marcados los primeros 8). Puedes escuchar cada uno antes.</p>
+    <p class="pmsg" style="margin:-6px 0 14px">${introTxt}</p>
     <div style="display:flex;flex-direction:column;gap:8px" id="scriptList">`;
   scripts.forEach((s,i)=>{
-    const chk = i < 8 ? "checked" : "";
+    const chk = i < maxSel ? "checked" : "";
     html += `<div class="scriptOpt" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
       <label style="display:flex;gap:10px;cursor:pointer;align-items:flex-start">
         <input type="checkbox" class="scriptChk" data-i="${i}" ${chk} style="width:18px;height:18px;accent-color:var(--accent);margin-top:2px">
         <span>
-          <div style="font-size:12px;color:var(--accent2);text-transform:uppercase;margin-bottom:4px">${s.angulo||('Opción '+(i+1))}</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">${stageBadge(s.stage)}<span style="font-size:12px;color:var(--accent2);text-transform:uppercase">${s.angulo||('Opción '+(i+1))}</span></div>
           <div style="font-size:14px">${s.texto}</div>
         </span>
       </label>
@@ -3149,8 +3227,9 @@ function renderScripts(jobId, scripts){
         <span class="audioSlot" id="audio${i}"></span>
       </div></div>`;
   });
+  const btnTxt = hasStages ? `🔊  Generar los videos (uno por guion)` : `🔊  Generar 8 videos (un guion por versión)`;
   html += `</div>
-    <button class="btn" id="renderVO" style="margin-top:16px">🔊  Generar 8 videos (un guion por versión)</button>
+    <button class="btn" id="renderVO" style="margin-top:16px">${btnTxt}</button>
     </div>`;
   root.innerHTML = html;
 
@@ -3160,7 +3239,10 @@ function renderScripts(jobId, scripts){
   });
 
   document.getElementById("renderVO").onclick = async ()=>{
-    const chosen = chks.filter(c=>c.checked).map(c=>scripts[+c.dataset.i].texto).slice(0,8);
+    const picked = chks.filter(c=>c.checked).map(c=>scripts[+c.dataset.i]);
+    // sin embudo se conserva el tope clásico de 8; con embudo se hace uno por guion elegido
+    const sel = hasStages ? picked : picked.slice(0,8);
+    const chosen = sel.map(s=>s.texto);
     if(!chosen.length){ alert("Marca al menos un guion"); return; }
     document.getElementById("renderVO").disabled = true;
     root.innerHTML = "";
@@ -3168,6 +3250,8 @@ function renderScripts(jobId, scripts){
     const fd = new FormData();
     fd.append("job_id", jobId);
     fd.append("scripts_json", JSON.stringify(chosen));
+    if(hasStages && sel.every(s=>s.stage))
+      fd.append("stages_json", JSON.stringify(sel.map(s=>s.stage)));
     fd.append("voice", document.getElementById("voice").value);
     const vm=(document.getElementById("voiceMezcla").value||'').split(',');
     fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
@@ -3200,7 +3284,7 @@ function renderResults(res, rootId){
     html += `<div class="vcard">
       <video src="${file}" controls muted loop preload="metadata" style="aspect-ratio:${ar}"></video>
       <div class="body">
-        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
+        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''} ${stageBadge(v.stage)}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
         ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
         ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}

@@ -11,21 +11,59 @@ from .analyze import Segment
 
 _MODEL = "gemini-2.5-flash"
 
-# CTA OBLIGATORIO: TODOS los copies/guiones deben CERRAR con esta frase EXACTA (pedido del dueño).
+# CTA OBLIGATORIO: el cierre DURO de contraentrega. Antes iba en TODOS los guiones; ahora es
+# EXCLUSIVO de BOFU (caliente). TOFU cierra SUAVE y MOFU con CTA medio (embudo TOFU/MOFU/BOFU,
+# asset funnel-tofu-mofu-bofu-2026.md). La cadena EXACTA de BOFU no cambia (pedido del dueño).
 CTA_OBLIGATORIO = ("por tu compra hoy te regalamos el envío, y para tu seguridad ante estafas "
                    "pagas al recibir")
 
+# CTAs por etapa (cta_mode): "hard" = BOFU (frase exacta de arriba), "medium" = MOFU, "soft" = TOFU.
+_CTA_SUAVE = "te dejo el link, míralo"                 # TOFU: nada de contraentrega dura
+_CTA_MEDIO = "mira las reseñas y decídelo tú"          # MOFU: CTA medio
 
-def _con_cta(texto: str) -> str:
-    """Garantiza que el copy termine con el CTA EXACTO (lo añade si el modelo no lo puso igual)."""
+# Palabras clave para NO duplicar el cierre si el modelo ya escribió uno de la etapa.
+_CTA_KEYS = {
+    "soft": ("link", "búscalo", "buscalo", "míralo", "miralo", "búscala", "buscala", "perfil"),
+    "medium": ("reseña", "resena", "decídelo", "decidelo", "reviews", "míralas", "miralas",
+               "opiniones"),
+}
+
+
+def _cta_text(cta_mode: str) -> str:
+    if cta_mode == "soft":
+        return _CTA_SUAVE
+    if cta_mode == "medium":
+        return _CTA_MEDIO
+    return CTA_OBLIGATORIO
+
+
+def _cta_words(cta_mode: str) -> int:
+    """Cuántas palabras reserva el CTA de esta etapa (para el presupuesto de recorte)."""
+    return len(_cta_text(cta_mode).split())
+
+
+def _con_cta(texto: str, cta_mode: str = "hard") -> str:
+    """Garantiza que el copy CIERRE con el CTA de su etapa (lo añade si el modelo no lo puso).
+
+    `cta_mode`: "hard" (BOFU, frase exacta de contraentrega), "medium" (MOFU), "soft" (TOFU).
+    Por defecto "hard" → comportamiento idéntico al de antes (retrocompatible)."""
     t = (texto or "").strip()
-    if CTA_OBLIGATORIO.lower() in t.lower():
+    if cta_mode == "hard":
+        if CTA_OBLIGATORIO.lower() in t.lower():
+            return t
+        sep = "" if (not t or t.endswith((".", "!", "?"))) else "."
+        return (t + sep + " " + CTA_OBLIGATORIO.capitalize() + ".").strip()
+    # soft / medium: NO se fuerza el CTA duro de contraentrega. Si el guion ya trae un cierre
+    # de su etapa, se deja; si no, se agrega uno corto (no ampută el cuerpo como el de 17 palabras).
+    low = t.lower()
+    if any(k in low for k in _CTA_KEYS.get(cta_mode, ())):
         return t
+    cta = _cta_text(cta_mode)
     sep = "" if (not t or t.endswith((".", "!", "?"))) else "."
-    return (t + sep + " " + CTA_OBLIGATORIO.capitalize() + ".").strip()
+    return (t + sep + " " + cta.capitalize() + ".").strip()
 
 
-def _ajustar_largo(texto: str, max_words: int) -> str:
+def _ajustar_largo(texto: str, max_words: int, cta_mode: str = "hard") -> str:
     """Recorte DURO al presupuesto de palabras. Gemini a veces ignora el 'MÁXIMO N palabras'
     (salieron guiones de 140 palabras para un video de 15s → 30s de video congelado al final,
     bug real del 2026-07-03). Se corta por FRASES desde el inicio reservando el CTA obligatorio,
@@ -36,12 +74,13 @@ def _ajustar_largo(texto: str, max_words: int) -> str:
     # para 15s) porque corta desde el final y se puede comer el momento del producto.
     tope = int(max_words * 1.35)
     if len(t.split()) <= tope:
-        return _con_cta(t)
-    idx = t.lower().find(CTA_OBLIGATORIO.lower()[:30])            # quita el CTA: se re-agrega al final
-    if idx > 0:
-        t = t[:idx].rstrip(" ,.;:¡¿")
+        return _con_cta(t, cta_mode)
+    if cta_mode == "hard":               # solo BOFU trae el CTA duro que hay que quitar y re-agregar
+        idx = t.lower().find(CTA_OBLIGATORIO.lower()[:30])
+        if idx > 0:
+            t = t[:idx].rstrip(" ,.;:¡¿")
     frases = re.split(r"(?<=[.!?…])\s+", t)
-    presupuesto = max(10, int(max_words * 1.05) - len(CTA_OBLIGATORIO.split()))
+    presupuesto = max(10, int(max_words * 1.05) - _cta_words(cta_mode))
     out, cuenta = [], 0
     for fr in frases:
         nw = len(fr.split())
@@ -49,10 +88,10 @@ def _ajustar_largo(texto: str, max_words: int) -> str:
             break
         out.append(fr)
         cuenta += nw
-    return _con_cta(" ".join(out))
+    return _con_cta(" ".join(out), cta_mode)
 
 
-def _ajustar_por_fases(d: dict, max_words: int) -> str | None:
+def _ajustar_por_fases(d: dict, max_words: int, cta_mode: str = "hard") -> str | None:
     """Recorte INTELIGENTE usando el desglose por fases que entrega el modelo: si el guion se
     pasa del presupuesto, se sacrifican fases en orden de importancia (prueba → problema → giro)
     pero JAMÁS el hook, el producto ni el CTA. (El recorte ciego por frases amputaba desde el
@@ -71,7 +110,7 @@ def _ajustar_por_fases(d: dict, max_words: int) -> str | None:
     def _arma() -> str:
         trozos = [partes[k] for k in orden if k not in omitidas and partes[k]]
         cuerpo = " ".join(p if p.endswith(("?", "!", "…")) else p + "." for p in trozos)
-        return _con_cta(cuerpo)
+        return _con_cta(cuerpo, cta_mode)
 
     texto = _arma()
     for k in sacrificables:
@@ -80,6 +119,94 @@ def _ajustar_por_fases(d: dict, max_words: int) -> str | None:
         omitidas.add(k)
         texto = _arma()
     return texto
+
+
+# ── EMBUDO TOFU / MOFU / BOFU (asset funnel-tofu-mofu-bofu-2026.md) ──────────────────────────
+# Cada etapa cambia el ARCO, las familias de hook, la dureza del CTA y el largo objetivo. Meta
+# (Andromeda) agrupa anuncios parecidos → dar temperaturas DISTINTAS es el eje de diversificación.
+_STAGES_META = {
+    "TOFU": {
+        "temp": "frío", "emoji": "🧊", "cta_mode": "soft", "seconds": (15, 25),
+        "arco": ("HOOK → PROBLEMA/agitación (~60% del guion, detalle cotidiano) → GIRO + primer "
+                 "vistazo del producto (se nombra TARDE, UNA vez) → cierre SUAVE"),
+        "hooks": ("pattern-interrupt / dolor relatable / claim audaz / curiosidad / POV "
+                  "'esto no es un anuncio'"),
+        "cta": ("SUAVE — 'te dejo el link', 'búscalo', 'míralo'. PROHIBIDO aquí el cierre de "
+                "contraentrega / 'pagas al recibir' / oferta dura (eso espanta al público frío)"),
+        "pantalla": "curiosidad o problema (ej. 'NADIE TE DICE ESTO')",
+    },
+    "MOFU": {
+        "temp": "tibio", "emoji": "🌤️", "cta_mode": "medium", "seconds": (20, 40),
+        "arco": ("HOOK → MECANISMO/DEMO (por qué funciona) → PRUEBA (reseñas / antes-después / "
+                 "comparación) → CTA MEDIO"),
+        "hooks": ("'probé N y solo una…' / 'por qué no te ha funcionado' / objeción / "
+                  "número específico"),
+        "cta": ("MEDIO — 'mira las reseñas', 'decídelo tú'. Se puede INSINUAR el pago al recibir, "
+                "pero SIN la frase dura completa ni oferta 2x1"),
+        "pantalla": "prueba / mecanismo (ej. 'MIRA LA DIFERENCIA', '4.8★ 12.000 RESEÑAS')",
+    },
+    "BOFU": {
+        "temp": "caliente", "emoji": "🔥", "cta_mode": "hard", "seconds": (8, 20),
+        "arco": ("RECORDATORIO/objeción directa → OFERTA + reversión de riesgo (contraentrega, "
+                 "envío, garantía) → CTA DURO con urgencia"),
+        "hooks": ("objeción directa / oferta / escasez / '¿lo pensaste y no lo pediste?'"),
+        "cta": ("DURO — TERMINA con la frase EXACTA de contraentrega + urgencia ('antes de que "
+                "se agote')"),
+        "pantalla": "oferta / urgencia (ej. '2X1 SOLO HOY', 'PAGA AL RECIBIR')",
+    },
+}
+_STAGE_ORDER = ("TOFU", "MOFU", "BOFU")
+
+
+def _build_stage_list(mix: dict | None) -> list[str]:
+    """De {'TOFU':2,'MOFU':2,'BOFU':2} → ['TOFU','TOFU','MOFU','MOFU','BOFU','BOFU'] (orden fijo).
+
+    Ignora etapas desconocidas y cuentas ≤0. Devuelve [] si el mix no pide nada."""
+    if not isinstance(mix, dict):
+        return []
+    out: list[str] = []
+    for st in _STAGE_ORDER:
+        try:
+            c = int(mix.get(st, 0) or 0)
+        except (TypeError, ValueError):
+            c = 0
+        out += [st] * max(0, c)
+    return out
+
+
+def _stage_seconds(stage: str, target_seconds: float) -> float:
+    """Segundos objetivo de la etapa: la duración pedida encajada en el rango de la etapa."""
+    lo, hi = _STAGES_META[stage]["seconds"]
+    return min(float(hi), max(float(lo), float(target_seconds)))
+
+
+def _stage_max_words(stage: str, target_seconds: float) -> int:
+    """Presupuesto de palabras por etapa (~2.55 pal/seg, mismo cálculo que el global)."""
+    return max(30, int(_stage_seconds(stage, target_seconds) * 2.55))
+
+
+def _stage_plan_text(stages: list[str], target_seconds: float) -> str:
+    """Bloque de prompt que le dice al modelo, guion por guion, su etapa/arco/hook/CTA/largo."""
+    lines = ["=== PLAN DE ETAPAS DEL EMBUDO (OBLIGATORIO: cada guion CUMPLE la etapa que le toca, "
+             "y en ESTE MISMO orden) ==="]
+    for i, st in enumerate(stages):
+        m = _STAGES_META[st]
+        lo, hi = m["seconds"]
+        secs = int(_stage_seconds(st, target_seconds))
+        lines.append(
+            f"Guion {i + 1} — ETAPA {st} ({m['temp']}, ~{secs}s; rango {lo}-{hi}s): "
+            f"ARCO = {m['arco']}; FAMILIAS DE HOOK = {m['hooks']}; CTA = {m['cta']}; "
+            f"TEXTO EN PANTALLA que insinúa = {m['pantalla']}.")
+    lines.append(
+        "DIVERSIDAD OBLIGATORIA: NINGÚN par de guiones comparte la misma familia de hook ni el "
+        "mismo ángulo — cada guion es un CONCEPTO distinto (Meta agrupa los parecidos).")
+    lines.append(
+        "CTA POR ETAPA (crítico): SOLO los guiones BOFU terminan con la frase EXACTA de "
+        f"contraentrega (\"{CTA_OBLIGATORIO}\"). Los TOFU cierran SUAVE ('te dejo el link', "
+        "'búscalo') y los MOFU con CTA medio ('mira las reseñas', 'decídelo tú') — a TOFU y MOFU "
+        "NO les metas la frase de contraentrega ni el 'pagas al recibir'.")
+    lines.append("=== FIN DEL PLAN DE ETAPAS ===")
+    return "\n".join(lines) + "\n"
 
 
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -172,7 +299,7 @@ def _frame_bytes(seg: Segment) -> bytes | None:
 def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str = "",
                      target_seconds: float = 15.0, sample_seg: Segment | None = None,
                      n: int = 10, blueprint: dict | None = None,
-                     oferta_2x1: bool = False) -> list[dict]:
+                     oferta_2x1: bool = False, mix: dict | None = None) -> list[dict]:
     """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}].
 
     Si la IA NO PUDO correr (sin keys, cuota 429, respuesta ilegible) levanta RuntimeError
@@ -181,8 +308,17 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
 
     `blueprint`: opcional, el análisis narrativo (narrative.py) de un ANUNCIO GANADOR de
     referencia. Si viene, los guiones copian su arco (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA) y ritmo.
+
+    `mix`: opcional, embudo TOFU/MOFU/BOFU (ej. {"TOFU":2,"MOFU":2,"BOFU":2}). Si viene, se
+    asigna una ETAPA por índice, se inyecta un bloque por etapa (arco + familias de hook + dureza
+    de CTA + largo) y cada guion sale etiquetado con `stage`/`temp`. n = sum(mix.values()). Si es
+    None, comportamiento idéntico al de antes (n guiones sin etapa, CTA duro en todos).
     """
     from .ia_errors import error_amigable
+    # ── Embudo: lista de etapas por índice (o None = flujo clásico sin etapas) ──
+    stages = _build_stage_list(mix)
+    if stages:
+        n = len(stages)
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ak = _anthropic_key()          # Claude escribe mejor copy: es la 1ª opción; Gemini respaldo
     if not api_key and not ak:
@@ -215,6 +351,34 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     bp = _blueprint_text(blueprint)
     arco = ("Cada guion debe SEGUIR el arco narrativo del anuncio de referencia de arriba "
             "(mismas fases, mismo orden, ritmo parecido). " if bp else "")
+    # Embudo activo: el plan por etapa se inyecta y el bloque CTA/presupuesto se vuelve por-etapa.
+    stage_plan = _stage_plan_text(stages, target_seconds) + "\n" if stages else ""
+    if stages:
+        # Con etapas el CTA duro NO va en todos: cada guion cierra según su etapa (ver PLAN).
+        cta_budget_block = (
+            "CTA POR ETAPA (ya definido arriba en el PLAN DE ETAPAS, respétalo): SOLO los guiones "
+            f"BOFU terminan con la frase EXACTA \"{CTA_OBLIGATORIO}\"; los TOFU cierran SUAVE "
+            "('te dejo el link', 'búscalo') y los MOFU con CTA medio ('mira las reseñas', "
+            "'decídelo tú') — a TOFU y MOFU NO les metas la contraentrega ni el 'pagas al recibir'.\n"
+            "Cada guion: SOLO el VOICEOVER hablado completo y fluido, con el LARGO que su etapa pide "
+            "en el plan (~2.5 palabras por segundo). El BOFU gasta ~17 palabras en su CTA duro, así "
+            "que su cuerpo va más apretado; TOFU y MOFU tienen más aire porque su cierre es corto. "
+            "Reparte cada guion así — hook ≤12, problema/mecanismo ≤14, giro+producto/demo ≤16, "
+            "prueba ≤10 — y si un beat no cabe, FUSIÓNALO o elimínalo TÚ conscientemente (mejor 3 "
+            "momentos bien desarrollados que 6 telegramas). Sin emojis, sin overlays ni acotaciones "
+            "de escena, listo para narrar de corrido.\n")
+    else:
+        cta_budget_block = (
+            f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
+            f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
+            f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, de ENTRE {max(20, max_words - 12)} "
+            f"y {max_words} palabras TOTALES (CTA incluido — cuéntalas: {max_words} ≈ "
+            f"{int(target_seconds)}s hablados). El CTA fijo ya gasta 17 de esas palabras: reparte el "
+            f"CUERPO restante (~{max(20, max_words - 17)} palabras) así — hook ≤12, problema ≤12, "
+            "giro+producto ≤16, prueba ≤8. Si un beat no cabe en ese presupuesto, FUSIÓNALO o elimínalo "
+            "TÚ conscientemente (mejor 3 momentos bien desarrollados que 6 telegramas). Si te pasas, el "
+            "guion se AMPUTA por el final y pierde el momento del producto — inaceptable. Sin emojis, "
+            "sin overlays ni acotaciones de escena, listo para narrar de corrido.\n")
     prompt = (
         "Eres el copywriter de Juan para ads de dropshipping (Colombia, COD). Escribes guiones "
         "de VOZ EN OFF que NO suenan a anuncio, usando SU voz real y SUS fórmulas ganadoras.\n\n"
@@ -227,7 +391,8 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
           "'Hasta que probé…'), MANDA EL v3 y las reglas de esta TAREA ===\n"
         + framework[:30000] +
         "\n=== FIN DEL BANCO ===\n"
-        + bp +
+        + bp
+        + stage_plan +
         "\n"
         f"TAREA: escribe {n} guiones DISTINTOS para la voz en off de un video de TikTok/Reels de "
         f"~{int(target_seconds)} segundos. " + arco + "PRIMERO elige las 2-3 FAMILIAS de hook del "
@@ -285,23 +450,18 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         "ya gastaste en cremas que no pasan de la superficie', 'una fracción de lo que vale una sola "
         "cita del especialista' — el ancla comparativa es el cierre que nunca falla en el banco de "
         "Juan; lo prohibido es la CIFRA, no la comparación de valor. "
-        + ("🎁 OFERTA 2x1 (OBLIGATORIO EN TODOS LOS GUIONES, no es opcional): justo ANTES del CTA "
-           "final, TODOS los guiones dicen la oferta de forma natural y clara — que al pedir uno se "
-           "lleva OTRO completamente GRATIS ('y hoy por pedir uno te llevas el segundo gratis', 'están "
-           "de 2x1: pides uno y llegan dos'). SIN decir precio ni cifras. Un guion sin la mención del "
-           "2x1 se rechaza. "
+        + (("🎁 OFERTA 2x1 (OBLIGATORIO EN TODOS LOS GUIONES, no es opcional): justo ANTES del CTA "
+            "final, TODOS los guiones dicen la oferta de forma natural y clara — que al pedir uno se "
+            "lleva OTRO completamente GRATIS ('y hoy por pedir uno te llevas el segundo gratis', 'están "
+            "de 2x1: pides uno y llegan dos'). SIN decir precio ni cifras. Un guion sin la mención del "
+            "2x1 se rechaza. " if not stages else
+            "🎁 OFERTA 2x1 (SOLO en los guiones BOFU, es una oferta dura de cierre): en los guiones "
+            "BOFU, justo ANTES del CTA final, menciona que al pedir uno se lleva OTRO GRATIS ('y hoy "
+            "por pedir uno te llevas el segundo gratis'). En TOFU y MOFU NO va la oferta 2x1 (romperían "
+            "su temperatura). SIN decir precio ni cifras. ")
            if oferta_2x1 else "")
-        + f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
-        f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
-        f"Cada guion: SOLO el VOICEOVER hablado completo y fluido, de ENTRE {max(20, max_words - 12)} "
-        f"y {max_words} palabras TOTALES (CTA incluido — cuéntalas: {max_words} ≈ "
-        f"{int(target_seconds)}s hablados). El CTA fijo ya gasta 17 de esas palabras: reparte el "
-        f"CUERPO restante (~{max(20, max_words - 17)} palabras) así — hook ≤12, problema ≤12, "
-        "giro+producto ≤16, prueba ≤8. Si un beat no cabe en ese presupuesto, FUSIÓNALO o elimínalo "
-        "TÚ conscientemente (mejor 3 momentos bien desarrollados que 6 telegramas). Si te pasas, el "
-        "guion se AMPUTA por el final y pierde el momento del producto — inaceptable. Sin emojis, "
-        "sin overlays ni acotaciones de escena, listo para narrar de corrido.\n"
-        "LISTA NEGRA DE TICS DE IA (si aparece UNO, ese guion se rechaza): 'Hasta que probé/llegó/"
+        + cta_budget_block
+        + "LISTA NEGRA DE TICS DE IA (si aparece UNO, ese guion se rechaza): 'Hasta que probé/llegó/"
         "descubrí…', '¿Te imaginas…?', 'Dile adiós a…', 'Es hora de…', 'Olvídate de…', el 'no es X, "
         "es Y' encadenado, y el paralelismo triple ('sin A, sin B, sin C') más de una vez en el lote.\n"
         "ESCRIBE EL VOICEOVER CORRIDO PRIMERO, como se narra en una sola respiración, y SOLO DESPUÉS "
@@ -400,16 +560,24 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
             raise RuntimeError(quien + error_amigable(e))
 
     out = []
-    for d in data if isinstance(data, list) else []:
+    lst = data if isinstance(data, list) else []
+    for i, d in enumerate(lst):
         if isinstance(d, dict) and d.get("texto"):
+            # ETAPA de este guion (por índice del PLAN); sin embudo → None y CTA duro como siempre.
+            stage = stages[i] if (stages and i < len(stages)) else None
+            cta_mode = _STAGES_META[stage]["cta_mode"] if stage else "hard"
+            mw = _stage_max_words(stage, target_seconds) if stage else max_words
             # recorte por FASES primero (respeta hook/producto/CTA); si no hay desglose,
-            # recorte ciego por frases + CTA exacto
+            # recorte ciego por frases + CTA de la etapa
             crudo = str(d["texto"]).strip()[:900]
             texto = None
-            if len(crudo.split()) > int(max_words * 1.35):
-                texto = _ajustar_por_fases(d, max_words)
+            if len(crudo.split()) > int(mw * 1.35):
+                texto = _ajustar_por_fases(d, mw, cta_mode)
             item = {"angulo": str(d.get("angulo", ""))[:40],
-                    "texto": texto or _ajustar_largo(crudo, max_words)}
+                    "texto": texto or _ajustar_largo(crudo, mw, cta_mode)}
+            if stage:
+                item["stage"] = stage
+                item["temp"] = _STAGES_META[stage]["temp"]
             f = d.get("fases")
             if isinstance(f, dict):   # desglose por fase (hook/problema/giro/producto/prueba/cta)
                 item["fases"] = {k: str(v)[:220] for k, v in f.items() if isinstance(v, str) and v.strip()}

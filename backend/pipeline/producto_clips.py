@@ -108,7 +108,8 @@ def _guiones_y_narraciones(work_dir: str, *, eleven_key: str | None, gemini_key:
                            desc: str, page_text: str, target_seconds: float, voz: str,
                            n_guiones: int, n_versiones: int, report,
                            voces: list[str] | None = None,
-                           oferta_2x1: bool = False) -> tuple[list[dict], list[tuple]] | None:
+                           oferta_2x1: bool = False,
+                           mix: dict | None = None) -> tuple[list[dict], list[tuple]] | None:
     """PASO 1 del flujo "primero el guion": guiones con Gemini (reglas de oro: sin precio +
     CTA exacto; con `oferta_2x1` TODOS los guiones mencionan el 2x1) → narración colombiana
     (ElevenLabs con tiempos por palabra). El montaje se hace DESPUÉS, guiado por estas frases
@@ -120,10 +121,14 @@ def _guiones_y_narraciones(work_dir: str, *, eleven_key: str | None, gemini_key:
     Devuelve (guiones, narraciones_POR_VERSIÓN=[(mp3, words, texto)] × n_versiones) o None."""
     if not eleven_key:
         return None
+    # Embudo: con mix, el nº de guiones lo fija la suma del mix (una versión por guion, 1:1).
     n = n_versiones if not n_guiones else max(1, min(int(n_guiones), n_versiones))
-    report("Escribiendo los guiones de la voz en off...", 32)
+    if mix:
+        n = n_versiones
+    report("Escribiendo los guiones de la voz en off"
+           + (" (embudo TOFU/MOFU/BOFU)..." if mix else "..."), 32)
     guiones = generate_scripts(gemini_key, desc, page_text, target_seconds, n=n,
-                               oferta_2x1=oferta_2x1)
+                               oferta_2x1=oferta_2x1, mix=mix)
     if not guiones:
         return None
 
@@ -254,7 +259,10 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         genero = _elegir_genero(desc, gemini_key)
         music_path = _generar_musica(out_dir, eleven_key=eleven_key, genero=genero,
                                      report=report)
-    guiones, narraciones, version_vos = None, None, None
+    guiones, narraciones, version_vos, stages = None, None, None, None
+    # Embudo TOFU/MOFU/BOFU (opcional): una versión por guion (sum del mix); si no, 8 clásico.
+    mix = settings.get("mix") if isinstance(settings.get("mix"), dict) else None
+    n_ver = sum(mix.values()) if mix else 8
     if settings.get("voz_en_off"):
         page_text = ""
         if (product_url or "").strip():
@@ -270,11 +278,16 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
             page_text=page_text, target_seconds=float(settings.get("target_seconds", 15.0)),
             voz=settings.get("voz", "juan_carlos"), voces=mezcla,
             oferta_2x1=bool(settings.get("oferta_2x1")),
-            n_guiones=int(settings.get("vo_guiones", 0) or 0), n_versiones=8, report=report)
+            n_guiones=int(settings.get("vo_guiones", 0) or 0), n_versiones=n_ver,
+            mix=mix, report=report)
         if gn:
-            guiones, narraciones = gn      # narraciones ya viene POR VERSIÓN (8 entradas)
+            guiones, narraciones = gn      # narraciones ya viene POR VERSIÓN (n_ver entradas)
             version_vos = [(narraciones[i % len(narraciones)][0],
-                            narraciones[i % len(narraciones)][1]) for i in range(8)]
+                            narraciones[i % len(narraciones)][1]) for i in range(n_ver)]
+            if mix and guiones:            # etapa por versión (1:1 con los guiones etiquetados)
+                stages = [guiones[i % len(guiones)].get("stage") for i in range(n_ver)]
+                if not all(stages):        # si algún guion salió sin etapa, no forzamos el embudo
+                    stages = None
 
     # 3 · Crear los clips (montaje por guion si hay voz), reusa el pipeline principal
     report("Creando clips a partir de los ganadores...", 36)
@@ -304,6 +317,8 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         caption_size=settings.get("caption_size", "mediano"),
         destino=settings.get("destino", "tiktok"),
         gemini_key=gemini_key,
+        n_versions=(n_ver if (stages and version_vos) else None),
+        stages=(stages if (stages and version_vos) else None),
         progress=lambda m, p: report(m, 36 + p * 0.62),
     )
 

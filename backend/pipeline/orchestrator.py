@@ -244,9 +244,14 @@ def render_versions(
     target_seconds: float = 15.0,
     max_clip_seconds: float = 3.0,
     broll_fases: dict | None = None,   # {ruta fuente B-roll: fase forzada (problema/resultado/...)}
+    n_versions: int | None = None,     # embudo: nº de versiones = nº de guiones (None → 8 clásico)
+    stages: list | None = None,        # embudo: etapa por versión ["TOFU","MOFU","BOFU",...]
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
-    """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos."""
+    """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos.
+
+    `n_versions`/`stages`: embudo TOFU/MOFU/BOFU. Si vienen, se generan n_versions versiones y
+    cada una queda etiquetada con su etapa (stages[i]); el gancho automático se genera por etapa."""
     def report(msg, pct):
         if progress:
             progress(msg, pct)
@@ -326,7 +331,14 @@ def render_versions(
         if getattr(selected[_i], "is_broll", False):
             broll_idx.add(_i)
 
-    version_orders = plan_variations(selected, target_seconds=plan_seconds)
+    version_orders = plan_variations(selected, target_seconds=plan_seconds,
+                                      n_versions=n_versions)
+    # Embudo: etapa por índice de versión (mismo orden que version_orders / version_vos).
+    stage_by_name: dict[str, str] = {}
+    if stages:
+        for _vi, (nm, _o) in enumerate(version_orders):
+            if _vi < len(stages):
+                stage_by_name[nm] = stages[_vi]
 
     # ── MONTAJE GUIADO POR EL GUION (flujo de Juan: primero el guion, después la edición) ──
     # Si la voz de cada versión ya existe con tiempos por palabra, el plan ciego se REEMPLAZA:
@@ -587,20 +599,35 @@ def render_versions(
 
     # Gancho: el del usuario o uno generado con IA
     final_hook = hook_text.strip()
+    hooks_by_stage: dict[str, str] = {}   # embudo: UN gancho por etapa (curiosidad/prueba/oferta)
     if not final_hook and auto_hook:
         report("Generando gancho impactante con IA...", 80)
         page_text = fetch_page_text(page_url)
         sample = max(selected, key=lambda s: (s.shows_use, s.score)) if selected else None
-        final_hook = generate_hook(gemini_key, product_desc, page_text, sample)
+        if stages:
+            # UN gancho por ETAPA presente (su intención cambia: TOFU curiosidad, MOFU prueba,
+            # BOFU oferta) — así cada creativo lleva el overlay que le toca a su temperatura.
+            for st in dict.fromkeys(stage_by_name.values()):
+                hk = generate_hook(gemini_key, product_desc, page_text, sample, stage=st)
+                if hk.strip():
+                    hooks_by_stage[st] = hk.strip()
+            final_hook = next(iter(hooks_by_stage.values()), "")   # respaldo para versiones sin etapa
+        else:
+            final_hook = generate_hook(gemini_key, product_desc, page_text, sample)
         if not final_hook.strip():
             # pediste gancho automático y la IA no lo generó: avisar, no entregar en silencio
             avisos.append("El gancho automático NO se pudo generar (la IA no respondió) — "
                           "las versiones van sin texto de gancho.")
-    if final_hook.strip():
+    if final_hook.strip() or hooks_by_stage:
         _fallo_burn = 0
         for v in versions:
+            # gancho del usuario (igual para todas) o el de la etapa de esta versión
+            v_hook = hook_text.strip() or hooks_by_stage.get(
+                stage_by_name.get(v.get("name") or ""), final_hook)
+            if not v_hook.strip():
+                continue
             hook_out = v["path"].replace(".mp4", "_hook.mp4")
-            new_path, burned = burn_hook(v["path"], hook_out, work_dir, final_hook, hook_pos,
+            new_path, burned = burn_hook(v["path"], hook_out, work_dir, v_hook, hook_pos,
                                          seconds=hook_seconds)
             v["path"] = new_path
             if not burned:
@@ -806,6 +833,7 @@ def render_versions(
                 "sfx_events": v.get("sfx_events"),
                 "path_45": v.get("path_45"),      # cut 4:5 para Meta (§10.2)
                 "qa_aviso": v.get("qa_aviso"),     # ⚠️ producto no visible ≤3s (§11.1)
+                "stage": stage_by_name.get(v["name"]),   # embudo: TOFU/MOFU/BOFU (None = clásico)
             }
             for v in versions
         ],
@@ -885,6 +913,8 @@ def process_job(
     destino: str = "tiktok",
     gemini_key: str | None = None,
     broll_fases: dict | None = None,
+    n_versions: int | None = None,     # embudo TOFU/MOFU/BOFU (None → 8 versiones clásico)
+    stages: list | None = None,        # embudo: etapa por versión
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Pipeline de una pasada: analiza y renderiza. Si `version_vos` viene (voz por versión ya
@@ -908,4 +938,4 @@ def process_job(
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
-        broll_fases=broll_fases, progress=progress)
+        broll_fases=broll_fases, n_versions=n_versions, stages=stages, progress=progress)

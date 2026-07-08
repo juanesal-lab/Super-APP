@@ -3374,7 +3374,17 @@ async function dubPoll(id){
     return homeEnterOrig(tabId);
   };
   document.getElementById('tabs').addEventListener('click', e=>{
-    const b=e.target.closest('button[data-p]'); if(b) g('cm_tab', b.dataset.p);
+    const b=e.target.closest('button[data-p]'); if(!b) return;
+    g('cm_tab', b.dataset.p);
+    // 🔙 cada cambio de pestaña deja una marca en el historial → "atrás" vuelve a la
+    //    pestaña ANTERIOR (con todo guardado, no se borra nada), y solo llega al home
+    //    cuando ya estás en la primera pestaña que abriste. Dedupe contra history.state:
+    //    NO empuja si ya estamos en ese estado (evita dobles cuando el click viene del
+    //    propio "atrás" del navegador o del homeEnter que ya empujó).
+    try{
+      const st=history.state;
+      if(!st || st.tab!==b.dataset.p){ history.pushState({tab:b.dataset.p}, ''); }
+    }catch(_){}
   }, true);
   addEventListener('popstate', e=>{
     const wrap=document.querySelector('.wrap'), home=document.getElementById('home');

@@ -261,31 +261,39 @@ def _box_at(track: dict, i: int) -> tuple:
 
 
 def _obscure(roi):
-    """Tapa el texto con un RELLENO SÓLIDO (no mosaico pixelado, que se veía feo).
+    """Desenfoque tipo VIDRIO ESMERILADO: el texto del proveedor queda ILEGIBLE pero se ve como un
+    BLUR REAL — NO un bloque de color sólido (se veía horrible, queja de Jack) ni cuadros de mosaico
+    (parpadeaba). Se conserva el color y la forma del fondo (se transparenta borroso), como una zona
+    difuminada natural. Como la caja del track es FIJA y el fondo del caption es estable, no parpadea
+    ni se desliza.
 
-    Rellena la caja con el COLOR DE FONDO de la propia zona = la MEDIANA de sus píxeles: como el
-    texto es minoría frente al fondo, la mediana ≈ el fondo → el texto desaparece bajo un bloque
-    sólido del mismo color, que se ve limpio y se funde con el entorno. Los bordes se difuminan
-    apenas ~2 px para que el rectángulo no tenga un canto duro (queda 'perfecto', sin parche). Como
-    la caja del track es continua y el fondo del caption es estable, no parpadea."""
+    Cómo: 1) downscale MUY fuerte con INTER_AREA (promedia → destruye la legibilidad del texto: la
+    línea queda en ~5 px de alto = imposible de leer); 2) upscale CUBIC (liso, sin cuadros de
+    mosaico) → vidrio esmerilado; 3) gaussiana leve para quitar cualquier resto de canto."""
     import numpy as np
     h, w = roi.shape[:2]
     if h < 2 or w < 2:
         return roi
-    flat = roi.reshape(-1, roi.shape[2]) if roi.ndim == 3 else roi.reshape(-1, 1)
-    med = np.median(flat, axis=0)
-    solid = np.empty_like(roi)
-    solid[:] = med.astype(roi.dtype)
-    # feather de ~2 px SOLO en el borde para fundir el bloque sólido con el entorno (sin canto duro)
-    b = max(1, min(4, min(w, h) // 20))
-    if b >= 1 and w > 4 * b and h > 4 * b:
+    # 1) downscale fuerte: la línea de texto queda ~5 px de alto (ilegible) sin volverse color plano
+    sh = max(2, h // 22) if h >= 44 else max(2, h // 4)
+    sw = max(2, int(w * sh / max(1, h)))
+    small = cv2.resize(roi, (sw, sh), interpolation=cv2.INTER_AREA)
+    # 2) upscale suave (cubic) = esmerilado, sin los cuadros del mosaico
+    up = cv2.resize(small, (w, h), interpolation=cv2.INTER_CUBIC)
+    # 3) gaussiana leve para fundir cualquier resto de estructura
+    k = max(3, (h // 6) | 1)
+    k = min(k, 61)
+    frosted = cv2.GaussianBlur(up, (k, k), 0)
+    # 4) feather en el borde para fundir el desenfoque con el entorno (sin canto duro)
+    b = max(1, min(6, min(w, h) // 16))
+    if w > 4 * b and h > 4 * b:
         mask = np.zeros((h, w), np.float32)
         mask[b:h - b, b:w - b] = 1.0
         mask = cv2.GaussianBlur(mask, (2 * b + 1, 2 * b + 1), 0)
         if roi.ndim == 3:
             mask = mask[:, :, None]
-        return (solid * mask + roi * (1.0 - mask)).astype(roi.dtype)
-    return solid
+        return (frosted * mask + roi * (1.0 - mask)).astype(roi.dtype)
+    return frosted.astype(roi.dtype)
 
 
 def _iou(a: tuple, b: tuple) -> float:

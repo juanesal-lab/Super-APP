@@ -3343,3 +3343,20 @@ nuevo la llama directo, envuélvela en try/except.
 - Solo docs (2 archivos .md). NO toqué código, backend ni frontend. Nada que reiniciar ni probar.
 AVISO Juan: si querés, movemos/fusionamos partes de este onboarding con RESUMEN-TECNICO.md; por ahora
 lo dejé como doc aparte para no pisar nada tuyo.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔙 "Atrás" vuelve a la pestaña ANTERIOR (no al home) sin perder nada
+Jack: "cuando le dé a devolverme no me devuelva al home, sino a lo anterior que tenía, con todo guardado."
+- **Causa**: al entrar desde el home, `homeEnter` empujaba UNA sola entrada al historial; los cambios de
+  pestaña por el menú lateral NO empujaban historial → el gesto "atrás" desde cualquier pestaña saltaba
+  directo al garaje (home) y se sentía como "perder mis cosas".
+- **Fix (solo frontend/index.html, 1 bloque)**: el listener de clicks de `#tabs` ahora hace
+  `history.pushState({tab})` en cada cambio de pestaña, con **dedupe contra `history.state`** (no empuja si
+  ya estamos en ese estado). Así el historial queda home → tabA → tabB → tabC, y "atrás" retrocede
+  tabC→tabB→tabA→home. El contenido NO se pierde: las pestañas solo togglean `display` (el DOM queda
+  intacto) y la restauración por sessionStorage (cm_tab/cm_fp/jobs) ya existía. Solo llega al home cuando
+  ya estás en la primera pestaña que abriste.
+- El dedupe también evita entradas dobles cuando el click viene del propio "atrás" (popstate mueve el
+  puntero ANTES de disparar → el `b.click()` programático ve `history.state.tab` ya igual → no reempuja) o
+  del `homeEnter` que ya empujó.
+- VERIFICADO SIN GASTAR ($0): bloques JS 15/15 OK (node --check). Cambio puramente de navegación en el
+  navegador; no toca backend. AVISO Juan: cero backend tuyo tocado, solo el listener de pestañas en el front.

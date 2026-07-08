@@ -3333,3 +3333,38 @@ como "✅ listo" ni culpa al usuario. NUEVO `pipeline/ia_errors.py` (patrón _er
 AVISO Jack: NO toqué tus archivos (disruptive_images, dub_colombia, tiktok_search, text_translate,
 image_variator intactos). `generate_scripts` ahora lanza excepción en vez de [] — si algún flujo tuyo
 nuevo la llama directo, envuélvela en try/except.
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎯 B-ROLL mucho mejor: landing OBLIGATORIA + verificación por CONTENIDO + afinidad guion↔clip (pedido de Angelo)
+Angelo pidió 3 cosas para la búsqueda de B-roll. Las 3 implementadas (aditivas, degradan solas si la
+IA está caída, respetan la robustez de hoy):
+- **① LANDING como fuente de verdad (obligatoria)**: `/api/broll-dolor` ahora acepta `landing_url` →
+  `fetch_page_text` la lee → Claude (o Gemini de respaldo) DERIVA de ella el ángulo de venta + dolor #1
+  + público y de ahí las búsquedas de TikTok (antes el ángulo era texto suelto opcional). Es OBLIGATORIO
+  dar la landing O un ángulo con sustancia (≥3 palabras) — si no, 400 con mensaje claro. `_broll_brief_claude`
+  y `_queries_broll` ahora reciben `landing_text` y lo priorizan. Front: nuevo input de landing en el
+  cajón de B-roll + validación antes de llamar.
+- **② Verificación PROFUNDA por CONTENIDO (no solo portada)**: nuevo `_verificar_broll_video` — baja el
+  mp4 y mira 3 frames de ADENTRO; Gemini confirma que el video DE VERDAD ilustra la escena del ángulo
+  (dolor/resultado/uso), no que la miniatura "parezca". El flujo de `buscar_broll` quedó: landing→queries
+  → pre-filtro barato por portada (Claude, 1 llamada) → verificación de contenido en paralelo (Gemini) →
+  descarta lo que el contenido no cuadra y usa la FASE confirmada por el contenido. Si Gemini cae (None)
+  NO descarta por eso: conserva el veredicto de portada (marca `verificado:false`). Tope de costo: se
+  verifican máx ~2×n los más virales. Front: badge "✓ contenido" en los verificados.
+- **③ AFINIDAD guion↔clip por frase ("qué frame de todos los videos es mejor para esa parte")**: nuevo
+  `guion_match.afinidad_guion_clips` — 1 llamada Gemini que, con el `tag` de escena de cada clip, puntúa
+  qué clips ilustran mejor CADA frase del guion (de TODAS las versiones a la vez). `plan_montaje` acepta
+  `afinidad` (por frase) como DESEMPATE FUERTE, DESPUÉS de las reglas anti-congelado (mismo_look/hook) —
+  así, empatando en fase, gana el clip cuyo contenido calza con lo que se dice. Sin key/tags o si Gemini
+  falla → None → montaje IDÉNTICO al de siempre. Cableado en orchestrator (render normal) y regen (la
+  versión regenerada también se beneficia).
+- **VERIFICADO SIN GASTAR** ($0): py_compile 5/5; JS 15/15; app importa con 51 rutas; tests offline —
+  plan_montaje con/sin afinidad (respeta la preferencia sin romper el orden), afinidad degrada a None sin
+  key/tags; endpoint exige landing o ángulo con sustancia y deriva el landing_text; orquestación de
+  buscar_broll (rechaza engaños de portada por contenido, conserva si el juez de contenido cae, usa la
+  fase del contenido, respeta el tope). NO corrí búsqueda real (toca TikTok/IA). REINICIAR :8420 para
+  probar en vivo (endpoint y pipeline nuevos).
+AVISO Jack: toqué `guion_match.py` (core del montaje por guion) — solo AÑADÍ el param `afinidad`
+opcional (default None = comportamiento viejo exacto) + el nuevo helper; nada existente cambia de
+firma de forma incompatible. `buscar_broll` ganó params `landing_text`/`verificar_contenido` (defaults
+retrocompatibles, único caller es /api/broll-dolor). orchestrator/regen: 1 línea cada uno para pasar la
+afinidad.

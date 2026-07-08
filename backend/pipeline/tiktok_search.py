@@ -285,47 +285,68 @@ def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | Non
         return None
 
 
-def _broll_brief_claude(nombre: str, angulo: str, ref_desc: str, anthropic_key: str) -> dict | None:
-    """CEREBRO (Claude): piensa el PUNTO DE DOLOR del ángulo de venta y las búsquedas de B-ROLL.
-    Devuelve {"punto_dolor": str, "queries": [str]} o None si no pudo (→ fallback Gemini/estático)."""
+def _broll_brief_claude(nombre: str, angulo: str, ref_desc: str, anthropic_key: str,
+                        landing_text: str = "") -> dict | None:
+    """CEREBRO (Claude): saca de la LANDING (fuente de verdad) el ángulo de venta + punto de dolor
+    y de ahí las búsquedas de B-ROLL. La landing manda: si viene, el ángulo/dolor se DERIVAN de ella
+    (no del texto suelto). Devuelve {"punto_dolor","angulo_resumen","publico","queries"[str]} o None."""
     if not anthropic_key:
         return None
     try:
         from anthropic import Anthropic
         tool = {
             "name": "brief_broll",
-            "description": "Brief de B-roll para un anuncio de dropshipping.",
+            "description": "Brief de B-roll para un anuncio de dropshipping, derivado de la landing.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "punto_dolor": {"type": "string",
-                                    "description": "El punto de dolor del ángulo, en 1 frase VISUAL (qué escena lo muestra)"},
+                                    "description": "El dolor #1 del comprador según la landing, en 1 frase VISUAL (qué escena lo muestra)"},
+                    "angulo_resumen": {"type": "string",
+                                       "description": "El ángulo de venta que usa la landing, en 1 frase"},
+                    "publico": {"type": "string",
+                                "description": "A quién le habla (edad/género/situación) según la landing"},
                     "queries": {"type": "array", "items": {"type": "string"},
                                 "description": "6-8 búsquedas cortas (2-4 palabras) para TikTok: ~5 del DOLOR en acción, ~2 del resultado/alivio, ~1 de la situación de uso. Español o inglés, lo que dé más resultados."},
                 },
                 "required": ["punto_dolor", "queries"],
             },
         }
-        prompt = (
-            f"Producto: \"{nombre}\". Ficha: \"{(ref_desc or '')[:400]}\". "
-            + (f"Ángulo de venta / punto de dolor que quiere el vendedor: \"{angulo}\". " if angulo.strip() else "")
-            + "Necesito B-ROLL para un anuncio de dropshipping: escenas que NO muestran el producto pero "
-            "APOYAN su ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la "
-            "necesidad, la emoción cruda), y un poco del después/alivio. "
-            "Ej. almohadillas para incontinencia → dolor: 'mujer desesperada corriendo al baño', "
-            "'sábanas mojadas vergüenza', 'mujer llorando frustrada baño'; resultado: 'mujer durmiendo "
-            "tranquila', 'abuela feliz nietos'. Piensa QUÉ ESCENA le duele al comprador de ESTE producto "
-            "con ESTE ángulo y dame las búsquedas.")
+        if landing_text.strip():
+            prompt = (
+                f"Esta es la LANDING (página de venta) de un producto de dropshipping llamado "
+                f"\"{nombre}\". LÉELA — es la fuente de verdad del ángulo y del dolor:\n\n"
+                f"=== LANDING ===\n{landing_text[:2500]}\n=== FIN LANDING ===\n\n"
+                + (f"El vendedor además quiere reforzar este ángulo: \"{angulo}\". " if angulo.strip() else "")
+                + "De la landing SACA: el ángulo de venta real, a quién le habla y el DOLOR #1 del "
+                "comprador. Necesito B-ROLL: escenas que NO muestran el producto pero APOYAN ese "
+                "ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la necesidad, "
+                "la emoción cruda), y algo del después/alivio. Dame las búsquedas para hallar ese "
+                "b-roll en TikTok, amarradas a lo que DICE la landing (no genéricas).")
+        else:
+            prompt = (
+                f"Producto: \"{nombre}\". Ficha: \"{(ref_desc or '')[:400]}\". "
+                + (f"Ángulo de venta / punto de dolor que quiere el vendedor: \"{angulo}\". " if angulo.strip() else "")
+                + "Necesito B-ROLL para un anuncio de dropshipping: escenas que NO muestran el producto pero "
+                "APOYAN su ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la "
+                "necesidad, la emoción cruda), y un poco del después/alivio. "
+                "Ej. almohadillas para incontinencia → dolor: 'mujer desesperada corriendo al baño', "
+                "'sábanas mojadas vergüenza', 'mujer llorando frustrada baño'; resultado: 'mujer durmiendo "
+                "tranquila', 'abuela feliz nietos'. Piensa QUÉ ESCENA le duele al comprador de ESTE producto "
+                "con ESTE ángulo y dame las búsquedas.")
         client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
-            model=_CLAUDE, max_tokens=600,
+            model=_CLAUDE, max_tokens=700,
             tools=[tool], tool_choice={"type": "tool", "name": "brief_broll"},
             messages=[{"role": "user", "content": prompt}])
         for b in resp.content:
             if getattr(b, "type", None) == "tool_use" and b.name == "brief_broll":
                 qs = [str(q).strip() for q in (b.input.get("queries") or []) if str(q).strip()]
                 if qs:
-                    return {"punto_dolor": str(b.input.get("punto_dolor") or ""), "queries": qs[:8]}
+                    return {"punto_dolor": str(b.input.get("punto_dolor") or ""),
+                            "angulo_resumen": str(b.input.get("angulo_resumen") or ""),
+                            "publico": str(b.input.get("publico") or ""),
+                            "queries": qs[:8]}
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -403,19 +424,30 @@ def _juzgar_broll_claude(cands: list[dict], nombre: str, punto_dolor: str,
         return None
 
 
-def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
+def _queries_broll(ref_desc: str, nombre: str, api_key: str, landing_text: str = "") -> list[str]:
     """Gemini inventa búsquedas de B-ROLL (escenas de APOYO, no del producto) adaptadas al ÁNGULO del
     producto: para skincare → 'antes y después rostro', 'piel lisa primer plano'; para un gadget →
-    'manos usando', 'problema que resuelve'... Devuelve 4-6 consultas cortas."""
+    'manos usando', 'problema que resuelve'... Devuelve 4-6 consultas cortas.
+
+    Si viene `landing_text`, esa es la fuente de verdad del ángulo (fallback cuando no hay Claude)."""
     try:
-        prompt = (
-            f"Producto: \"{nombre}\". Ficha: \"{ref_desc[:400]}\". Para armar un anuncio DOPAMÍNICO de este "
-            "producto necesito B-ROLL de apoyo (escenas que NO muestran el producto, pero apoyan su ángulo "
-            "de venta): el DOLOR en acción, la transformación/resultado, la situación de uso, reacciones. "
-            "Dame 6 búsquedas CORTAS para TikTok (2-4 palabras, español o inglés según qué dé más resultados) "
-            "de ese b-roll. Ej. crema facial → ['antes despues rostro','piel lisa primer plano','mujer "
-            "aplicando crema','skin transformation']. Ej. gadget de limpieza → ['limpieza satisfactoria', "
-            "'cleaning asmr','mugre antes despues']. Responde SOLO JSON: {\"broll\":[\"...\"]}")
+        if landing_text.strip():
+            prompt = (
+                f"Esta es la LANDING de venta del producto \"{nombre}\":\n\"{landing_text[:2000]}\"\n"
+                "De la landing saca el DOLOR #1 del comprador y el ángulo de venta. Necesito B-ROLL de "
+                "apoyo (escenas que NO muestran el producto, pero apoyan ESE ángulo): el DOLOR en acción, "
+                "el resultado/alivio, la situación de uso. Dame 6 búsquedas CORTAS para TikTok (2-4 "
+                "palabras, español o inglés) amarradas a lo que dice la landing. "
+                "Responde SOLO JSON: {\"broll\":[\"...\"]}")
+        else:
+            prompt = (
+                f"Producto: \"{nombre}\". Ficha: \"{ref_desc[:400]}\". Para armar un anuncio DOPAMÍNICO de este "
+                "producto necesito B-ROLL de apoyo (escenas que NO muestran el producto, pero apoyan su ángulo "
+                "de venta): el DOLOR en acción, la transformación/resultado, la situación de uso, reacciones. "
+                "Dame 6 búsquedas CORTAS para TikTok (2-4 palabras, español o inglés según qué dé más resultados) "
+                "de ese b-roll. Ej. crema facial → ['antes despues rostro','piel lisa primer plano','mujer "
+                "aplicando crema','skin transformation']. Ej. gadget de limpieza → ['limpieza satisfactoria', "
+                "'cleaning asmr','mugre antes despues']. Responde SOLO JSON: {\"broll\":[\"...\"]}")
         resp = _client(api_key).models.generate_content(model=_MODEL, contents=[prompt])
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
         if m:
@@ -426,15 +458,107 @@ def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
     return []
 
 
+_FASE_BROLL = {"dolor": "problema", "resultado": "resultado", "uso": "funcionamiento"}
+
+
+def _verificar_broll_video(cand: dict, punto_dolor: str, angulo: str, api_key: str) -> dict | None:
+    """VERIFICACIÓN PROFUNDA de B-roll: baja el video y mira 3 frames de ADENTRO para confirmar que
+    el CONTENIDO (no solo la portada) ILUSTRA el punto de dolor / la escena de apoyo del ángulo.
+
+    El juez de portada engaña (una miniatura que 'parece' dolor pero el video es un baile). Aquí se
+    mira lo de adentro. Devuelve {"sirve":bool,"fase":str,"confianza":str} o None si no se pudo bajar.
+    """
+    import tempfile
+    play = cand.get("play") or cand.get("video")
+    if not (play and api_key):
+        return None
+    tmp = None
+    try:
+        import cv2
+        from google.genai import types
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        with requests.get(play, headers=_UA, timeout=40, stream=True) as r:
+            if r.status_code != 200:
+                return None
+            escrito = 0
+            for chunk in r.iter_content(1 << 16):
+                escrito += len(chunk)
+                if escrito > 25 * 1024 * 1024:
+                    break
+                tmp.write(chunk)
+        tmp.close()
+        cap = cv2.VideoCapture(tmp.name)
+        total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        frames = []
+        for f in (0.2, 0.5, 0.8):
+            if total > 1:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int(total * f))
+            ok, fr = cap.read()
+            if ok and fr is not None:
+                h, w = fr.shape[:2]
+                if w > 480:
+                    fr = cv2.resize(fr, (480, int(h * 480 / w)))
+                ok2, buf = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 82])
+                if ok2:
+                    frames.append(buf.tobytes())
+        cap.release()
+        if not frames:
+            return None
+        titulo = (cand.get("title") or "")[:120]
+        prompt = (
+            f"Necesito B-ROLL de apoyo para un anuncio. El punto de dolor / ángulo es: "
+            f"\"{punto_dolor or angulo or 'la necesidad que resuelve el producto'}\". "
+            f"Te paso FRAMES DE ADENTRO de un video de TikTok (título: \"{titulo}\"). "
+            "Eres un JUEZ ESTRICTO: di si el CONTENIDO de este video sirve como b-roll para ESE ángulo.\n"
+            "- sirve=true SOLO si en los frames se VE de verdad una escena que apoya el ángulo: el "
+            "DOLOR en acción (persona sufriendo/frustrada/la situación molesta), el RESULTADO/alivio, "
+            "o la SITUACIÓN DE USO. Debe TENER QUE VER con el dolor del producto.\n"
+            "- sirve=false si es otra cosa (baile sin relación, meme random, texto gigante en pantalla, "
+            "producto DISTINTO protagonizando, gente hablando a cámara sin mostrar la escena, o no se "
+            "entiende). Ante la duda o si el video no muestra CLARO la escena del ángulo → false.\n"
+            "- fase: 'dolor' (se ve el sufrimiento/problema), 'resultado' (el después/alivio) o 'uso' "
+            "(la situación de uso). Si sirve=false, fase='no'.\n"
+            "- confianza: 'alta' si lo viste claro, 'media' si probable, 'baja' si dudoso.\n"
+            'Responde SOLO JSON: {"sirve":true/false,"fase":"dolor"/"resultado"/"uso"/"no",'
+            '"confianza":"alta"/"media"/"baja"}')
+        contents: list = [prompt]
+        for fb in frames:
+            contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
+        resp = _client(api_key).models.generate_content(model=_MODEL, contents=contents)
+        m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
+        if not m:
+            return None
+        d = json.loads(m.group(0))
+        fase = _FASE_BROLL.get(str(d.get("fase", "")).strip().lower())
+        return {"sirve": bool(d.get("sirve")) and fase is not None,
+                "fase": fase or "problema",
+                "confianza": str(d.get("confianza", "media")).strip().lower()}
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        if tmp is not None:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+
+
 def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
-                 angulo: str = "", anthropic_key: str | None = None) -> list[dict]:
+                 angulo: str = "", anthropic_key: str | None = None,
+                 landing_text: str = "", verificar_contenido: bool = True) -> list[dict]:
     """Busca N escenas de B-ROLL en TikTok amarradas al ÁNGULO/PUNTO DE DOLOR del producto.
-    Con `anthropic_key`: Claude piensa las búsquedas desde el punto de dolor Y juzga las portadas
-    (descarta lo que no cuadra; etiqueta cada una con `fase`: problema/resultado/funcionamiento).
-    Sin ella: comportamiento viejo (Gemini/estático, sin juez)."""
-    brief = _broll_brief_claude(nombre, angulo, ref_desc, anthropic_key) if anthropic_key else None
+
+    - `landing_text`: la LANDING manda. Si viene, el ángulo/dolor y las búsquedas se DERIVAN de ella
+      (fuente de verdad), con Claude o, sin él, con Gemini.
+    - `anthropic_key`: Claude piensa las búsquedas Y hace el pre-filtro por portada (barato).
+    - `verificar_contenido`: además mira el CONTENIDO de cada candidato (frames de adentro, Gemini)
+      para confirmar que el video de verdad ilustra la escena — no solo la portada. Descarta lo que
+      el contenido no cuadra y usa la fase confirmada por el contenido.
+    """
+    brief = _broll_brief_claude(nombre, angulo, ref_desc, anthropic_key, landing_text) if anthropic_key else None
+    punto_dolor = (brief or {}).get("punto_dolor", angulo)
     queries = ((brief or {}).get("queries")
-               or _queries_broll(ref_desc, nombre, api_key)
+               or _queries_broll(ref_desc, nombre, api_key, landing_text)
                or [f"{nombre} antes y después", "satisfying asmr"])
     cands: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
@@ -445,28 +569,62 @@ def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
     # más views primero (b-roll viral = más dopamínico) y variedad de autores
     lst.sort(key=lambda c: c.get("plays", 0), reverse=True)
     pre, autores = [], set()
+    # pool más grande cuando hay verificación (portada Y/O contenido) para que el filtro tenga de dónde
+    hay_filtro = bool(anthropic_key) or verificar_contenido
     for c in lst:
         autor = c["url"].split("@")[1].split("/")[0] if "@" in c["url"] else c["url"]
         if autor in autores:
             continue
         autores.add(autor)
         pre.append(c)
-        if len(pre) >= (24 if anthropic_key else n):   # con juez: pool más grande para que filtre
+        if len(pre) >= (28 if hay_filtro else n):
             break
-    fases = _juzgar_broll_claude(pre, nombre, (brief or {}).get("punto_dolor", angulo),
-                                 anthropic_key) if anthropic_key else None
+    # 1) Pre-filtro barato por PORTADA (Claude visión, 1 llamada): descarta lo obvio y da una fase tentativa
+    fases_cover = _juzgar_broll_claude(pre, nombre, punto_dolor, anthropic_key) if anthropic_key else None
+    tras_cover = [(i, c) for i, c in enumerate(pre)
+                  if fases_cover is None or i in fases_cover]
+
+    # 2) Verificación PROFUNDA por CONTENIDO (Gemini mira frames de adentro): confirma que el video
+    #    de verdad ilustra la escena del ángulo. Es lo que pidió Angelo: "que los b-roll realmente
+    #    tengan que ver con el video". Si Gemini está caído (None), NO se descarta por eso (se
+    #    conserva lo que aprobó la portada) — pero el que el contenido rechaza SÍ se saca.
     out = []
-    for i, c in enumerate(pre):
-        if fases is not None and i not in fases:      # el juez lo descartó
-            continue
-        out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
-                    "plays": c.get("plays", 0), "tipo": "broll",
-                    "fase": (fases or {}).get(i, "problema")})
-        if len(out) >= n:
-            break
+    if verificar_contenido and api_key and tras_cover:
+        # solo verificamos los que tienen mp4 descargable; el resto pasa con su fase de portada.
+        # TOPE DE COSTO: la verificación profunda baja el mp4 + 1 llamada Gemini por video → se acota
+        # a los más virales (pre ya viene ordenado por views) con margen sobre lo que se pedirá (n).
+        tope_ver = max(12, min(20, n * 2))
+        con_video = [(i, c) for i, c in tras_cover if (c.get("play") or c.get("video"))]
+        verificables = con_video[:tope_ver]
+        resultados: dict[int, dict | None] = {}
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            futs = {ex.submit(_verificar_broll_video, c, punto_dolor, angulo, api_key): i
+                    for i, c in verificables}
+            for f in as_completed(futs):
+                try:
+                    resultados[futs[f]] = f.result()
+                except Exception:  # noqa: BLE001
+                    resultados[futs[f]] = None
+        for i, c in tras_cover:
+            r = resultados.get(i)
+            if r is not None and not r["sirve"]:
+                continue                                   # el CONTENIDO lo rechazó: fuera
+            fase = (r or {}).get("fase") or (fases_cover or {}).get(i, "problema")
+            out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
+                        "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
+                        "fase": fase, "verificado": r is not None and r["sirve"]})
+            if len(out) >= n:
+                break
+    else:
+        for i, c in tras_cover:
+            out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
+                        "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
+                        "fase": (fases_cover or {}).get(i, "problema"), "verificado": False})
+            if len(out) >= n:
+                break
     # el DOLOR primero (es lo que pidió el ángulo); dentro de cada fase ya vienen por views
     out.sort(key=lambda x: 0 if x["fase"] == "problema" else 1)
-    return out
+    return out[:n]
 
 
 def _foreplay_candidatos(queries: list[str], foreplay_key: str | None, max_q: int = 3) -> list[dict]:

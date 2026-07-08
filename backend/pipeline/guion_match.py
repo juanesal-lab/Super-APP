@@ -174,16 +174,82 @@ def etiquetar_frases(frases_por_version: list[list[dict]], gemini_key: str | Non
                 f["fase"] = _heuristica(f["texto"], f["inicio"] / dur)
 
 
+def afinidad_guion_clips(frases_por_version: list[list[dict]], selected,
+                         fases_por_idx: dict[int, str], gemini_key: str | None,
+                         product_desc: str = "") -> list[list[set[int]]] | None:
+    """Para CADA frase de CADA versión, qué CLIPS la ilustran mejor por su CONTENIDO visual.
+
+    Pedido de Angelo: "analiza el guion y de acuerdo a eso mira qué frame de TODOS los videos es
+    mejor para esa parte". El montaje ya elige por FASE; esto afina DENTRO de la fase: empatando,
+    gana el clip cuya escena (su `tag` de Gemini) calza con lo que dice la frase.
+
+    UNA sola llamada a Gemini para todas las versiones. Devuelve una lista alineada a
+    `frases_por_version`: para cada versión, una lista por frase con el set de índices de clip
+    preferidos. Si no hay key, ni clips con descripción, o la IA falla → None (el montaje sigue
+    idéntico al de siempre; esto es un EXTRA, no un requisito)."""
+    # catálogo de clips CON descripción de escena (sin `tag` no hay con qué razonar el contenido)
+    catalogo = [(i, fases_por_idx[i], str(getattr(selected[i], "tag", "")).strip())
+                for i in fases_por_idx if str(getattr(selected[i], "tag", "")).strip()]
+    todas = [(v_i, f_i, fr) for v_i, frases in enumerate(frases_por_version)
+             for f_i, fr in enumerate(frases)]
+    if not gemini_key or len(catalogo) < 2 or not todas:
+        return None
+    try:
+        clips_txt = "\n".join(f'{i}: [{fase}] {tag[:60]}' for i, fase, tag in catalogo)
+        frases_txt = "\n".join(f'{gi}: "{fr["texto"][:120]}"' for gi, (_, _, fr) in enumerate(todas))
+        prompt = (
+            f"Anuncio de: {product_desc or 'un producto'}.\n"
+            "Tengo CLIPS de video (cada uno con lo que se VE) y FRASES del guion de la voz en off.\n"
+            "Para CADA frase, dime cuáles 1-3 CLIPS ilustran MEJOR lo que se está diciendo, según el "
+            "CONTENIDO visual del clip (no por la fase). Si ningún clip calza claro con la frase, "
+            "deja su lista vacía.\n\n"
+            f"CLIPS (índice: [fase] qué se ve):\n{clips_txt}\n\n"
+            f"FRASES (número: texto):\n{frases_txt}\n\n"
+            "Responde SOLO un JSON array con TODAS las frases: "
+            '[{"f":0,"clips":[3,7]},...] — usa los índices EXACTOS de los clips.')
+        from . import gemini_fast
+        texto = gemini_fast.generate(gemini_key, [prompt])
+        if not texto:
+            from google import genai
+            cl = genai.Client(api_key=gemini_key)
+            resp = cl.models.generate_content(model="gemini-2.5-flash", contents=[prompt])
+            texto = resp.text or ""
+        m = re.search(r"\[.*\]", texto, re.DOTALL)
+        if not m:
+            return None
+        validos = set(fases_por_idx)
+        by_gi: dict[int, set[int]] = {}
+        for item in json.loads(m.group(0)):
+            gi = int(item.get("f", -1))
+            clips = {int(c) for c in (item.get("clips") or []) if int(c) in validos}
+            if 0 <= gi < len(todas) and clips:
+                by_gi[gi] = clips
+        if not by_gi:
+            return None
+        # re-empaquetar a la forma [version][frase] = set(idx)
+        salida: list[list[set[int]]] = [[set() for _ in frases] for frases in frases_por_version]
+        for gi, (v_i, f_i, _) in enumerate(todas):
+            salida[v_i][f_i] = by_gi.get(gi, set())
+        return salida
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                  usage: dict[int, int], *, version_i: int = 0, n_versiones: int = 1,
                  hook_srcs: set[int] | None = None,
                  max_usos: int = 99,
                  firmas: dict[int, object] | None = None,
-                 evitar: set[int] | None = None) -> tuple[list[int], list[float]] | None:
+                 evitar: set[int] | None = None,
+                 afinidad: list[set[int]] | None = None) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
       si el clip no alcanza, se encadena otro dentro de la misma frase.
+    - `afinidad` (opcional, alineado a `frases`): por cada frase, el CONJUNTO de índices de clip que
+      la IA marcó como los que MEJOR ilustran ESA frase concreta (no solo su fase). Entra como
+      desempate FUERTE, después de las reglas anti-congelado — así, empatando en fase, gana el clip
+      cuyo contenido calza con lo que se está diciendo. Sin afinidad, comportamiento idéntico al viejo.
     - JAMÁS se repite un clip dentro de la versión (regla dura de Juan).
     - DIVERSIDAD ENTRE VERSIONES (queja real de Juan: "los mismos clips en todos los anuncios"):
       (1) `usage` castiga clips ya usados por otras versiones; (2) BUCKETS: el pool se reparte
@@ -223,7 +289,8 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     # de la misma fase (ej. un testimonio hablando quieto 40s) llenaba 15 slots SEGUIDOS →
     # clips técnicamente distintos pero la MISMA toma en pantalla 30s = "se ve congelado".
     # Como el plan clásico: nunca 2 tomas seguidas de la misma fuente (2 solo si no hay más).
-    def _mejor(fase: str, tope: float) -> int | None:
+    def _mejor(fase: str, tope: float, afin_ids: set[int] | None = None) -> int | None:
+        afin_ids = afin_ids or set()
         prev_i = orden[-1] if orden else None
         racha = 0
         if prev_i is not None:
@@ -240,6 +307,7 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                 i in evitar,                                # los "a evitar" van de últimos
                 selected[i].source_index in hook_srcs if es_hook else False,  # gancho: fuente NUEVA
                 _mismo_look(i, prev_i) if prev_i is not None else False,      # look distinto 1º
+                i not in afin_ids,                          # AFINIDAD: el clip que ilustra ESTA frase 1º
                 usage.get(i, 0),                            # menos usado por OTRAS versiones
                 bucket.get(i, 0) != version_i,              # su propia tajada del pool primero
                 -round(min(selected[i].duration(), tope) * 2) / 2,   # que rinda (en pasos de 0.5s)
@@ -282,9 +350,10 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     for fi, fr in enumerate(frases):
         restante = float(fr["fin"]) - float(fr["inicio"])
         primera, ultima = fi == 0, fi >= n_frases - 1
+        afin_ids = afinidad[fi] if (afinidad and fi < len(afinidad)) else set()
         while restante >= _SLOT_MIN:
             tope_slot = 1.2 if (primera and len(orden) < 3) else (2.2 if ultima or fi >= n_frases - 2 else 1.7)
-            i = _mejor(str(fr.get("fase", "producto")), tope_slot)
+            i = _mejor(str(fr.get("fase", "producto")), tope_slot, afin_ids)
             if i is None:
                 # pool agotado: REPETIR el clip menos usado (fuente distinta si se puede) es
                 # mucho mejor que dejar un hueco congelado (quejas de Jack: imagen pegada ~1s

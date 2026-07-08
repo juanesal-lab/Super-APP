@@ -324,6 +324,10 @@ def render_versions(
                 for _i, _f in _ex.map(_firma_uno, list(fases_por_idx)):
                     if _f is not None:
                         firmas[_i] = _f
+            # AFINIDAD guion↔clip (Angelo): qué clip ilustra mejor CADA frase por su contenido
+            # visual. 1 llamada Gemini; si no hay key/tags o falla → None (montaje idéntico al viejo).
+            afinidad_pv = guion_match.afinidad_guion_clips(
+                [f for f in frases_pv], selected, fases_por_idx, gemini_key, product_desc)
             usage: dict[int, int] = {}
             hook_srcs: set[int] = set()           # cada versión abre con una FUENTE distinta
             # TOPE DURO de reuso entre versiones: un clip solo puede salir en ~su cuota justa
@@ -343,7 +347,8 @@ def render_versions(
                                                    version_i=v_i,
                                                    n_versiones=len(version_orders),
                                                    hook_srcs=hook_srcs, max_usos=max_usos,
-                                                   firmas=firmas)
+                                                   firmas=firmas,
+                                                   afinidad=(afinidad_pv[v_i] if afinidad_pv else None))
                           if frases else None)
                 if frases:
                     frases_por_nombre[name] = frases

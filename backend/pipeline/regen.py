@@ -122,10 +122,14 @@ def regenerar_version(estado: dict, name: str, motivo: str, *,
     caps = vers.get("caps") or []
     if motivo in ("clips", "guion", "otra") and frases:
         evitar = set(vers.get("order") or []) if motivo == "clips" else set()
+        # afinidad guion↔clip por contenido (mismo extra del render normal); None si no hay key/tags
+        af = guion_match.afinidad_guion_clips([frases], selected, fases, gemini_key,
+                                              s.get("product_desc", ""))
         plan = guion_match.plan_montaje(
             selected, fases, frases, usage,
             version_i=int(vers.get("version_i", 0)), n_versiones=int(estado.get("n_versiones", 8)),
-            hook_srcs=set(), max_usos=99, firmas=firmas, evitar=evitar)
+            hook_srcs=set(), max_usos=99, firmas=firmas, evitar=evitar,
+            afinidad=(af[0] if af else None))
         if plan:
             order, caps = plan
             vers["order"], vers["caps"] = order, caps

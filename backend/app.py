@@ -515,19 +515,39 @@ def fetch_links(links: str = Form("")):
 
 
 @app.post("/api/broll-dolor")
-def broll_dolor(producto: str = Form(...), angulo: str = Form(""), n: int = Form(8)):
-    """🎭 Busca B-ROLL amarrado al ÁNGULO/PUNTO DE DOLOR: Claude piensa las escenas que duelen
-    (ej. incontinencia → 'mujer desesperada baño'), busca en TikTok (sin Colombia) y Claude juzga
-    las portadas. Devuelve links etiquetados por fase para pegar en el cajón de B-roll."""
+def broll_dolor(producto: str = Form(...), angulo: str = Form(""),
+                landing_url: str = Form(""), n: int = Form(8)):
+    """🎭 Busca B-ROLL amarrado al ÁNGULO/PUNTO DE DOLOR sacado de la LANDING (fuente de verdad):
+    lee la página de venta → deriva el ángulo/dolor → busca en TikTok (sin Colombia) → juzga la
+    portada Y verifica el CONTENIDO de cada video (frames de adentro) para que de verdad ilustre la
+    escena. Devuelve links etiquetados por fase para el cajón de B-roll.
+
+    La landing (o al menos un ángulo con sustancia) es OBLIGATORIA: sin de dónde sacar el ángulo,
+    los b-roll salen genéricos y no cuadran (pedido de Angelo)."""
     if not producto.strip():
         raise HTTPException(400, "Describe el producto")
+    landing_url = landing_url.strip()
+    landing_text = ""
+    if landing_url:
+        if not landing_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "La landing debe ser un link http(s) válido")
+        landing_text = fetch_page_text(landing_url)
+        if not landing_text:
+            raise HTTPException(400, "No pude leer esa landing (¿link correcto y público?). "
+                                     "Pégala bien o escribe el ángulo a mano.")
+    # Landing OBLIGATORIA salvo que des un ángulo con sustancia (≥3 palabras): de algún lado hay
+    # que sacar el ángulo de venta, si no el b-roll sale genérico.
+    if not landing_text and len(angulo.split()) < 3:
+        raise HTTPException(400, "Pega la LANDING del producto (recomendado) o escribe el ángulo / "
+                                 "punto de dolor con detalle — de ahí saco los B-roll acordes.")
     from pipeline.tiktok_search import buscar_broll
     res = buscar_broll(producto.strip(), producto.strip(), _load_env_key(),
                        n=max(2, min(16, n)), angulo=angulo.strip(),
-                       anthropic_key=_load_anthropic_key())
+                       anthropic_key=_load_anthropic_key(), landing_text=landing_text)
     if not res:
-        return {"links": [], "error": "No encontré escenas para ese ángulo — afina el punto de dolor"}
-    return {"links": res}
+        return {"links": [], "error": "No encontré escenas que cuadren con ese ángulo — afina la "
+                                      "landing o el punto de dolor"}
+    return {"links": res, "con_landing": bool(landing_text)}
 
 
 def _gc_jobs(keep: int = 80):

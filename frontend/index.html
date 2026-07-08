@@ -1361,8 +1361,10 @@
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
 
-      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL (opcional): tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. Pega links o deja que la IA las busque.</label>
-      <input id="tkBrollAngulo" placeholder="🎯 Ángulo / punto de dolor (ej. mujer desesperada porque se orinó dormida) — opcional, ayuda MUCHO"
+      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> del producto y la IA saca de ahí el ángulo y busca el b-roll que cuadra (verifica el contenido de cada video, no solo la portada).</label>
+      <input id="tkBrollLanding" type="url" placeholder="🔗 Landing del producto (recomendado) — de aquí saco el ángulo de venta y el dolor"
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
+      <input id="tkBrollAngulo" placeholder="🎯 …o escribe el ángulo / punto de dolor a mano (ej. mujer desesperada porque se orinó dormida)"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
       <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
@@ -2983,17 +2985,26 @@ let brollFaseMap = {};   // url → fase (problema/resultado/funcionamiento), de
 async function buscarBrollIA(){
   const producto = document.getElementById("productDesc").value.trim();
   if(!producto){ alert("Primero escribe qué es tu producto (en Ajustes, abajo)"); return; }
+  const landing = document.getElementById("tkBrollLanding").value.trim();
+  const angulo = document.getElementById("tkBrollAngulo").value.trim();
+  // La landing (o un ángulo con sustancia) es obligatoria: de ahí sale el ángulo de venta
+  if(!landing && angulo.split(/\s+/).filter(Boolean).length < 3){
+    alert("Pega la LANDING del producto (recomendado) o escribe el ángulo / punto de dolor con detalle — de ahí saco los B-roll que cuadran."); return;
+  }
   const btn = document.getElementById("goBrollIA");
-  const orig = btn.textContent; btn.disabled = true; btn.textContent = "🧠 Claude buscando escenas de dolor…";
+  const orig = btn.textContent; btn.disabled = true;
+  btn.textContent = landing ? "🧠 Leyendo la landing y buscando escenas…" : "🧠 Buscando escenas del ángulo…";
   try{
     const fd = new FormData();
     fd.append("producto", producto);
-    fd.append("angulo", document.getElementById("tkBrollAngulo").value.trim());
+    fd.append("angulo", angulo);
+    fd.append("landing_url", landing);
     fd.append("n", "8");
     const r = await fetch("/api/broll-dolor",{method:"POST",body:fd});
+    if(!r.ok){ alert((await r.text())||"No pude buscar el b-roll"); btn.textContent = orig; btn.disabled=false; return; }
     const j = await r.json();
     const links = j.links || [];
-    if(!links.length){ alert(j.error || "No encontré escenas — afina el ángulo/punto de dolor"); btn.textContent = orig; return; }
+    if(!links.length){ alert(j.error || "No encontré escenas — afina la landing/el punto de dolor"); btn.textContent = orig; btn.disabled=false; return; }
     links.forEach(l=>{ brollFaseMap[l.url] = l.fase || "problema"; });
     const ta = document.getElementById("tkBrollLinks");
     ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + links.map(l=>l.url).join("\n");
@@ -3011,7 +3022,7 @@ function brollPrevPaint(){
   d.innerHTML=(window._brollPrev||[]).map((b,i)=>`<div class="fpCard" style="cursor:default">
     <div class="fpThumbWrap">
       <img class="fpThumb" src="${tkEsc(b.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
-      <span class="fpBadge">${F[b.fase]||'🔴 dolor'}</span></div>
+      <span class="fpBadge">${F[b.fase]||'🔴 dolor'}${b.verificado?' · ✓ contenido':''}</span></div>
     <div class="fpBody"><div class="fpName">${tkEsc(b.title||'')||'—'}</div>
       <div class="fpBtns">
         <button class="fpBtn" onclick="brollPrevPlay(${i},this)" title="Reproducir aquí mismo">▶️ Ver</button>

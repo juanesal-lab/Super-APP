@@ -8,8 +8,10 @@ Este repo lo construyen **dos personas con Claude Code**: Juan (`juanesal-lab`) 
 
 ## 🤝 Protocolo de colaboración entre las dos IAs
 
-1. **Al EMPEZAR a trabajar:** haz `git pull origin main` y **lee `DEV-LOG.md`** para saber
-   qué hizo la otra IA desde la última vez. No repitas ni rompas su trabajo.
+1. **Al EMPEZAR a trabajar:** haz `git pull origin main`, **lee `DEV-LOG.md`** (qué hizo la otra IA)
+   y **revisa `feedback-jack.md`** si existe (mejoras que Jack pidió DESDE LA APP en las pruebas —
+   blur, sincronía, etc.): impleméntalas y marca cada entrada como ✅ hecho. No repitas ni rompas
+   el trabajo de la otra IA.
 
 2. **Al TERMINAR cada tarea:** agrega una entrada AL FINAL de `DEV-LOG.md` con:
    - Fecha, **quién** (firma con tu `git config user.name`), qué hiciste, y **avisos** para la otra IA

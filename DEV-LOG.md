@@ -3432,3 +3432,24 @@ que queden; y si no le gusta ninguno, un botón para mejorar la búsqueda y refr
   (los oculta `brollPrevPaint` cuando la lista está vacía).
 - Verificado: JS 15/15 OK. Cambio SOLO en index.html → no hay que reiniciar server, solo refrescar el
   navegador. AVISO Juan: nada de backend tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔁 Loop de feedback en la prueba (Cortar clips) + 🔵 blur ajustable
+Pedido de Jack: cuando la prueba no le gusta, decirle DESDE LA APP qué está mal → que se corrija y
+vuelva a probar, y lo que sea de código que se lo mande a la terminal (a mí) para mejorarlo; iterar
+hasta que quede → ahí sí generar los que pida.
+- **Blur ajustable en la app** (su ejemplo): `text_detect._obscure(strength)` con niveles
+  suave/medio/fuerte (`_BLUR_LEVELS`), fijado por `mask_video`/`mask_captions_smart` por-thread.
+  Plomado `blur_strength` por render_versions/process_job + `/api/process` + `/api/scripts` +
+  `/api/render` (+ more-versions). Front: selector "Blur suave/medio/fuerte" junto a "Tapar con blur".
+  Verificado: fuerte borra más que suave (std 42 vs 48).
+- **Canal a la terminal**: NUEVO `/api/feedback` → guarda en `feedback-jack.md` (raíz del repo) lo que
+  Jack marca/escribe sobre una prueba. PROTOCOLO: agregué a CLAUDE.md que al arrancar se lea ese archivo
+  y se implementen las mejoras (marcar ✅ hecho). Probado en vivo (crea el .md con la entrada).
+- **Frontend (panel de la prueba)**: además de "✅ genera N más", ahora hay "❌ ¿Algo mal?" con chips
+  (blur / clips no cuadran con la voz / banner / clips feos / gancho / otro) + textarea. Botones:
+  "📝 Mandar a Claude (mejora el código)" (→ /api/feedback) y "🔧 Corregir y volver a probar" (guarda el
+  feedback + re-genera la prueba con los ajustes de arriba, ej. el blur nuevo). Iteras hasta que quede y
+  ahí generas los que pidas.
+- Verificado $0: py_compile 4/4; JS 15/15; blur strength responde; /api/feedback vivo (crea .md); server
+  reiniciado sano. NO corrí render E2E. AVISO Juan: params OPCIONALES nuevos (blur_strength="medio" en
+  render_versions/process_job/mask_*) → tus llamadas sin ellos = idénticas. Nada tuyo tocado.

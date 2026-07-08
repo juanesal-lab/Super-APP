@@ -214,6 +214,7 @@ def render_versions(
     broll_fases: dict | None = None,   # {ruta fuente B-roll: fase forzada (problema/resultado/...)}
     n_versions: int = 8,          # cuántas versiones RENDERIZAR (flujo "1 de prueba → N más")
     start_version: int = 0,       # desde cuál (0='A'; la prueba=1 desde 0, luego "N más"=N desde 1)
+    blur_strength: str = "medio", # fuerza del desenfoque de textos: suave/medio/fuerte (ajuste de Jack)
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos."""
@@ -448,9 +449,10 @@ def render_versions(
                 # frame por frame + Gemini clasifica cada zona -> solo CAPTIONS, nunca el producto).
                 # Sin key: EAST puro (con el capitán de Claude abajo).
                 if gemini_key:
-                    final = mask_captions_smart(raw, masked, gemini_key=gemini_key)
+                    final = mask_captions_smart(raw, masked, gemini_key=gemini_key,
+                                                strength=blur_strength)
                 else:
-                    final = mask_video_text(raw, masked)   # == masked (tapó algo) o == raw (nada)
+                    final = mask_video_text(raw, masked, strength=blur_strength)   # masked o raw
 
                 # ── Capitán (Claude): revisa el tapado del path EAST puro y corrige si hace falta ──
                 # (No aplica al tapado inteligente con Gemini, que ya filtra por su cuenta.)
@@ -837,6 +839,7 @@ def process_job(
     broll_fases: dict | None = None,
     n_versions: int = 8,          # cuántas versiones renderizar (flujo "1 de prueba → N más")
     start_version: int = 0,       # desde cuál version arranca (para el lote de "N más")
+    blur_strength: str = "medio", # fuerza del desenfoque de textos (suave/medio/fuerte)
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Pipeline de una pasada: analiza y renderiza. Si `version_vos` viene (voz por versión ya
@@ -860,4 +863,4 @@ def process_job(
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
         broll_fases=broll_fases, n_versions=n_versions, start_version=start_version,
-        progress=progress)
+        blur_strength=blur_strength, progress=progress)

@@ -260,28 +260,38 @@ def _box_at(track: dict, i: int) -> tuple:
     return box
 
 
-def _obscure(roi):
+# Fuerza del desenfoque (ajustable por Jack desde la app). Cada nivel = (divisor de downscale,
+# divisor del kernel gaussiano). Más divisor de downscale = más pequeño = MÁS borroso e ilegible.
+_BLUR_LEVELS = {
+    "suave":  (16, 8),    # menos agresivo (se transparenta más), sigue ilegible por la gaussiana
+    "medio":  (22, 6),    # el equilibrio (default)
+    "fuerte": (34, 4),    # muy esmerilado / máxima cobertura
+}
+_BLUR_STRENGTH = "medio"   # lo fija mask_video por-thread según el ajuste del usuario
+
+
+def _obscure(roi, strength: str = None):
     """Desenfoque tipo VIDRIO ESMERILADO: el texto del proveedor queda ILEGIBLE pero se ve como un
     BLUR REAL — NO un bloque de color sólido (se veía horrible, queja de Jack) ni cuadros de mosaico
     (parpadeaba). Se conserva el color y la forma del fondo (se transparenta borroso), como una zona
     difuminada natural. Como la caja del track es FIJA y el fondo del caption es estable, no parpadea
-    ni se desliza.
+    ni se desliza. `strength` (suave/medio/fuerte) lo ajusta Jack desde la app.
 
-    Cómo: 1) downscale MUY fuerte con INTER_AREA (promedia → destruye la legibilidad del texto: la
-    línea queda en ~5 px de alto = imposible de leer); 2) upscale CUBIC (liso, sin cuadros de
-    mosaico) → vidrio esmerilado; 3) gaussiana leve para quitar cualquier resto de canto."""
+    Cómo: 1) downscale MUY fuerte con INTER_AREA (promedia → destruye la legibilidad del texto);
+    2) upscale CUBIC (liso, sin cuadros de mosaico) → vidrio esmerilado; 3) gaussiana leve."""
     import numpy as np
     h, w = roi.shape[:2]
     if h < 2 or w < 2:
         return roi
-    # 1) downscale fuerte: la línea de texto queda ~5 px de alto (ilegible) sin volverse color plano
-    sh = max(2, h // 22) if h >= 44 else max(2, h // 4)
+    down_div, k_div = _BLUR_LEVELS.get(strength or _BLUR_STRENGTH, _BLUR_LEVELS["medio"])
+    # 1) downscale fuerte: la línea de texto queda poquísimos px de alto (ilegible), sin color plano
+    sh = max(2, h // down_div) if h >= 2 * down_div else max(2, h // 4)
     sw = max(2, int(w * sh / max(1, h)))
     small = cv2.resize(roi, (sw, sh), interpolation=cv2.INTER_AREA)
     # 2) upscale suave (cubic) = esmerilado, sin los cuadros del mosaico
     up = cv2.resize(small, (w, h), interpolation=cv2.INTER_CUBIC)
     # 3) gaussiana leve para fundir cualquier resto de estructura
-    k = max(3, (h // 6) | 1)
+    k = max(3, (h // k_div) | 1)
     k = min(k, 61)
     frosted = cv2.GaussianBlur(up, (k, k), 0)
     # 4) feather en el borde para fundir el desenfoque con el entorno (sin canto duro)
@@ -331,8 +341,10 @@ def _confirm(detections: list[tuple], min_det: int) -> dict[int, list[tuple]]:
 
 
 def mask_video(in_path: str, out_path: str,
-               min_wh: float | None = None, conf: float | None = None) -> str:
-    """Tapa el texto detectado frame por frame y conserva el audio.
+               min_wh: float | None = None, conf: float | None = None,
+               strength: str = "medio") -> str:
+    """Tapa el texto detectado frame por frame y conserva el audio. `strength` (suave/medio/fuerte)
+    ajusta la intensidad del desenfoque (lo elige Jack desde la app).
 
     Tres pases para evitar falsos positivos (blur donde NO hay texto) y parpadeos:
       1) DETECTAR: recorre el video guardando solo las CAJAS de cada frame de detección
@@ -349,6 +361,8 @@ def mask_video(in_path: str, out_path: str,
     """
     if not available():
         return in_path
+    global _BLUR_STRENGTH
+    _BLUR_STRENGTH = strength if strength in _BLUR_LEVELS else "medio"
     mw = _MIN_WH if min_wh is None else min_wh
     cf = _CONF if conf is None else conf
     net = _load()

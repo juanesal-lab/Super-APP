@@ -1448,6 +1448,11 @@
           <option value="tapar">🟦 Tapar con blur</option>
           <option value="traducir">🇨🇴 Traducir a español</option>
         </select>
+        <select id="blurStrength" title="Qué tan fuerte se desenfoca el texto tapado" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:10px;font-size:13px">
+          <option value="suave">Blur suave</option>
+          <option value="medio" selected>Blur medio</option>
+          <option value="fuerte">Blur fuerte</option>
+        </select>
         <span class="pmsg" style="margin:0;color:var(--accent2)">la IA los detecta</span>
       </span>
     </div>
@@ -2958,6 +2963,7 @@ function buildForm(){
   fd.append("banner_dur", document.getElementById("bannerDur").value||"0");
   fd.append("hook_seconds", document.getElementById("hookSecs").value||"0");
   fd.append("text_mode", document.getElementById("textMode").value);
+  fd.append("blur_strength", (document.getElementById("blurStrength")||{}).value||"medio");
   fd.append("use_music", document.getElementById("useMusic").checked);
   fd.append("use_captions", document.getElementById("useCaptions").checked);
   fd.append("caption_style", document.getElementById("capStyle").value);
@@ -3258,30 +3264,71 @@ function renderResults(res, rootId){
   }
 }
 
-// ── "1 de prueba → N más" ────────────────────────────────────────────────────────────────
+// ── "1 de prueba → N más" + loop de feedback ─────────────────────────────────────────────
 function appendMorePanel(){
   const g = window._gen; if(!g) return;
   const results = document.getElementById("results");
   const viejo = document.getElementById("morePanel"); if(viejo) viejo.remove();
   const restantes = 8 - (g.generated||0);
-  if(restantes <= 0){
-    const done = document.createElement("div");
-    done.id = "morePanel"; done.className = "card"; done.style = "background:var(--card2)";
-    done.innerHTML = `<b>✅ Ya tienes las 8 versiones.</b> <span style="color:var(--muted)">Es el máximo por proyecto.</span>`;
-    results.appendChild(done); return;
-  }
-  const maxSel = Math.min(7, restantes);
-  let opts = "";
-  for(let k=1;k<=maxSel;k++) opts += `<option value="${k}">${k}</option>`;
   const panel = document.createElement("div");
-  panel.id = "morePanel"; panel.className = "card";
-  panel.style = "background:var(--card2);display:flex;align-items:center;gap:12px;flex-wrap:wrap";
-  panel.innerHTML = `<b>✅ ¿Te gustó?</b> <span style="color:var(--muted)">Genera</span>
-    <select id="moreN" style="background:var(--card);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:8px">${opts}</select>
-    <span style="color:var(--muted)">más &nbsp;(tienes ${g.generated}/8)</span>
-    <button class="btn" id="moreBtn" style="white-space:nowrap;width:auto">🔁 Generar los que elegí</button>`;
+  panel.id = "morePanel"; panel.className = "card"; panel.style = "background:var(--card2)";
+
+  // ── sección APROBAR: genera N más ──
+  let aprobar;
+  if(restantes <= 0){
+    aprobar = `<b>✅ Ya tienes las 8 versiones.</b> <span style="color:var(--muted)">Es el máximo por proyecto.</span>`;
+  } else {
+    const maxSel = Math.min(7, restantes);
+    let opts = ""; for(let k=1;k<=maxSel;k++) opts += `<option value="${k}">${k}</option>`;
+    aprobar = `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <b>✅ ¿Te gustó?</b> <span style="color:var(--muted)">Genera</span>
+      <select id="moreN" style="background:var(--card);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:8px">${opts}</select>
+      <span style="color:var(--muted)">más &nbsp;(tienes ${g.generated}/8)</span>
+      <button class="btn" id="moreBtn" style="white-space:nowrap;width:auto">🔁 Generar los que elegí</button></div>`;
+  }
+
+  // ── sección FEEDBACK: no me gustó → dile qué mejorar ──
+  const issues = ['El blur','Los clips no cuadran con la voz','El banner','Clips feos','El gancho','Otro'];
+  const chips = issues.map(t=>`<label class="toggle" style="font-size:12.5px;white-space:nowrap"><input type="checkbox" class="fbChk" value="${t}"> ${t}</label>`).join('');
+  const fb = `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+    <b>❌ ¿Algo mal?</b> <span style="color:var(--muted)">Marca qué falló y/o descríbelo. Ajusta arriba lo que puedas (blur, duración, banner…) y dale <b>volver a probar</b>; lo de código se lo mando a Claude.</span>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">${chips}</div>
+    <textarea id="fbTexto" rows="2" placeholder="Ej: el blur quedó muy fuerte / los clips no concuerdan con lo que dice la voz / el banner tapa el producto…" style="width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 12px;font-size:13px;resize:vertical"></textarea>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn sec" id="fbSend" style="width:auto">📝 Mandar a Claude (mejora el código)</button>
+      <button class="btn sec" id="fbRetry" style="width:auto">🔧 Corregir y volver a probar</button>
+    </div>
+    <div id="fbMsg" class="pmsg" style="margin-top:8px"></div></div>`;
+
+  panel.innerHTML = aprobar + fb;
   results.appendChild(panel);
-  document.getElementById("moreBtn").onclick = generarMas;
+  const mb = document.getElementById("moreBtn"); if(mb) mb.onclick = generarMas;
+  document.getElementById("fbSend").onclick = ()=>enviarFeedback(false);
+  document.getElementById("fbRetry").onclick = ()=>{
+    enviarFeedback(true);                       // deja constancia para Claude
+    window.scrollTo({top:0,behavior:'smooth'}); // sube al form para que vea que re-genera
+    setTimeout(()=>document.getElementById("go").click(), 300);   // re-genera la prueba con los ajustes de arriba
+  };
+}
+
+// Manda el feedback de Jack a la terminal (feedback-jack.md) para que Claude mejore el código
+async function enviarFeedback(silent){
+  const issues = [...document.querySelectorAll('.fbChk:checked')].map(c=>c.value).join(', ');
+  const texto = ((document.getElementById('fbTexto')||{}).value||'').trim();
+  const msg = document.getElementById('fbMsg');
+  if(!issues && !texto){ if(!silent && msg) msg.innerHTML = '<span class="err">Marca algo o escribe qué mejorar.</span>'; return; }
+  try{
+    const fd = new FormData();
+    fd.append('job_id', (window._gen&&window._gen.jobId)||'');
+    fd.append('issues', issues);
+    fd.append('texto', texto);
+    const firstVid = document.querySelector('#results .vcard video');
+    fd.append('version_path', firstVid ? firstVid.getAttribute('src') : '');
+    const r = await fetch('/api/feedback',{method:'POST',body:fd});
+    const j = await r.json();
+    if(msg) msg.innerHTML = r.ok ? `<span style="color:var(--accent2)">✅ ${j.message||'Anotado, Claude lo mejora.'}</span>`
+                                 : `<span class="err">${j.detail||'No se pudo guardar'}</span>`;
+  }catch(e){ if(msg) msg.innerHTML = `<span class="err">${e.message||e}</span>`; }
 }
 
 async function generarMas(){

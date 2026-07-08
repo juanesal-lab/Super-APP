@@ -290,6 +290,7 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             broll_fases=settings.get("broll_fases"),
             n_versions=int(settings.get("n_versions", 8)),
             start_version=int(settings.get("start_version", 0)),
+            blur_strength=settings.get("blur_strength", "medio"),
             progress=progress,
         )
         # cuántas versiones se han generado de ESTE origen (para el "N más": arranca donde quedó)
@@ -453,6 +454,7 @@ def process(
     hook_seconds: float = Form(0.0),
     destino: str = Form("tiktok"),
     n_versions: int = Form(8),          # "1 de prueba → N más": el front manda 1 en la prueba
+    blur_strength: str = Form("medio"), # fuerza del desenfoque de textos (suave/medio/fuerte)
 ):
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
@@ -498,6 +500,7 @@ def process(
         "destino": destino if destino in ("tiktok", "meta") else "tiktok",
         "n_versions": max(1, min(8, int(n_versions))),
         "start_version": 0,
+        "blur_strength": blur_strength if blur_strength in ("suave", "medio", "fuerte") else "medio",
     }
     threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
@@ -549,7 +552,8 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
             text_mode=s.get("text_mode", "tapar"), caption_pos=s.get("caption_pos", "abajo"),
             destino=s.get("destino", "tiktok"), gemini_key=_load_env_key(),
             broll_fases=s.get("broll_fases"),
-            n_versions=n, start_version=start_version, progress=progress)
+            n_versions=n, start_version=start_version,
+            blur_strength=s.get("blur_strength", "medio"), progress=progress)
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
                 and s.get("musica", True):
             _agregar_musica_sfx(result["versions"], wd, s.get("product_desc", ""), progress)
@@ -568,6 +572,37 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"
         job["message"] = f"Error generando más versiones: {e}"
+
+
+@app.post("/api/feedback")
+def feedback(job_id: str = Form(""), texto: str = Form(""), issues: str = Form(""),
+             version_path: str = Form("")):
+    """Canal a la TERMINAL (el Claude que CONSTRUYE la app): desde la prueba, Jack anota qué mejorar
+    y se guarda en feedback-jack.md (raíz del repo) para mejorar el CÓDIGO. No corrige por sí mismo —
+    es la bitácora de mejoras pedidas desde la app (la IA la lee al arrancar)."""
+    texto = (texto or "").strip()
+    issues = (issues or "").strip()
+    if not texto and not issues:
+        raise HTTPException(400, "Escribe qué mejorar antes de enviarlo.")
+    from datetime import datetime
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    entry = (f"\n## {stamp}" + (f" · job {job_id}" if job_id else "") + "\n"
+             + (f"- **Problemas marcados:** {issues}\n" if issues else "")
+             + (f"- **Jack dice:** {texto}\n" if texto else "")
+             + (f"- **Video:** {version_path}\n" if version_path else ""))
+    fpath = os.path.join(BASE, "feedback-jack.md")
+    try:
+        nuevo = not os.path.exists(fpath)
+        with open(fpath, "a", encoding="utf-8") as f:
+            if nuevo:
+                f.write("# 📮 Feedback de Jack desde la app (para que la terminal/Claude mejore el CÓDIGO)\n\n"
+                        "Cada entrada = una prueba que no gustó + qué mejorar. La IA lo lee al arrancar "
+                        "una sesión y ajusta el código (blur, sincronía, etc.). Al resolver, marca la "
+                        "entrada como ✅ hecho.\n")
+            f.write(entry)
+        return {"ok": True, "message": "Anotado ✅ — Claude lo verá y lo mejora en el código."}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo guardar el feedback: {e}")
 
 
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
@@ -1121,6 +1156,7 @@ def scripts(
     banner_start: float = Form(0.0),
     banner_dur: float = Form(0.0),
     hook_seconds: float = Form(0.0),
+    blur_strength: str = Form("medio"),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     destino: str = Form("tiktok"),
@@ -1159,6 +1195,7 @@ def scripts(
         "banner_start": max(0.0, float(banner_start)),   # "aparece al seg N" (fix: antes se ignoraba)
         "banner_dur": max(0.0, float(banner_dur)),       # "dura M s" (0 = hasta el final)
         "hook_seconds": max(0.0, float(hook_seconds)),
+        "blur_strength": blur_strength if blur_strength in ("suave", "medio", "fuerte") else "medio",
         "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
         "broll_fases": broll_fases,
@@ -1260,7 +1297,8 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
-            broll_fases=s.get("broll_fases"), n_versions=nv, start_version=sv, progress=progress)
+            broll_fases=s.get("broll_fases"), n_versions=nv, start_version=sv,
+            blur_strength=s.get("blur_strength", "medio"), progress=progress)
         # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
         # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1").
         # FIX 2026-07-08: ahora respeta el "aparece al seg N · dura M" (antes iba full-video desde

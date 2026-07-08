@@ -767,6 +767,14 @@ def _gc_jobs(keep: int = 80):
         JOBS.pop(jid, None)
 
 
+@app.get("/api/busy")
+def busy():
+    """¿Hay algún trabajo (render/guiones/etc.) en curso ahora mismo? Lo usa el auto-actualizador
+    (run.sh) para NO reiniciar la app a mitad de un render cuando baja cambios de Juan."""
+    activo = any(j.get("status") == "running" for j in JOBS.values())
+    return {"busy": activo, "jobs": sum(1 for j in JOBS.values() if j.get("status") == "running")}
+
+
 @app.get("/api/status/{job_id}")
 def status(job_id: str):
     _gc_jobs()   # limpieza oportunista de trabajos viejos ya terminados

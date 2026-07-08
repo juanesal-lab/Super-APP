@@ -3496,3 +3496,26 @@ usado tiene mucho texto quemado. Pidió 3 cosas (todas hechas y verificadas con 
   _select_for_target penaliza texto SOLO si east_available (si no, idéntico). /api/process y /api/scripts
   ganan Form `oferta_texto` + `hooks_por_version` (defaults retrocompatibles). Nada de tu terreno de
   guiones/voz tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔄 AUTO-ACTUALIZACIÓN: cuando Juan sube algo, la app de Jack se actualiza SOLA
+Pedido de Jack: "actualiza la app SIEMPRE que Juan haga algo, automático, siempre que no falle". Antes
+`run.sh` arrancaba el server y ya (a propósito sin --reload para no cortar renders) → los cambios de Juan
+NO llegaban hasta que Jack cerraba y volvía a correr ./run.sh a mano.
+- **`run.sh` ahora es un SUPERVISOR con auto-pull**: revisa GitHub cada 30s (`git fetch` + pull SEGURO) y,
+  si main avanzó, baja los cambios. Reglas ("siempre que no falle"):
+  • Pull best-effort: intenta `merge --ff-only` (limpio); si Jack tiene commits sin subir, `pull --autostash`;
+    si CHOCA (conflicto), `merge --abort` y sigue corriendo con lo que hay + avisa (NUNCA rompe la app).
+  • Cambios de **frontend/docs** (index.html, .md) → se aplican AL INSTANTE sin reiniciar (index.html ya se
+    sirve sin caché). Solo los cambios de **backend** (.py / requirements.txt) piden reinicio del server.
+  • **NUNCA reinicia a mitad de un render**: antes de reiniciar consulta el endpoint NUEVO `/api/busy`
+    (¿hay algún job status=running?) y espera a que la app esté libre (deja el update PENDING y lo aplica
+    apenas termina el render). Los resultados sobreviven el reinicio (ya se leen de disco si el server cae).
+  • Bonus: si el server se cae solo, el loop lo revive; Ctrl+C apaga limpio.
+- **NUEVO endpoint `/api/busy`** en app.py: `{"busy": bool, "jobs": n}` — lo usa run.sh para el reinicio
+  seguro. (Es de solo lectura, no afecta nada más.)
+- **VERIFICADO ($0)**: `bash -n run.sh` OK; py_compile OK; `/api/busy` responde (False sin jobs, True con
+  1 render corriendo); `safe_pull` no hace nada si ya estás al día; detección backend-vs-frontend probada
+  con commits REALES del historial (7bdeb49 .py → reinicia ✅; 56a1b64 solo .md → no reinicia ✅).
+- Junto con el Stop hook (autosave.sh) que YA sube el trabajo de cada quien a main, esto cierra el círculo:
+  cualquiera sube → main; la app de Jack baja lo de Juan sola. AVISO Juan: solo /api/busy nuevo (aditivo) +
+  run.sh reescrito (tu forma de trabajar no cambia; si NO quieres el auto-pull, corre uvicorn a mano).

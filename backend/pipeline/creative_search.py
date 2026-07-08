@@ -67,7 +67,8 @@ def _terminos_foreplay(info: dict, max_terms: int = _FP_TERMS) -> list[str]:
 def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | None,
                      gemini_key: str | None, count: int = 20,
                      verify_max: int = _FP_VERIFY_MAX,
-                     excluir: set[str] | None = None, solo_confirmados: bool = True) -> dict:
+                     excluir: set[str] | None = None, solo_confirmados: bool = True,
+                     rellenar_n: bool = False) -> dict:
     """Busca en Foreplay con varios términos (paralelo), deduplica y verifica el MISMO producto.
     Devuelve {ok, ads:[...], n_confirmados, verificado, terminos, error?}."""
     if not foreplay_key:
@@ -111,7 +112,10 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 futs[ex.submit(_verificar, cand, ref_bytes, ref_desc, gemini_key)] = a
             for fut in as_completed(futs):
                 v, a = fut.result(), futs[fut]
-                if v and v.get("match") and v.get("confianza") != "baja":
+                # con rellenar_n conservamos también los match=true de confianza baja (tier 3),
+                # NUNCA los match=false → jamás otro producto.
+                if v and v.get("match") and (rellenar_n or v.get("confianza") != "baja"):
+                    a["_cover_conf"] = v.get("confianza")
                     cover_ok.append(a)
         # CONTENIDO: baja el video del ad y lo juzga por DENTRO (exacto = match + confianza no baja).
         confirmados = []
@@ -124,14 +128,27 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
             for fut in as_completed(futs):
                 v, a = fut.result(), futs[fut]
                 if v is None:                    # no se pudo bajar/juzgar el video → cae al veredicto
-                    a["verificado_producto"] = True   # de portada, que ya pasó el filtro ESTRICTO
+                    a["_conf"] = a.get("_cover_conf") or "media"   # de portada, que ya pasó el filtro
+                    a["verificado_producto"] = True
                     confirmados.append(a)
-                elif v.get("match") and v.get("confianza") != "baja":
+                elif v.get("match") and (rellenar_n or v.get("confianza") != "baja"):
+                    a["_conf"] = v.get("confianza")
                     a["verificado_producto"] = True
                     confirmados.append(a)
                 # match=False por contenido → fuera (no es el producto)
         confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
-        if solo_confirmados:
+        if rellenar_n:
+            # TIERED: etiqueta por tier (1=alta, 2=media, 3=baja) y ordena tier→días. Baja a tiers
+            # menores SOLO para llegar al count; nunca cuela un match=false → jamás otro producto.
+            for a in confirmados:
+                conf = a.get("_conf") or "media"
+                tier = 1 if conf == "alta" else (2 if conf == "media" else 3)
+                a["tier"] = tier
+                a["confianza"] = conf
+                a["verificado_producto"] = tier <= 2
+            confirmados.sort(key=lambda a: (a.get("tier", 2), -int(a.get("dias", 0) or 0)))
+            ad_list = confirmados
+        elif solo_confirmados:
             ad_list = confirmados                # SOLO exactos, sin relleno de "por si acaso"
         else:
             ids = {id(a) for a in confirmados}
@@ -148,6 +165,8 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
     ad_list = ad_list[:count]
     for a in ad_list:
         a.pop("_cover_bytes", None)                # bytes: no serializan a JSON
+        a.pop("_conf", None)                       # internos (tier ya calculado)
+        a.pop("_cover_conf", None)
     n_conf = sum(1 for a in ad_list if a.get("verificado_producto"))
     return {"ok": True, "ads": ad_list, "n_confirmados": n_conf,
             "verificado": verificado, "terminos": terms}
@@ -158,7 +177,7 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
                      anthropic_key: str | None = None, count: int = 20,
                      fp_count: int = 20, fp_verify_max: int = _FP_VERIFY_MAX,
                      image_paths: list[str] | None = None,
-                     landing_text: str = "") -> dict:
+                     landing_text: str = "", rellenar_n: bool = False) -> dict:
     """Foto + nombre → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
 
     `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
@@ -188,9 +207,9 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     with ThreadPoolExecutor(max_workers=2) as ex:
         tk_fut = ex.submit(buscar, image_path=image_path, nombre=nombre, api_key=gemini_key,
                            count=count, anthropic_key=anthropic_key, analisis=info,
-                           image_paths=image_paths)
+                           image_paths=image_paths, rellenar_n=rellenar_n)
         fp_fut = ex.submit(_buscar_foreplay, info, ref_bytes, foreplay_key, gemini_key,
-                           fp_count, fp_verify_max)
+                           fp_count, fp_verify_max, rellenar_n=rellenar_n)
         tk = tk_fut.result()
         fpr = fp_fut.result()
 

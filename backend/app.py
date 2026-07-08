@@ -839,7 +839,8 @@ def tiktok_search(nombre: str = Form(""), count: int = Form(20),
                   anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
                   foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
                   image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
-                  landing_text=_texto_landing(landing))  # página de venta → mejores términos
+                  landing_text=_texto_landing(landing),  # página de venta → mejores términos
+                  rellenar_n=True)                       # devolver los N pedidos (por tiers, mismo producto)
 
 
 # ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
@@ -868,7 +869,8 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
                          anthropic_key=_load_anthropic_key(),
                          count=int(count), fp_count=int(fp_count),
                          image_paths=img_paths or None,
-                         landing_text=_texto_landing(landing))
+                         landing_text=_texto_landing(landing),
+                         rellenar_n=True)   # devolver los N pedidos (por tiers, mismo producto)
     # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
     r["foto"] = os.path.basename(img_path) if img_path else ""
     return r

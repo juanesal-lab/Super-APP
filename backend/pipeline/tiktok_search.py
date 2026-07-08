@@ -117,7 +117,7 @@ def _expandir(kw: str, variants: list[str]) -> list[str]:
         q = (q or "").strip()
         if q and q.lower() not in {x.lower() for x in out}:
             out.append(q)
-    return out[:10]
+    return out[:16]
 
 
 # Regiones donde el contenido suele estar en español (para priorizar sin gastar visión)
@@ -839,7 +839,8 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
            count: int = 20, anthropic_key: str | None = None,
            analisis: dict | None = None, foreplay_key: str | None = None,
            image_paths: list[str] | None = None, explorar_cuentas: bool = True,
-           landing_text: str = "", solo_confirmados: bool = True) -> dict:
+           landing_text: str = "", solo_confirmados: bool = True,
+           rellenar_n: bool = False) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -854,7 +855,12 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     confirmados (máx 3, tikwm user/posts) — los vendedores suben el mismo producto muchas veces —
     y suma los que el juez de portada confirme (solo portada: tope de costo).
     `landing_text` (opcional): texto de la página de venta → mejor ficha y términos (cero llamadas
-    extra: va dentro de la misma llamada de analizar_foto)."""
+    extra: va dentro de la misma llamada de analizar_foto).
+    `rellenar_n` (flujo "buscar creativos"): en vez de descartar los match=true de confianza baja,
+    los CONSERVA por TIERS (1=alta, 2=media, 3=baja/título-fuerte) y baja a tiers menores SOLO para
+    llegar al `count` pedido. NUNCA cuela un match=false → jamás aparece OTRO producto. Cada link
+    lleva `tier`/`confianza` y `verificado_producto` (true en tier 1/2, false en tier 3). Default
+    False = comportamiento estricto de siempre para otros llamadores."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
@@ -873,14 +879,14 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
             except Exception:  # noqa: BLE001
                 pass
         ref_bytes = refs or None       # lista: _verificar/_verificar_claude la aceptan tal cual
-    queries = [q for q in queries if q][:10] or [(nombre or "").strip()]
+    queries = [q for q in queries if q][:16] or [(nombre or "").strip()]
     kw = queries[0]
 
     # AMPLIAR: MUCHAS consultas (producto + beneficios/compra) × varias páginas → muchísimos candidatos.
     # En PARALELO para que buscar en 10 términos × 3 páginas no se demore.
     cands: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=6) as ex:
-        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=3), queries):
+        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=4), queries):
             for c in res:
                 cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url: el @ engaña)
     # + FOREPLAY: ads GANADORES ya probados (video descargable) al MISMO pool y con la MISMA verificación
@@ -914,7 +920,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                                       c.get("plays", 0)), reverse=True)
         # Verifica MUCHOS más (escalado a lo que pide el usuario): como el filtro estricto de "mismo
         # producto" descarta hartos, hay que revisar un pool grande para LLEGAR al count pedido.
-        pool_n = min(len(cand_list), max(60, count * 4))
+        pool_n = min(len(cand_list), max(120, count * 6))
         pool = cand_list[:pool_n]             # los más RELEVANTES primero (título > hispano > views)
         # ── VERIFICACIÓN EXACTA: por CONTENIDO del video, no por portada ─────────────────────
         # 1) PORTADA = pre-filtro BARATO. NO confirma sola (engaña: antes/después, cara, pie): solo
@@ -934,15 +940,18 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     _title_score(c), c.get("plays", 0))
 
         def _confirmar_contenido(cands):
-            """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja."""
+            """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja.
+            Con `rellenar_n` conserva TAMBIÉN los match=true de confianza baja (tier 3): nunca un
+            match=false. Cada match queda etiquetado con `_conf` (alta/media/baja) para el tier."""
             out = []
             cands = [c for c in cands if (c.get("play") or c.get("video"))]
             with ThreadPoolExecutor(max_workers=4) as ex:
                 futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
                 for fut in as_completed(futs):
                     v = fut.result()
-                    if v and v.get("match") and v.get("confianza") != "baja":
+                    if v and v.get("match") and (rellenar_n or v.get("confianza") != "baja"):
                         c = futs[fut]
+                        c["_conf"] = v.get("confianza")
                         c["_rank"] = (_CONF.get(v.get("confianza"), 0), v.get("muestra", False),
                                       v.get("overlay", 1), v.get("es", False), c.get("plays", 0))
                         out.append(c)
@@ -952,7 +961,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         a_deep = [c for c in pool if (c.get("play") or c.get("video")) and
                   ((cover_res.get(id(c)) or {}).get("match") or _title_score(c) >= 2)]
         a_deep.sort(key=_prio, reverse=True)
-        a_deep = a_deep[:min(len(a_deep), max(28, count * 2))]   # presupuesto de descargas
+        a_deep = a_deep[:min(len(a_deep), max(40, count * 3))]   # presupuesto de descargas
         matches = _confirmar_contenido(a_deep)
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
 
@@ -993,15 +1002,28 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
             de_cuentas.sort(key=lambda c: c.get("_rank", ()), reverse=True)
             matches.extend(de_cuentas)
 
-        for c in matches:
-            c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)
-        links = matches[:count]
-        # SIN relleno en modo exacto: NO se completa con no-verificados (los "nada que ver"). El llamador
-        # puede pedir el relleno viejo con solo_confirmados=False (siempre etiquetado como no verificado).
-        if not solo_confirmados and len(links) < count:
-            vistos = {l["url"] for l in links}
-            extra = [dict(c, verificado_producto=False) for c in cand_list if c["url"] not in vistos]
-            links = (links + extra)[:count]
+        if rellenar_n:
+            # TIERED (flujo "buscar creativos"): conserva TODO lo que un juez aprobó (match=true),
+            # etiquetado por tier — 1=alta, 2=media, 3=baja/título-fuerte. Ordena por tier y baja a
+            # tiers menores SOLO para llegar al count. NUNCA hay un match=false → jamás otro producto.
+            for c in matches:
+                conf = c.get("_conf") or "media"
+                tier = 1 if conf == "alta" else (2 if conf == "media" else 3)
+                c["tier"] = tier
+                c["confianza"] = conf
+                c["verificado_producto"] = tier <= 2   # tier 1/2 = verificado; tier 3 = tentativo
+            matches.sort(key=lambda c: (c.get("tier", 2),) + tuple(-v for v in c.get("_rank", ())))
+            links = matches[:count]
+        else:
+            for c in matches:
+                c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)
+            links = matches[:count]
+            # SIN relleno en modo exacto: NO se completa con no-verificados (los "nada que ver"). El llamador
+            # puede pedir el relleno viejo con solo_confirmados=False (siempre etiquetado como no verificado).
+            if not solo_confirmados and len(links) < count:
+                vistos = {l["url"] for l in links}
+                extra = [dict(c, verificado_producto=False) for c in cand_list if c["url"] not in vistos]
+                links = (links + extra)[:count]
     else:
         links = cand_list[:count]
 
@@ -1010,6 +1032,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         c.pop("_rank", None)
         c.pop("_deep", None)
         c.pop("_cuenta", None)
+        c.pop("_conf", None)          # interno (tier ya calculado)
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
 

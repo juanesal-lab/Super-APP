@@ -757,6 +757,30 @@ def _sd_eventos(sfx_events: list[tuple[float, str, float]]) -> list[dict]:
             for t, p, v in (sfx_events or []) if p and os.path.exists(p)]
 
 
+def _hook_riser_evento(hook_end: float = 2.7, vol: float = 0.55) -> dict | None:
+    """RISER de TikTok en el HOOK (pedido de Angelo): la subida del riser TERMINA al final de los
+    primeros ~3s, dándole tensión al gancho y resolviendo justo cuando arranca el cuerpo. Devuelve
+    el evento {t,path,db,pre_ms} listo para la mezcla, o None si no está el asset."""
+    rp = _sd_sfx("riser.wav", "riser_fast.wav")
+    if not rp:
+        return None
+    from .pro_mix import _dur_audio
+    rd = _dur_audio(rp) or 1.5
+    t0 = max(0.05, hook_end - rd)     # el pico del riser aterriza ~al final del hook
+    return {"t": round(t0, 3), "path": rp,
+            "db": 20.0 * math.log10(min(1.0, max(0.05, vol))), "pre_ms": 0}
+
+
+def _con_hook_riser(eventos: list[dict]) -> list[dict]:
+    """Añade el riser del hook al plan de eventos si no hay ya un SFX pisando los primeros ~2.8s."""
+    riser = _hook_riser_evento()
+    if not riser:
+        return eventos
+    if any(abs(float(e.get("t", 9)) - riser["t"]) < 0.4 for e in (eventos or [])):
+        return eventos                # ya hay algo ahí; no encimar
+    return [riser] + list(eventos or [])
+
+
 def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
                   sfx_paths: list[str] | None = None, cut_times: list[float] | None = None,
                   phases: list[dict] | None = None,
@@ -781,6 +805,7 @@ def add_music_sfx(video_path: str, out_path: str, music_path: str | None = None,
         eventos = _sd_eventos(sfx_events)
     else:
         eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vdur, sfx_paths, phases=phases)
+    eventos = _con_hook_riser(eventos)   # riser de TikTok en el hook (primeros ~3s)
     if not has_music and not eventos:
         return video_path
     inputs = ["-i", video_path]
@@ -870,21 +895,18 @@ def add_voiceover_and_sfx(video_path: str, vo_path: str, out_path: str,
     else:
         eventos = plan_sfx([t for t in (cut_times or []) if t > 0.2], vo_dur_s or 20.0,
                            sfx_paths, phases=phases)
+    eventos = _con_hook_riser(eventos)   # riser de TikTok en el hook (primeros ~3s)
     if not eventos and not has_music and not caption_pngs and not out_45:
         return add_voiceover(video_path, vo_path, out_path)
 
     # SIN loop de video: si la voz es más larga, se sostiene el último frame (tpad clone).
     # (El loop repetía TODO el montaje desde el inicio → cortes duplicados. Queja de Juan.)
-    # ANTI-CONGELÓN: si el montaje quedó hasta 8% más corto que la voz (overlap de dissolves,
-    # colitas), se ESTIRA el video imperceptiblemente (setpts) — el audio del montaje no se usa.
-    try:
-        from .ffmpeg_utils import probe as _probe
-        vdur_montaje = _probe(video_path).duration
-    except Exception:  # noqa: BLE001
-        vdur_montaje = 0.0
+    # SYNC (pedido de Angelo "que el audio concuerde con el video"): antes, si el montaje quedaba
+    # hasta 8% más corto que la voz, se ESTIRABA todo el video con setpts — pero eso CORRÍA todos los
+    # cortes interiores → los clips dejaban de caer bajo su frase = desincronía progresiva. Ahora NO
+    # se estira: los cortes quedan CLAVADOS a la voz y el pequeño sobrante se cubre sosteniendo el
+    # último frame (el tpad de abajo). El cierre (CTA) queda quieto ~1s, mejor que desincronizar todo.
     stretch = ""
-    if vo_dur_s and vdur_montaje and 1.0 < (vo_dur_s / vdur_montaje) <= 1.08:
-        stretch = f"setpts=PTS*{vo_dur_s / vdur_montaje:.5f},"
     inputs = ["-i", video_path, "-i", vo_path]
     fc = [f"[0:v]{stretch}tpad=stop_mode=clone:stop_duration=60[v]", "[1:a]volume=1.0[vo]"]
     idx = 2

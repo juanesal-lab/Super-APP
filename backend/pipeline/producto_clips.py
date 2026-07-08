@@ -140,8 +140,9 @@ def _guiones_y_narraciones(work_dir: str, *, eleven_key: str | None, gemini_key:
         mp3 = os.path.join(work_dir, f"vo_{gi}_{v}.mp3")
         try:
             words = voiceover.synthesize_with_timestamps(eleven_key, guiones[gi]["texto"], v, mp3)
-            # Manual Maestro §6: locución 1.1-1.2× = más enérgica, retiene mejor (timings re-escalados)
-            words = voiceover.acelerar(mp3, words, factor=1.12)
+            # Pedido de Angelo "no aceleres ningún proceso": voz a velocidad NATURAL (1.0 = no-op).
+            # (Antes 1.12× — más enérgica pero aceleraba la locución; se puede reactivar si se quiere.)
+            words = voiceover.acelerar(mp3, words, factor=1.0)
             return par, (mp3, words, guiones[gi]["texto"])
         except Exception:  # noqa: BLE001
             return par, None
@@ -285,7 +286,10 @@ def producto_a_clips(winner_urls: list[str], work_dir: str, *,
         use_gemini=bool(settings.get("use_gemini", True)),
         product_desc=desc,
         aspect=settings.get("aspect", "9:16"),
-        auto_hook=bool(settings.get("auto_hook", False)),
+        # HOOK por defecto ON (bug: el flujo producto NUNCA cableaba el gancho → salía sin texto de
+        # hook). Si el usuario escribió uno, se usa; si no, la IA lo genera. Se puede apagar con auto_hook=False.
+        hook_text=str(settings.get("hook_text", "")),
+        auto_hook=bool(settings.get("auto_hook", True)),
         hook_seconds=float(settings.get("hook_seconds", 0.0)),
         page_url=product_url or "",
         enhance=bool(settings.get("enhance", False)),

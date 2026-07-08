@@ -597,11 +597,18 @@ def render_versions(
             avisos.append("El gancho automático NO se pudo generar (la IA no respondió) — "
                           "las versiones van sin texto de gancho.")
     if final_hook.strip():
+        _fallo_burn = 0
         for v in versions:
             hook_out = v["path"].replace(".mp4", "_hook.mp4")
             new_path, burned = burn_hook(v["path"], hook_out, work_dir, final_hook, hook_pos,
                                          seconds=hook_seconds)
             v["path"] = new_path
+            if not burned:
+                _fallo_burn += 1
+        if _fallo_burn:
+            # el gancho existía pero NO se pudo quemar en el video (fuente/ffmpeg): avisar, no callar
+            avisos.append(f"El texto del gancho no se pudo poner en {_fallo_burn} versión(es) "
+                          "(fallo al quemar el texto) — revisa la fuente/ffmpeg.")
 
     # Voz en off: una sola para todas, o UNA DISTINTA por version (version_vos)
     def _cut_times(v):

@@ -3418,3 +3418,17 @@ nada de Juan):
   real (necesita subir videos + ElevenLabs) → Jack lo prueba en vivo.
 AVISO Juan: plan_variations/render_versions/process_job ganaron params OPCIONALES (n_versions=8,
 start_version=0) → tus llamadas sin ellos = comportamiento idéntico. Nada tuyo tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🎭 B-roll IA: quitar los que no gustan + bajar solo los que queden + mejorar búsqueda
+Pedido de Jack: en "Buscar B-roll con IA (Claude)", poder ELIMINAR los que no sirven y bajar SOLO los
+que queden; y si no le gusta ninguno, un botón para mejorar la búsqueda y refrescar. Solo frontend:
+- **🗑️ Quitar** en cada tarjeta de B-roll (`brollPrevDel`): saca el clip del preview Y del textarea
+  `tkBrollLinks` (+ del `brollFaseMap`), así "Bajar" ya NO lo baja. Re-pinta al instante.
+- **📥 Bajar los que quedaron (N)**: el botón de bajar ahora muestra el conteo y SOLO existe cuando hay
+  resultados (baja lo que quede en el textarea = los que Jack no borró). Reusa `bajarLinks` (sin cambios).
+- **🔄 Mejorar búsqueda y refrescar** (`refrescarBrollIA`): limpia el preview + textarea + faseMap y
+  vuelve a buscar con el ángulo (editado) de arriba; si el ángulo está vacío, pide llenarlo primero.
+- Los botones "Bajar/Refrescar" + un hint explicativo aparecen solo cuando hay B-roll para revisar
+  (los oculta `brollPrevPaint` cuando la lista está vacía).
+- Verificado: JS 15/15 OK. Cambio SOLO en index.html → no hay que reiniciar server, solo refrescar el
+  navegador. AVISO Juan: nada de backend tocado.

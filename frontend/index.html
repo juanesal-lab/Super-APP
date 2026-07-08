@@ -1367,7 +1367,9 @@
       <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goBrollIA" style="margin-top:10px;width:auto" onclick="buscarBrollIA()">🎭 Buscar B-roll con IA (Claude)</button>
-      <button class="btn sec" id="goBroll" style="margin-top:10px;width:auto" onclick="bajarLinks('tkBrollLinks','goBroll')">📥 Bajar B-roll</button>
+      <button class="btn sec" id="goBrollRefresh" style="margin-top:10px;width:auto;display:none" onclick="refrescarBrollIA()">🔄 Mejorar búsqueda y refrescar</button>
+      <button class="btn sec" id="goBroll" style="margin-top:10px;width:auto;display:none" onclick="bajarLinks('tkBrollLinks','goBroll')">📥 Bajar los que quedaron</button>
+      <div id="brollHint" class="pmsg" style="margin-top:8px;display:none">🗑️ Borra los que NO te sirvan. Cuando queden solo los buenos, dale <b>📥 Bajar los que quedaron</b>. ¿No te convence ninguno? Ajusta el ángulo arriba y dale <b>🔄 Mejorar búsqueda</b>.</div>
       <div id="brollPrev" class="fpGrid" style="margin-top:10px"></div>
     </div>
   </div>
@@ -3003,7 +3005,7 @@ async function buscarBrollIA(){
     ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + links.map(l=>l.url).join("\n");
     window._brollPrev = (window._brollPrev||[]).concat(links);   // preview con tarjetas (como los creativos)
     brollPrevPaint();
-    btn.textContent = `✅ ${links.length} escenas — míralas abajo y dale 📥 Bajar B-roll`;
+    btn.textContent = `✅ ${links.length} escenas — 🗑️ quita las que no sirvan y baja las que queden`;
   }catch(e){ btn.textContent = orig; alert("Error: "+e); }
   finally{ setTimeout(()=>{ btn.disabled=false; if(btn.textContent.startsWith("✅")) btn.textContent=orig; }, 6000); }
 }
@@ -3012,7 +3014,8 @@ async function buscarBrollIA(){
 function brollPrevPaint(){
   const d=document.getElementById('brollPrev'); if(!d) return;
   const F={problema:'🔴 dolor',funcionamiento:'⚙️ uso',resultado:'✨ resultado'};
-  d.innerHTML=(window._brollPrev||[]).map((b,i)=>`<div class="fpCard" style="cursor:default">
+  const arr=window._brollPrev||[];
+  d.innerHTML=arr.map((b,i)=>`<div class="fpCard" style="cursor:default">
     <div class="fpThumbWrap">
       <img class="fpThumb" src="${tkEsc(b.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
       <span class="fpBadge">${F[b.fase]||'🔴 dolor'}</span></div>
@@ -3020,7 +3023,35 @@ function brollPrevPaint(){
       <div class="fpBtns">
         <button class="fpBtn" onclick="brollPrevPlay(${i},this)" title="Reproducir aquí mismo">▶️ Ver</button>
         <a class="fpBtn" href="${tkEsc(b.url)}" target="_blank" title="Abrir en TikTok">↗</a>
+        <button class="fpBtn" onclick="brollPrevDel(${i})" title="Eliminar este B-roll (no lo bajes)" style="background:var(--warn);color:#1a1207;font-weight:700">🗑️ Quitar</button>
       </div></div></div>`).join('');
+  // botones contextuales: solo cuando hay resultados que revisar
+  const hay = arr.length > 0;
+  const setDisp=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display = on ? 'inline-block':'none'; };
+  setDisp('goBroll', hay); setDisp('goBrollRefresh', hay);
+  const hint=document.getElementById('brollHint'); if(hint) hint.style.display = hay ? 'block':'none';
+  const gb=document.getElementById('goBroll'); if(gb && hay) gb.textContent = `📥 Bajar los que quedaron (${arr.length})`;
+}
+
+// 🗑️ Quitar un B-roll que no gustó: lo saca del preview Y del textarea (así "Bajar" no lo baja)
+function brollPrevDel(i){
+  const arr=window._brollPrev||[];
+  const b=arr[i]; if(!b) return;
+  arr.splice(i,1);
+  const ta=document.getElementById("tkBrollLinks");
+  if(ta) ta.value = ta.value.split(/\s+/).map(u=>u.trim()).filter(u=>u && u!==b.url).join("\n");
+  if(b.url && typeof brollFaseMap==='object') delete brollFaseMap[b.url];
+  brollPrevPaint();
+}
+
+// 🔄 Mejorar búsqueda: limpia lo actual y busca de nuevo con el ángulo (editado) de arriba
+function refrescarBrollIA(){
+  window._brollPrev = [];
+  const ta=document.getElementById("tkBrollLinks"); if(ta) ta.value="";
+  brollFaseMap = {};
+  const inp=document.getElementById("tkBrollAngulo");
+  if(inp && !inp.value.trim()){ inp.focus(); alert("Escribe/ajusta el ángulo o punto de dolor arriba para mejorar la búsqueda 👆"); return; }
+  buscarBrollIA();
 }
 function brollPrevPlay(i,btn){
   const b=(window._brollPrev||[])[i]; if(!b) return;

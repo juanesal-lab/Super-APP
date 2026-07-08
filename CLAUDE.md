@@ -3,6 +3,9 @@
 Este repo lo construyen **dos personas con Claude Code**: Juan (`juanesal-lab`) y su amigo
 (`jackingshop1-cell`). Para no pisarnos ni perdernos, sigue SIEMPRE este protocolo.
 
+> 📖 **Antes de tocar nada, lee [`PROMPT-ONBOARDING.md`](PROMPT-ONBOARDING.md)**: qué es la app,
+> cómo la usa Jack, y sus reglas de oro (lo que le gusta y lo que NUNCA hay que hacer).
+
 ## 🤝 Protocolo de colaboración entre las dos IAs
 
 1. **Al EMPEZAR a trabajar:** haz `git pull origin main` y **lee `DEV-LOG.md`** para saber

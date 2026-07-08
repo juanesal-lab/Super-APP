@@ -3333,3 +3333,13 @@ como "✅ listo" ni culpa al usuario. NUEVO `pipeline/ia_errors.py` (patrón _er
 AVISO Jack: NO toqué tus archivos (disruptive_images, dub_colombia, tiktok_search, text_translate,
 image_variator intactos). `generate_scripts` ahora lanza excepción en vez de [] — si algún flujo tuyo
 nuevo la llama directo, envuélvela en try/except.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 📖 PROMPT-ONBOARDING.md (onboarding de Jack: usar + reglas de oro)
+- Agregué **`PROMPT-ONBOARDING.md`**: el "super-prompt" de Jack con quién es, qué es la app y cómo
+  se prende, qué hace cada pestaña, su flujo ganador, y sus REGLAS DE ORO (lo que le gusta y lo que
+  NUNCA hacer: nada de cifras de precio en hooks, excluir Colombia en búsquedas, cero relleno, no
+  decir "listo" si algo falló, sin curas milagro en salud, blur sólido/quieto no mosaico, etc.).
+- Puse un puntero a ese archivo al inicio de `CLAUDE.md` para que la otra IA lo lea al arrancar.
+- Solo docs (2 archivos .md). NO toqué código, backend ni frontend. Nada que reiniciar ni probar.
+AVISO Juan: si querés, movemos/fusionamos partes de este onboarding con RESUMEN-TECNICO.md; por ahora
+lo dejé como doc aparte para no pisar nada tuyo.

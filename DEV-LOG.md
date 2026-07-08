@@ -3407,3 +3407,22 @@ AVISO Jack: toqué guion_match (params afinidad/broll_idx opcionales, retrocompa
 producto_clips/assemble/text_detect/smart_caption_mask/tiktok_search/creative_search/hook_gen/analyze +
 app.py + index.html. Nada existente cambió de firma incompatible; todo con defaults. PENDIENTE: probar en
 vivo con :8420 (los fixes de render no se pudieron correr E2E por la regla de $0).
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎯 Búsqueda MISMO producto (foto/video→5 frames) + TOFU/MOFU/BOFU seleccionable (video FORMATOS de Meta)
+Angelo: (1) la búsqueda daba OTRO producto; (2) quiere creativos por embudo TOFU/MOFU/BOFU. Mandó 2 videos
+de referencia (FORMATOS = diversificación creativa de Meta; PROMPT = lead-magnet anti-hackeo, sin contenido
+accionable). Un agente por acción, verificado offline ($0). REINICIAR :8420 para probar en vivo.
+- **✅ Búsqueda MISMO producto (arregla regresión)**: el relleno por niveles que metí antes colaba
+  confianza BAJA/solo-título → OTRO producto. Ahora `confianza!=baja` incondicional + tier-3 descartado:
+  solo confirmados alta+media. Se llega a N con pool multi-idioma más grande (150/count*8, deep count*4,
+  Foreplay 32×4), no aflojando; si hay menos matches reales, devuelve menos honesto. Colombia excluida.
+- **✅ Buscar por VIDEO**: `mejores_frames()` saca los 5 mejores frames del video (nitidez Laplaciano,
+  descarta negros/borrosos, distintos) como referencia multi-frame; analizar_foto acepta 6; endpoints
+  aceptan video y muestran los frames usados.
+- **✅ TOFU/MOFU/BOFU seleccionable**: al pedir creativos, elegís cuántos de cada etapa (default 2+2+2,
+  o presets). generate_scripts(mix) etiqueta cada guion con su etapa e inyecta su arco/hooks/CTA/largo;
+  CTA dura (contraentrega) SOLO en BOFU, TOFU suave, MOFU media; hook_gen(stage) hace el overlay acorde;
+  1 versión por guion en modo embudo, cada creativo con su badge. Research en assets/funnel-tofu-mofu-bofu-2026.md.
+AVISO Jack: toqué scripts.py (CTA por etapa — additivo, sin mix = idéntico), hook_gen, assemble
+(plan_variations n_versions), orchestrator/producto_clips (n_versions+stages), tiktok_search/creative_search
+(strict + video frames), app.py, index.html. Todo con defaults retrocompatibles.

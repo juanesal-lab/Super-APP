@@ -3295,3 +3295,41 @@ a `9:16` (vertical, = Reels/TikTok, alineado al blueprint). Los revisé, complet
 - Verificado: py_compile 3/3 OK; `ASPECTS['9:16']==(1080,1920)`; sin `1:1` sueltos que rompan coherencia
   (el `1:1` que queda es la entrada del dict ASPECTS, que debe quedar como opción). NO corrí render E2E
   (regla $0); son swaps de defaults + dims. AVISO Juan: cero lógica tuya tocada, solo valores por defecto.
+
+### 2026-07-08 · Claude (juanesal-lab) · 🛡️ ROBUSTEZ con IA caída: los 11 🔴 de la auditoría ARREGLADOS (fin del "listo" mentiroso)
+Retomé la sección "📋 PARA JUAN — robustez con Gemini agotado". Regla aplicada en todos: cuando la IA
+no corre (429/cuota, key mala), el flujo lo DICE con el motor real y qué hacer — nunca entrega basura
+como "✅ listo" ni culpa al usuario. NUEVO `pipeline/ia_errors.py` (patrón _error_amigable compartido:
+`es_cuota()` + `error_amigable(err, motor)` — nombra Gemini/Claude según quién falló de verdad).
+- **✅ /api/auto ok REAL** (auto_studio.py): si Narrativa+Doblaje+Subtítulos fallan TODOS (= original
+  re-encodeado), devuelve ok:False + error amigable. El front ya contaba ok por creativo → "0/1" honesto;
+  autoRender ahora pinta ⚠️ (no "✅") y muestra el error por creativo.
+- **✅ winner_clone ok REAL**: `ok` = ¿el Reemplazo corrió? (Regla de Juan: producto ajeno NUNCA visible).
+  Si la detección falló por cuota → lo dice; si el modelo corrió y no vio el producto → pide mejor
+  descripción; si el swap falló → lo dice. El caller (app.py:900) ya volvía ok:False → job error.
+- **✅ scripts.py error explícito + motor correcto**: generate_scripts ya NO devuelve [] tragándose el
+  429 — levanta RuntimeError nombrando el motor REAL ("Claude no pudo escribir los guiones — sin
+  cuota (429)..."). app.py además corta si llegan 0 guiones (nunca más "Guiones listos" vacío). El texto
+  del front que culpaba a Gemini quedó neutro. OJO: generate_scripts AHORA LEVANTA EXCEPCIÓN en vez de
+  [] — sus 3 callers (app.py guiones, producto_clips, regen) ya la manejan (job error con mensaje).
+- **✅ swap distingue cuota vs no-encontrado**: detect_product_ranges levanta RuntimeError amigable si
+  la IA no corrió (sin key/429/video ilegible) y [] SOLO si corrió y no vio el producto. El
+  "describe mejor tu producto" ya solo sale cuando de verdad no lo encontró.
+- **✅ regen motivo "guion" honesto**: si falta ElevenLabs, o Claude/Gemini no escriben, o la voz falla
+  → RuntimeError con el porqué (antes: re-montaba el guion VIEJO marcado "regenerado"). Motivo "otra"
+  sigue best-effort (clips+edición sí se renuevan).
+- **✅ orchestrator avisa lo que NO corrió**: manifest nuevo campo `avisos` — si "traducir texto" falla
+  en N fuentes o el gancho AUTO no se genera, el lote sale igual pero AVISANDO (renderResults los pinta
+  como el music_warning). Aditivo, no rompe el shape.
+- **✅ subtitle_band/caption_mask**: si Gemini NUNCA respondió (todas las llamadas 429), eso es ERROR
+  ("No pude leer el texto en pantalla — sin cuota...") y ya no se disfraza de "no hay subtítulos".
+- **VERIFICADO SIN GASTAR** ($0): py_compile 10/10; JS 15/15 bloques; app importa con las 51 rutas;
+  tests offline de los caminos nuevos (429 de Claude simulado con módulo fake → mensaje con motor real;
+  detect sin key → RuntimeError; regen "guion" sin ElevenLabs → RuntimeError; caption_mask sin key → []
+  intacto). NO corrí renders E2E. Hay que REINICIAR el server :8420 para que tome los cambios.
+- **PENDIENTES de la auditoría (transversales, decisión de producto)**: (1) `has_gemini_key` sigue
+  checando solo EXISTENCIA de la key (validarla en vivo cuesta una llamada — ¿la queremos?); (2) validar
+  tamaño del mp4 de salida de cada ffmpeg (posible mp4 truncado como "ok") — grande, va aparte.
+AVISO Jack: NO toqué tus archivos (disruptive_images, dub_colombia, tiktok_search, text_translate,
+image_variator intactos). `generate_scripts` ahora lanza excepción en vez de [] — si algún flujo tuyo
+nuevo la llama directo, envuélvela en try/except.

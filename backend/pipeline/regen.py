@@ -68,14 +68,27 @@ def regenerar_version(estado: dict, name: str, motivo: str, *,
     frases = vers.get("frases") or []
     vo_path = vers.get("vo_path")
     words = vers.get("words") or []
+    # HONESTO (auditoría 2026-07-06): si el motivo es "guion" y la IA o la voz FALLAN, NO se
+    # re-monta el guion VIEJO marcado como "regenerado" — se falla con el porqué. Con motivo
+    # "otra" el guion es best-effort (los clips y la edición sí se renuevan igual).
+    if motivo == "guion" and not eleven_key:
+        raise RuntimeError("Para regenerar el guion necesito la API key de ElevenLabs "
+                           "(narra la voz nueva) — configúrala en 🔑 Claves.")
     if motivo in ("guion", "otra") and eleven_key:
         rep("Escribiendo otro guion…", 15)
         from .scripts import generate_scripts
         from . import voiceover
         evitar_ang = [vers.get("guion", "")]  # no repetir el mismo texto
-        gs = generate_scripts(gemini_key, s.get("product_desc", ""), s.get("page_text", ""),
-                              float(s.get("target_seconds", 20.0)), n=3)
+        try:
+            gs = generate_scripts(gemini_key, s.get("product_desc", ""), s.get("page_text", ""),
+                                  float(s.get("target_seconds", 20.0)), n=3)
+        except Exception as e:  # noqa: BLE001
+            if motivo == "guion":
+                raise RuntimeError(f"No pude escribir otro guion — {e}")
+            gs = []
         nuevo = next((g for g in gs if g.get("texto") and g["texto"] not in evitar_ang), None)
+        if nuevo is None and motivo == "guion":
+            raise RuntimeError("La IA no entregó un guion distinto al actual — reintenta.")
         if nuevo:
             mp3 = os.path.join(work_dir, f"vo_regen_{name}_{intento}.mp3")
             try:
@@ -90,8 +103,10 @@ def regenerar_version(estado: dict, name: str, motivo: str, *,
                 vers["frases"] = fr
                 vers["words"] = w
                 vers["vo_path"] = mp3
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                if motivo == "guion":
+                    raise RuntimeError(f"La voz del guion nuevo falló (ElevenLabs) — {e}")
+                # motivo "otra": sigue con la voz anterior (clips y edición sí cambian)
 
     # ── 2) plan de montaje ──────────────────────────────────────────────────────────────
     rep("Eligiendo los clips…", 55)

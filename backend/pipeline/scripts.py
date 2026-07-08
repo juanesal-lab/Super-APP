@@ -173,15 +173,21 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
                      target_seconds: float = 15.0, sample_seg: Segment | None = None,
                      n: int = 10, blueprint: dict | None = None,
                      oferta_2x1: bool = False) -> list[dict]:
-    """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}]. [] si falla.
+    """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}].
+
+    Si la IA NO PUDO correr (sin keys, cuota 429, respuesta ilegible) levanta RuntimeError
+    con mensaje amigable que nombra el motor real (Claude 1º, Gemini respaldo) — antes
+    devolvía [] y el job terminaba "Guiones listos" con 0 guiones culpando a Gemini.
 
     `blueprint`: opcional, el análisis narrativo (narrative.py) de un ANUNCIO GANADOR de
     referencia. Si viene, los guiones copian su arco (HOOK→DOLOR→SOLUCIÓN→DESEO→CTA) y ritmo.
     """
+    from .ia_errors import error_amigable
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ak = _anthropic_key()          # Claude escribe mejor copy: es la 1ª opción; Gemini respaldo
     if not api_key and not ak:
-        return []
+        raise RuntimeError("No hay API key de IA para escribir los guiones — configura "
+                           "Gemini o Anthropic en 🔑 Claves.")
     client = None
     if api_key:
         try:
@@ -191,7 +197,8 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         except Exception:  # noqa: BLE001
             client = None
     if client is None and not ak:
-        return []
+        raise RuntimeError("No pude iniciar Gemini para escribir los guiones — "
+                           "revisa la key en 🔑 Claves.")
 
     # ~2.55 palabras/seg: ElevenLabs es-CO medido (2.4) x la aceleración 1.12 del Manual §6.
     # El presupuesto INCLUYE el CTA obligatorio (17 palabras): a 15s el cuerpo queda muy corto
@@ -335,6 +342,7 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     # 1º Claude (el mejor copywriter disponible — mismo cerebro de los ads de imagen);
     # si no hay key o falla → Gemini (comportamiento anterior).
     data = None
+    claude_err = None
     if ak:
         try:
             from anthropic import Anthropic
@@ -363,12 +371,16 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
                 if getattr(block, "type", None) == "tool_use" and block.name == "entregar_guiones":
                     data = list(block.input.get("guiones", []))
                     break
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            claude_err = e
             data = None
 
     if data is None:
         if client is None:
-            return []
+            # Claude era el ÚNICO motor disponible y falló: error explícito con el motor REAL
+            # (antes: [] silencioso y el front culpaba a Gemini).
+            raise RuntimeError("Claude no pudo escribir los guiones — "
+                               + error_amigable(claude_err, "Claude"))
         contents = [prompt]
         if sample_seg is not None:
             fb = _frame_bytes(sample_seg)
@@ -378,10 +390,14 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
             resp = client.models.generate_content(model=_MODEL, contents=contents)
             m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
             if not m:
-                return []
+                raise RuntimeError("Gemini respondió sin guiones válidos (reintenta).")
             data = json.loads(m.group(0))
-        except Exception:
-            return []
+        except RuntimeError:
+            raise
+        except Exception as e:
+            quien = ("Claude y Gemini fallaron escribiendo los guiones — "
+                     if claude_err is not None else "Gemini no pudo escribir los guiones — ")
+            raise RuntimeError(quien + error_amigable(e))
 
     out = []
     for d in data if isinstance(data, list) else []:

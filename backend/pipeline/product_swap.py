@@ -57,27 +57,32 @@ def _contact_sheet(path: str, times: list[float]):
 def detect_product_ranges(api_key: str | None, video_path: str, product_desc: str = "",
                           step: float = 0.0, gap: float = 1.2,
                           min_len: float = 0.6) -> list[tuple]:
-    """Devuelve [(start, end)] de los momentos donde se VE el producto."""
+    """Devuelve [(start, end)] de los momentos donde se VE el producto.
+
+    [] significa "la IA corrió y NO vio el producto". Si la IA no pudo correr (sin key,
+    cuota 429, video ilegible) levanta RuntimeError con mensaje amigable — antes devolvía
+    [] también ahí y el caller culpaba al usuario ("describe mejor tu producto")."""
+    from .ia_errors import error_amigable
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
-        return []
+        raise RuntimeError("Falta la API key de Gemini (🔑 Claves).")
     try:
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=api_key)
-    except Exception:
-        return []
+    except Exception as e:
+        raise RuntimeError(error_amigable(e))
 
     dur = probe(video_path).duration
     if dur <= 0:
-        return []
+        raise RuntimeError("No pude leer el video (duración 0 o formato ilegible).")
     # muestreo MUY denso (~48 frames) para detectar AL DETALLE cada momento del producto
     # (pedido de Juan: precisión — que no se escape ni un instante del producto ajeno)
     step = step or max(0.3, dur / 48.0)
     times = [round(t, 2) for t in np.arange(step / 2, dur, step)][:48]
     sheet = _contact_sheet(video_path, times)
     if sheet is None:
-        return []
+        raise RuntimeError("No pude extraer fotogramas del video para analizarlo.")
 
     prod = product_desc.strip() or "el producto que se anuncia (el objeto principal)"
     prompt = (
@@ -90,17 +95,24 @@ def detect_product_ranges(api_key: str | None, video_path: str, product_desc: st
         "Si se ve en todos, devuelve todos."
     )
     idxs = set()
+    ultimo_err = None
+    respondio = False
     for _ in range(2):  # reintenta una vez si no parsea
         try:
             resp = client.models.generate_content(
                 model=_MODEL,
                 contents=[prompt, types.Part.from_bytes(data=sheet, mime_type="image/jpeg")])
+            respondio = True
             m = re.search(r"\[[\d,\s]*\]", resp.text or "", re.DOTALL)
             if m:
                 idxs = set(int(x) for x in re.findall(r"\d+", m.group(0)))
                 break
-        except Exception:
+        except Exception as e:
+            ultimo_err = e
             continue
+    # Si Gemini NUNCA respondió (cuota/red), es un ERROR — no "producto no encontrado"
+    if not respondio and ultimo_err is not None:
+        raise RuntimeError(error_amigable(ultimo_err))
 
     # agrupar tiempos con hueco tolerado, luego AÑADIR MARGEN y fusionar solapados
     hits = sorted(times[i] for i in idxs if 0 <= i < len(times))

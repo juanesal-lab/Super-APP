@@ -485,8 +485,21 @@ def generar_creativo_auto(
 
     report("✅ Creativo terminado", 100)
     ok_pasos = sum(1 for p in pasos if p["ok"])
-    return {"ok": True, "video": current, "pasos": pasos,
-            "resumen": f"{ok_pasos}/{len(pasos)} pasos OK", "blueprint": blueprint}
+    # ok REAL (auditoría 2026-07-06): "listo" solo si la IA le APORTÓ algo al video. Si Narrativa,
+    # Doblaje Y Subtítulos fallaron TODOS, lo que sale es el original casi intacto (re-encodeado):
+    # eso se reporta honesto en vez de "✅ listo" con basura.
+    _criticos = ("Narrativa", "Doblaje CO", "Subtítulos")
+    _fallidos = [p for p in pasos if p["paso"] in _criticos and not p["ok"]]
+    ok_real = any(p["ok"] for p in pasos if p["paso"] in _criticos)
+    res = {"ok": ok_real, "video": current, "pasos": pasos,
+           "resumen": f"{ok_pasos}/{len(pasos)} pasos OK", "blueprint": blueprint}
+    if not ok_real:
+        from .ia_errors import error_amigable
+        detalle = next((p["detalle"] for p in _fallidos if p.get("detalle")), "")
+        res["error"] = ("La IA no pudo procesar este video (narrativa, doblaje y subtítulos "
+                        "fallaron): el resultado sería el original casi intacto. "
+                        + error_amigable(detalle))
+    return res
 
 
 if __name__ == "__main__":

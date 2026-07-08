@@ -625,12 +625,19 @@
     function autoRender(res){
       if(!res){ return; }
       const box=document.getElementById('autoResult');
-      if(res.resumen){ document.getElementById('autoMsg').textContent='✅ '+res.resumen; }
       // Uno o varios creativos (compatible con el formato viejo de un solo video)
       const lista = res.creativos || (res.video ? [res] : []);
+      // honesto: solo lleva ✅ si de verdad quedó al menos uno listo (ok real del backend)
+      const listos = lista.filter(c=>c.ok&&c.video).length;
+      if(res.resumen){
+        const msg=document.getElementById('autoMsg');
+        if(listos>0){ msg.textContent='✅ '+res.resumen; }
+        else{ msg.innerHTML='<span style="color:var(--warn)">⚠️ '+res.resumen+' — la IA no pudo procesar (mira los pasos)</span>'; }
+      }
       let h='';
       lista.forEach((c,i)=>{
-        h+=`<div style="margin-top:18px;font-weight:700;font-size:15px">🎬 Creativo ${i+1}${c.nombre?' · '+c.nombre:''}</div>`;
+        h+=`<div style="margin-top:18px;font-weight:700;font-size:15px">🎬 Creativo ${i+1}${c.nombre?' · '+c.nombre:''}${c.ok?'':' — ⚠️ no quedó listo'}</div>`;
+        if(!c.ok&&c.error){ h+=`<div class="autoMsg" style="color:var(--warn)">⚠️ ${c.error}</div>`; }
         (c.pasos||[]).forEach(p=>{ h+=`<div class="autoStep ${p.ok?'':'bad'}">${p.ok?'✓':'✗'} ${p.paso}${p.detalle?` <span>· ${p.detalle}</span>`:''}</div>`; });
         if(c.video){
           const u='/api/file?path='+encodeURIComponent(c.video);
@@ -3087,7 +3094,7 @@ async function previewVoice(i, text, btn){
 function renderScripts(jobId, scripts){
   const root = document.getElementById("scripts");
   if(!scripts || !scripts.length){
-    root.innerHTML = `<div class="card"><p class="err">No se pudieron generar guiones (revisa tu key de Gemini).</p></div>`;
+    root.innerHTML = `<div class="card"><p class="err">No se pudieron generar guiones — mira el mensaje de error del trabajo (puede ser cuota/key de la IA) y reintenta.</p></div>`;
     return;
   }
   let html = `<div class="card"><h2>📝 Guiones de voz en off</h2>
@@ -3148,7 +3155,9 @@ function renderResults(res, rootId){
 
   // Versiones
   const hookLine = res.hook_used ? `<div class="pmsg" style="margin:-6px 0 14px">✨ Gancho: <b style="color:var(--txt)">${res.hook_used}</b></div>` : '';
-  const warn = res.music_warning ? `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn);font-size:14px">⚠️ ${res.music_warning}</p></div>` : '';
+  let warn = res.music_warning ? `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn);font-size:14px">⚠️ ${res.music_warning}</p></div>` : '';
+  // avisos honestos del backend: pasos de IA que NO corrieron (traducir texto, gancho auto)
+  (res.avisos||[]).forEach(a=>{ warn += `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn);font-size:14px">⚠️ ${a}</p></div>`; });
   const editBar = `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--card2)"><div><b>🎬 ¿Quieres ajustarlo?</b> <span style="color:var(--muted)">Ábrelo en el editor para reordenar, borrar clips y exportar a tu gusto.</span></div><button class="btn" onclick="edOpen()" style="background:var(--accent2);white-space:nowrap">✏️ Editar en el editor</button></div>`;
   let html = warn + editBar + `<div class="card"><h2>Versiones del video ${gem} ${enh}</h2>${hookLine}<div class="vgrid">`;
   const names = {A_gancho:"Versión A · Gancho primero", B_narrativa:"Versión B · Narrativa", C_corta:"Versión C · Corta", D_dinamica:"Versión D · Dinámica", E_inversa:"Versión E · Inversa", F_express:"Versión F · Express", G_mixta:"Versión G · Mixta", H_alterna:"Versión H · Alterna"};

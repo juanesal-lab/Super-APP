@@ -378,6 +378,10 @@ def render_versions(
     used_all = sorted({i for _, order in version_orders for i in order} | set(loose_idx))
     # ──────────────────────────────────────────────────────────────────────────────
 
+    # Avisos HONESTOS para el usuario (auditoría 2026-07-06): cuando un paso de IA no corre
+    # (traducir texto, gancho auto), el lote se entrega igual pero AVISANDO — nunca en silencio.
+    avisos: list[str] = []
+
     # Tapar textos del proveedor: Gemini DETECTA las cajas y se enmascara la FUENTE
     # (antes de cortar), para que la mascara quede justo donde esta cada caption.
     if blur_captions and gemini_key and text_mode == "traducir":
@@ -389,6 +393,8 @@ def render_versions(
         remap, done_t = {}, [0]
         pref = "es_" if text_mode == "traducir" else "cov_"
 
+        fallas_trad: list[str] = []
+
         def _proc_src(src):
             out = os.path.join(work_dir, pref + os.path.basename(src))
             try:
@@ -397,8 +403,9 @@ def render_versions(
                 report(f"Procesando textos en pantalla ({done_t[0]}/{len(fuentes)})...", 56)
                 if r.get("ok"):
                     return src, r.get("video", src)   # el video procesado (o el mismo si no había texto)
-            except Exception:
-                pass
+                fallas_trad.append(str(r.get("error", "")))
+            except Exception as e:  # noqa: BLE001
+                fallas_trad.append(str(e))
             return src, src
 
         with ThreadPoolExecutor(max_workers=2) as ex:   # poca concurrencia por el límite de Gemini
@@ -406,6 +413,11 @@ def render_versions(
                 remap[src] = v
         for seg in selected:
             seg.video = remap.get(seg.video, seg.video)   # remapea cada corte a su fuente procesada
+        if fallas_trad:
+            from .ia_errors import error_amigable
+            avisos.append(f"El texto en pantalla de {len(fallas_trad)} video(s) NO se pudo "
+                          "traducir — esos clips salen con su texto original. "
+                          + error_amigable(fallas_trad[0]))
     elif blur_captions and east_available():
         # OPTIMIZADO: enmascara SOLO los cortes que las versiones y los clips sueltos usan
         # de verdad (used_all), no todo el pool. Antes procesaba hasta 60 cortes (con ~1
@@ -534,6 +546,10 @@ def render_versions(
         page_text = fetch_page_text(page_url)
         sample = max(selected, key=lambda s: (s.shows_use, s.score)) if selected else None
         final_hook = generate_hook(gemini_key, product_desc, page_text, sample)
+        if not final_hook.strip():
+            # pediste gancho automático y la IA no lo generó: avisar, no entregar en silencio
+            avisos.append("El gancho automático NO se pudo generar (la IA no respondió) — "
+                          "las versiones van sin texto de gancho.")
     if final_hook.strip():
         for v in versions:
             hook_out = v["path"].replace(".mp4", "_hook.mp4")
@@ -718,6 +734,7 @@ def render_versions(
     report("Finalizando...", 98)
     manifest = {
         "ok": True,
+        "avisos": avisos,   # ⚠️ pasos de IA que NO corrieron (traducir/gancho) — honestidad
         "used_gemini": used_gemini,
         "enhanced": enhance,
         "hook_used": final_hook,

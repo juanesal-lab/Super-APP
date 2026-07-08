@@ -151,19 +151,25 @@ def clonar_ganador(
         except Exception:  # noqa: BLE001
             return None
 
+    det_err: list[str] = []   # si la detección FALLÓ (cuota/key), no es que "no haya producto"
+
     def _det():
+        from .ia_errors import error_amigable
         if not gemini_key:
+            det_err.append("Falta la API key de Gemini (🔑 Claves).")
             return []
         try:
             return detect_product_ranges(gemini_key, winner_path, old_desc) or []
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            det_err.append(error_amigable(e))
             return []
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         fb, fd = ex.submit(_narr), ex.submit(_det)
         blueprint, ranges = fb.result(), fd.result()
     paso("Narrativa", bool(blueprint), f"{len(blueprint['segments'])} fases" if blueprint else "no")
-    paso("Detectar producto", bool(ranges), f"{len(ranges)} momento(s)" if ranges else "no detectado")
+    paso("Detectar producto", bool(ranges),
+         f"{len(ranges)} momento(s)" if ranges else (det_err[0] if det_err else "no detectado"))
 
     # 1) Voz: doblaje INTELIGENTE por idioma. Si el creativo está en OTRO idioma -> lo dobla
     #    (traduce la idea a español colombiano). Si YA está en español -> lo deja y sigue.
@@ -323,8 +329,23 @@ def clonar_ganador(
 
     report("✅ Clon terminado", 100)
     ok_n = sum(1 for p in pasos if p["ok"])
-    return {"ok": True, "video": current, "pasos": pasos, "decisiones": decisiones,
-            "resumen": f"{ok_n}/{len(pasos)} pasos OK"}
+    # ok REAL (auditoría 2026-07-06 + REGLA DE JUAN): si el producto del COMPETIDOR sigue visible
+    # (no se detectó o el reemplazo falló), el clon NO sirve — jamás reportarlo como "listo".
+    reemplazo_ok = any(p["paso"] == "Reemplazo" and p["ok"] for p in pasos)
+    res = {"ok": reemplazo_ok, "video": current, "pasos": pasos, "decisiones": decisiones,
+           "resumen": f"{ok_n}/{len(pasos)} pasos OK"}
+    if not reemplazo_ok:
+        if det_err:
+            res["error"] = ("No pude buscar el producto del competidor en el video — "
+                            + det_err[0] + " El clon quedaría mostrando el producto AJENO.")
+        elif not ranges:
+            res["error"] = ("No detecté el producto del competidor en el video. Descríbelo mejor "
+                            "en «producto del video original» (ej. 'frasco negro de suero') — "
+                            "sin eso el clon mostraría el producto ajeno.")
+        else:
+            res["error"] = ("El reemplazo de producto falló: el video aún muestra el producto "
+                            "del competidor (mira los pasos).")
+    return res
 
 
 if __name__ == "__main__":

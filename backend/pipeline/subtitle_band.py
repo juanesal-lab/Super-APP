@@ -32,6 +32,8 @@ def detect_subtitle_band(video_path: str, api_key: str | None = None,
     try:
         from .caption_mask import detect_text_boxes_timed
         cajas = detect_text_boxes_timed(api_key, video_path)
+    except RuntimeError:
+        raise   # fallo REAL de la IA (cuota/key): el caller lo reporta honesto, no "sin subtítulos"
     except Exception:  # noqa: BLE001
         cajas = []
     by_t: dict = {}

@@ -1003,6 +1003,9 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
         scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
                                    settings["target_seconds"], sample, blueprint=blueprint,
                                    oferta_2x1=settings.get("oferta_2x1", False))
+        if not scripts:
+            # Nunca terminar "Guiones listos" con 0 guiones (auditoría 2026-07-06)
+            raise RuntimeError("La IA corrió pero no entregó ningún guion — reintenta.")
         # Guardar estado para la fase 2 (renderizado con voz)
         job.update({
             "selected": selected, "has_audio_by_src": a["has_audio_by_src"],
@@ -1256,10 +1259,17 @@ def _run_swap_job(job_id: str, old_path: str, new_paths: list[str],
         os.makedirs(wd, exist_ok=True)
         old_desc, new_desc = _resolve_desc(old_desc), _resolve_desc(new_desc)
         progress("Detectando dónde aparece el producto VIEJO (IA)...", 20)
-        ranges = detect_product_ranges(_load_env_key(), old_path, old_desc)
+        # Distinguir CUOTA/KEY caída vs producto no encontrado (auditoría 2026-07-06): antes un 429
+        # terminaba en "describe mejor tu producto", culpando al usuario por un fallo de la IA.
+        try:
+            ranges = detect_product_ranges(_load_env_key(), old_path, old_desc)
+        except RuntimeError as e:
+            job["status"] = "error"
+            job["message"] = f"No pude buscar el producto (la IA no corrió): {e}"
+            return
         if not ranges:
             job["status"] = "error"
-            job["message"] = ("No detecté el producto viejo en el video. "
+            job["message"] = ("La IA revisó el video y NO encontró el producto viejo. "
                               "Prueba describirlo mejor (ej. 'frasco negro de suero').")
             return
         progress("Analizando tus videos del producto NUEVO...", 45)

@@ -76,6 +76,8 @@ def detect_text_boxes_timed(api_key: str | None, video_path: str,
         return []
 
     times = _sample_times(video_path)
+    errores: list = []      # errores de la API (cuota/red) — distintos de "no hay texto"
+    exitos = [0]
 
     def _detect(t):
         fb = _frame_jpg(video_path, t)
@@ -85,6 +87,7 @@ def detect_text_boxes_timed(api_key: str | None, video_path: str,
             resp = client.models.generate_content(
                 model=_MODEL,
                 contents=[_PROMPT, types.Part.from_bytes(data=fb, mime_type="image/jpeg")])
+            exitos[0] += 1
             m = re.search(r"\[.*\]", resp.text or "", re.DOTALL)
             if not m:
                 return []
@@ -101,11 +104,17 @@ def detect_text_boxes_timed(api_key: str | None, video_path: str,
                 out.append({"x": round(x, 4), "y": round(y, 4),
                             "w": round(w, 4), "h": round(h, 4), "t": round(t, 2)})
             return out
-        except Exception:
+        except Exception as e:
+            errores.append(e)
             return []
 
     boxes: list[dict] = []
     with ThreadPoolExecutor(max_workers=6) as ex:
         for res in ex.map(_detect, times):
             boxes.extend(res)
+    # Si Gemini NUNCA respondió (cuota/red caída en TODAS las llamadas), eso es un ERROR —
+    # no "el video no tiene texto" (auditoría 2026-07-06: el 429 se disfrazaba de 'sin subtítulos').
+    if not boxes and errores and not exitos[0]:
+        from .ia_errors import error_amigable
+        raise RuntimeError("No pude leer el texto en pantalla — " + error_amigable(errores[0]))
     return boxes[:40]

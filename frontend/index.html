@@ -56,6 +56,11 @@
   .tabs button:hover{background:var(--card2);color:var(--txt)}
   .tabs button.active{background:var(--gold);color:var(--ink);font-weight:700;
     box-shadow:0 4px 16px rgba(212,175,55,.42)}
+  /* Encabezado de grupo en la navegación (3 secciones: buscar / crear videos / landing) */
+  .navgroup{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);opacity:.75;padding:12px 10px 4px;margin-top:4px;
+    border-top:1px solid var(--line)}
+  .navgroup:first-child{border-top:0;margin-top:0}
   /* Móvil / pantalla angosta: la navegación vuelve arriba en fila */
   @media(max-width:820px){
     .wrap{grid-template-columns:1fr;gap:0}
@@ -64,6 +69,7 @@
     .side .sub{display:none}
     .tabs{flex-direction:row;flex-wrap:wrap;overflow:visible;width:100%}
     .tabs button{width:auto;flex:1;min-width:118px;text-align:center}
+    .navgroup{flex-basis:100%;width:100%;border-top:0;padding:6px 4px 2px;margin-top:6px}
   }
   .panel{animation:fade .32s ease}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -441,21 +447,28 @@
   <p class="sub">Tu estudio de creativos con IA para dropshipping — clips, versiones, doblaje, GIFs y más, en un solo lugar.</p>
 
   <nav class="tabs" id="tabs">
+    <div class="navgroup">🔎 Buscar creativos</div>
+    <button data-p="p-buscar">🔍 Buscar creativos</button>
+    <button data-p="p-foreplay">🔥 Foreplay</button>
+    <button data-p="p-radar">📡 Radar</button>
+
+    <div class="navgroup">🎬 Crear videos</div>
     <button data-p="p-crear" class="active">✂️ Cortar clips</button>
     <button data-p="p-producto">📦 Mi producto</button>
-    <button data-p="p-editor">🎬 Editor</button>
-    <button data-p="p-disruptivo">🎨 Ads imagen</button>
-    <button data-p="p-varimg">📸 Variar imagen</button>
-    <button data-p="p-descargar">📥 Descargar</button>
-    <button data-p="p-foreplay">🔥 Foreplay</button>
-    <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
-    <button data-p="p-landings">🛍️ Crear Landings</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
-    <button data-p="p-radar">📡 Radar</button>
+    <button data-p="p-editor">🎬 Editor</button>
+    <button data-p="p-disruptivo">🎨 Ads imagen</button>
+    <button data-p="p-varimg">📸 Variar imagen</button>
+    <button data-p="p-descargar">📥 Descargar</button>
+
+    <div class="navgroup">🛍️ Crear landing</div>
+    <button data-p="p-landings">🛍️ Crear Landings</button>
+
+    <div class="navgroup">⚙️ Ajustes</div>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
   </nav>

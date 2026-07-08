@@ -3368,3 +3368,42 @@ opcional (default None = comportamiento viejo exacto) + el nuevo helper; nada ex
 firma de forma incompatible. `buscar_broll` ganó params `landing_text`/`verificar_contenido` (defaults
 retrocompatibles, único caller es /api/broll-dolor). orchestrator/regen: 1 línea cada uno para pasar la
 afinidad.
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎬 Tanda GRANDE (video real de Angelo): B-roll dentro, hook+riser, blur, sync, forzar N, hooks 4 mercados, UI 3 secciones
+Angelo mandó ~13 pedidos + el video que soltó la app (toallas reutilizables, 18s). Lo analicé frame a
+frame (hook sin texto, blur gris arriba, cero b-roll, dolor narrado sobre producto). Lancé 5 agentes
+(blur, inserción b-roll, hook+sync, forzar-N, research hooks) y apliqué los fixes. Todo verificado
+OFFLINE ($0, sin correr renders ni búsquedas reales). REINICIAR :8420 para probar en vivo.
+- **✅ B-roll AHORA entra al video**: `is_broll` en Segment; analyze_select marca las fuentes b-roll y
+  _select_for_target las FUERZA al pool (saltan corte por score/dedup); forzado de fase para TODOS los
+  seleccionados (no solo top-60); plan_montaje gana su fase + exento del tope de reuso. Antes puntuaban
+  bajo (no muestran producto) → nunca entraban. Test: b-roll de score 5 entra en la frase de dolor.
+- **✅ HOOK de texto**: el flujo producto NUNCA cableaba el gancho → salía sin texto. Ahora auto_hook ON
+  por defecto + pasa hook_text; se avisa si el quemado falla (antes silencioso). + generate_hook mucho
+  mejor (abajo).
+- **✅ SYNC audio/video**: se quitó el setpts uniforme que corría TODOS los cortes interiores (desincronía
+  progresiva) → ahora clavados a la voz, el sobrante lo cubre el último frame. + voz a 1.0 (Angelo:
+  "no aceleres nada"; antes 1.12×).
+- **✅ RISER de TikTok en el hook**: `_hook_riser_evento` inyectado en la mezcla con y sin voz; su subida
+  aterriza al final de los primeros ~3s.
+- **✅ BLUR**: (1) `_detect` recibe inw/inh/min_h por parámetro → mask_captions_smart deja de mutar los
+  globales dentro de hilos (race que perdía captions y colaba el texto ajeno); (2) _BOX_PAD_W 0.05→0.13
+  + feather mínimo (el filo de la 1ª/última letra se veía al escalar); (3) FAIL-SAFE: si EAST vio texto
+  persistente pero Gemini lo descartó todo, se tapa igual lo de la zona de captions (antes devolvía el
+  clip con el texto del proveedor visible).
+- **✅ B-roll landing + preview + sin texto** (sesión previa + esta): landing en el campo de ángulo (sin
+  producto), mínimo 5, verificación por CONTENIDO (no portada), preferir SIN texto encima, preview inline
+  (devuelve `play` → el botón Ver reproduce ahí mismo, ya no redirige a TikTok).
+- **✅ FORZAR N** (pediste 30 → daba 1): relleno por niveles (1 alta / 2 media / 3 baja-título) que llena
+  hasta N sin aceptar producto distinto (todo tier exige juez match=true) + pool más grande. Endpoints
+  creativos activan `rellenar_n=True`; B-roll y modo estricto intactos. (implementado por agente, verificado)
+- **✅ HOOKS 4 mercados**: agente investigó US/UK/DE/FR (+30 días activos). generate_hook ahora elige la
+  MECÁNICA que calza (dolor exacto/curiosidad/contrario/error/antes-después/dato/para-el-scroll) y la
+  llena con el dolor EXACTO del producto; lista negra de clichés de IA. `assets/research-hooks-2026-4mercados.md`
+  con 20 plantillas LATAM + buenas prácticas de texto en pantalla.
+- **✅ UI en 3 secciones**: nav agrupada — 🔎 Buscar creativos (Buscar/Foreplay/Radar) · 🎬 Crear videos
+  (el resto) · 🛍️ Crear landing · ⚙️ Ajustes. Solo reorden + encabezados; cada botón intacto.
+AVISO Jack: toqué guion_match (params afinidad/broll_idx opcionales, retrocompat), orchestrator/regen/
+producto_clips/assemble/text_detect/smart_caption_mask/tiktok_search/creative_search/hook_gen/analyze +
+app.py + index.html. Nada existente cambió de firma incompatible; todo con defaults. PENDIENTE: probar en
+vivo con :8420 (los fixes de render no se pudieron correr E2E por la regla de $0).

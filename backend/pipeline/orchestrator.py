@@ -75,8 +75,35 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     except Exception:  # noqa: BLE001
         sig_cache = {}
 
+    # 🚫 PRIORIZAR TOMAS SIN TEXTO (pedido de Jack: "cuando hay mucho texto hace mucho blur feo").
+    # Estima con EAST cuánta pantalla cubre el texto quemado de cada candidato (2 frames, barato) y
+    # PENALIZA su score → las tomas cargadas de texto caen al fondo del ranking y casi nunca se
+    # eligen si hay tomas limpias (así el blur, cuando toca, es chico). Best-effort: si no hay EAST
+    # o falla, no penaliza nada (mismo comportamiento de antes).
+    text_cov: dict[int, float] = {}
+    if east_available():
+        try:
+            from .text_detect import text_coverage
+            with ThreadPoolExecutor(max_workers=min(8, max(2, len(precalc)))) as _ex:
+                for seg, cov in zip(precalc, _ex.map(
+                        lambda s: text_coverage(s.video, s.start, s.end), precalc)):
+                    text_cov[id(seg)] = cov
+        except Exception:  # noqa: BLE001
+            text_cov = {}
+
+    def _eff_score(s) -> float:
+        # cobertura <5% (texto chico/nada) casi no resta; 15% (bloque medio) ≈ -24;
+        # 25%+ (texto grande, el que da el blur feo) lo hunde al fondo.
+        cov = text_cov.get(id(s), 0.0)
+        pen = 0.0 if cov < 0.05 else min(50.0, (cov - 0.05) * 250.0)
+        return s.score - pen
+
+    if text_cov:                       # re-ordena por score EFECTIVO (texto penalizado)
+        ranked = sorted(ranked, key=_eff_score, reverse=True)
+
     # B-ROLL: entran SÍ O SÍ (saltan el corte por score y el dedup), con tope por fuente para no
-    # inundar. El resto del pool se llena normal debajo (nunca re-agrega: `seg in chosen`).
+    # inundar. Va DESPUÉS de la penalización por texto: los b-roll se fuerzan igual (no dependen del
+    # score). El resto del pool se llena normal debajo (nunca re-agrega: `seg in chosen`).
     if n_broll_src:
         broll_cap = max(2, min(4, cap_per_source))
         for seg in ranked:
@@ -246,6 +273,8 @@ def render_versions(
     broll_fases: dict | None = None,   # {ruta fuente B-roll: fase forzada (problema/resultado/...)}
     n_versions: int | None = None,     # embudo: nº de versiones = nº de guiones (None → 8 clásico)
     stages: list | None = None,        # embudo: etapa por versión ["TOFU","MOFU","BOFU",...]
+    start_version: int = 0,       # desde cuál (0='A'; la prueba=1 desde 0, luego "N más"=N desde 1)
+    blur_strength: str = "medio", # fuerza del desenfoque de textos: suave/medio/fuerte (ajuste de Jack)
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos.
@@ -332,7 +361,7 @@ def render_versions(
             broll_idx.add(_i)
 
     version_orders = plan_variations(selected, target_seconds=plan_seconds,
-                                      n_versions=n_versions)
+                                      n_versions=n_versions, start_version=start_version)
     # Embudo: etapa por índice de versión (mismo orden que version_orders / version_vos).
     stage_by_name: dict[str, str] = {}
     if stages:
@@ -503,9 +532,10 @@ def render_versions(
                 # frame por frame + Gemini clasifica cada zona -> solo CAPTIONS, nunca el producto).
                 # Sin key: EAST puro (con el capitán de Claude abajo).
                 if gemini_key:
-                    final = mask_captions_smart(raw, masked, gemini_key=gemini_key)
+                    final = mask_captions_smart(raw, masked, gemini_key=gemini_key,
+                                                strength=blur_strength)
                 else:
-                    final = mask_video_text(raw, masked)   # == masked (tapó algo) o == raw (nada)
+                    final = mask_video_text(raw, masked, strength=blur_strength)   # masked o raw
 
                 # ── Capitán (Claude): revisa el tapado del path EAST puro y corrige si hace falta ──
                 # (No aplica al tapado inteligente con Gemini, que ya filtra por su cuenta.)
@@ -915,6 +945,8 @@ def process_job(
     broll_fases: dict | None = None,
     n_versions: int | None = None,     # embudo TOFU/MOFU/BOFU (None → 8 versiones clásico)
     stages: list | None = None,        # embudo: etapa por versión
+    start_version: int = 0,       # desde cuál version arranca (para el lote de "N más")
+    blur_strength: str = "medio", # fuerza del desenfoque de textos (suave/medio/fuerte)
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Pipeline de una pasada: analiza y renderiza. Si `version_vos` viene (voz por versión ya
@@ -938,4 +970,5 @@ def process_job(
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
-        broll_fases=broll_fases, n_versions=n_versions, stages=stages, progress=progress)
+        broll_fases=broll_fases, n_versions=n_versions, stages=stages,
+        start_version=start_version, blur_strength=blur_strength, progress=progress)

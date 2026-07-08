@@ -3426,3 +3426,165 @@ accionable). Un agente por acción, verificado offline ($0). REINICIAR :8420 par
 AVISO Jack: toqué scripts.py (CTA por etapa — additivo, sin mix = idéntico), hook_gen, assemble
 (plan_variations n_versions), orchestrator/producto_clips (n_versions+stages), tiktok_search/creative_search
 (strict + video frames), app.py, index.html. Todo con defaults retrocompatibles.
+### 2026-07-08 · Claude (jackingshop1-cell) · 📖 PROMPT-ONBOARDING.md (onboarding de Jack: usar + reglas de oro)
+- Agregué **`PROMPT-ONBOARDING.md`**: el "super-prompt" de Jack con quién es, qué es la app y cómo
+  se prende, qué hace cada pestaña, su flujo ganador, y sus REGLAS DE ORO (lo que le gusta y lo que
+  NUNCA hacer: nada de cifras de precio en hooks, excluir Colombia en búsquedas, cero relleno, no
+  decir "listo" si algo falló, sin curas milagro en salud, blur sólido/quieto no mosaico, etc.).
+- Puse un puntero a ese archivo al inicio de `CLAUDE.md` para que la otra IA lo lea al arrancar.
+- Solo docs (2 archivos .md). NO toqué código, backend ni frontend. Nada que reiniciar ni probar.
+AVISO Juan: si querés, movemos/fusionamos partes de este onboarding con RESUMEN-TECNICO.md; por ahora
+lo dejé como doc aparte para no pisar nada tuyo.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔙 "Atrás" vuelve a la pestaña ANTERIOR (no al home) sin perder nada
+Jack: "cuando le dé a devolverme no me devuelva al home, sino a lo anterior que tenía, con todo guardado."
+- **Causa**: al entrar desde el home, `homeEnter` empujaba UNA sola entrada al historial; los cambios de
+  pestaña por el menú lateral NO empujaban historial → el gesto "atrás" desde cualquier pestaña saltaba
+  directo al garaje (home) y se sentía como "perder mis cosas".
+- **Fix (solo frontend/index.html, 1 bloque)**: el listener de clicks de `#tabs` ahora hace
+  `history.pushState({tab})` en cada cambio de pestaña, con **dedupe contra `history.state`** (no empuja si
+  ya estamos en ese estado). Así el historial queda home → tabA → tabB → tabC, y "atrás" retrocede
+  tabC→tabB→tabA→home. El contenido NO se pierde: las pestañas solo togglean `display` (el DOM queda
+  intacto) y la restauración por sessionStorage (cm_tab/cm_fp/jobs) ya existía. Solo llega al home cuando
+  ya estás en la primera pestaña que abriste.
+- El dedupe también evita entradas dobles cuando el click viene del propio "atrás" (popstate mueve el
+  puntero ANTES de disparar → el `b.click()` programático ve `history.state.tab` ya igual → no reempuja) o
+  del `homeEnter` que ya empujó.
+- VERIFICADO SIN GASTAR ($0): bloques JS 15/15 OK (node --check). Cambio puramente de navegación en el
+  navegador; no toca backend. AVISO Juan: cero backend tuyo tocado, solo el listener de pestañas en el front.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔵 Blur del proveedor: de BLOQUE SÓLIDO horrible → DESENFOQUE esmerilado (mi terreno)
+Jack mostró 8 clips reales (almohadillas) y se quejó FUERTE del "blur": era un RELLENO SÓLIDO (mediana
+del fondo) = un rectángulo de color plano, horrible y "no testeable". Antes fue mosaico (parpadeaba) →
+se pasaron a sólido → Jack ahora odia el sólido. Punto medio correcto = desenfoque real.
+- **`text_detect.py::_obscure` reescrito**: ahora es VIDRIO ESMERILADO → downscale MUY fuerte con
+  INTER_AREA (la línea de texto queda ~5px de alto = ILEGIBLE) → upscale CUBIC (liso, sin cuadros de
+  mosaico) → gaussiana leve → feather en el borde. El texto del proveedor queda ilegible pero se ve
+  como un blur natural (se transparenta el fondo), no un bloque plano. La caja del track ya era FIJA
+  (no se desliza/parpadea) — eso se conserva.
+- **VERIFICADO visualmente** (py_compile OK): probé la función REAL del módulo sobre un caption de
+  prueba con outline → texto ilegible + look esmerilado (comparé sólido actual vs 8 variantes de blur;
+  elegí downscale-area+cubic+gauss). NO corrí un render E2E (regla $0); el masking de video reusa esta
+  misma _obscure, así que aplica igual. Para verlo en la app hay que REINICIAR :8420.
+- Actualicé `PROMPT-ONBOARDING.md` (la regla vieja decía "blur SÓLIDO"; ahora dice esmerilado ilegible).
+
+DIAGNÓSTICO de las OTRAS 2 quejas de Jack (no toqué código de esto aún):
+- **Banner "aparece al seg 5" no obedecía**: en Cortar clips el frontend SÍ manda `banner_start` (default 5)
+  y `add_offer_banner` SÍ respeta start/dur (lo probé: t1 sin banner, t5 con, t9 sin) → el código de
+  Cortar clips está BIEN; el video de Jack es de una corrida vieja (banner_start=0). En la próxima
+  corrida obedece. OJO: la ruta "✨ Crear creativo" (`auto_studio.py:440`) SÍ pone el banner full-video
+  sin start/dur, pero esa UI (p-auto) no ofrece el control de timing → no es "desobedecer", es diseño.
+- **Frames no concuerdan con la voz**: el mecanismo SÍ existe — `render_versions` usa
+  `guion_match.plan_montaje` (a cada FRASE de la voz le asigna el clip que mejor la ilustra) cuando hay
+  voz con tiempos por palabra. El descoordine es CALIDAD del matching (Gemini clasifica cada clip por
+  fase/contenido) + pool de clips corto. Mejorarlo toca `guion_match.py` (terreno de Juan) → PENDIENTE
+  coordinar con Juan. AVISO Juan: solo toqué text_detect.py (_obscure) + docs.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🧪 "1 de prueba → N más" + 🏷️ FIX banner con voz (aditivo, mi terreno)
+Pedido de Jack: "antes de darme los 8, dame 1 de prueba; yo lo apruebo y genero la cantidad que
+seleccione (1 a 7 más)". Construido punta a punta, aditivo (defaults = las 8 de siempre, no rompe
+nada de Juan):
+- **assemble.plan_variations(n_versions, start_version)**: computa SIEMPRE las 8 (la repartición de
+  clips usa el índice ABSOLUTO de versión → 'B' recibe SIEMPRE los clips de 'B') y DEVUELVE solo la
+  tajada [start:start+n]. Verificado: prueba='A', "3 más desde 1"=B,C,D (sin duplicar A).
+- **orchestrator.render_versions / process_job**: pasan n_versions/start_version a plan_variations.
+- **app.py**:
+  · `/api/process` + `_run_job`: param `n_versions` (front manda 1). Guarda `_src_paths`/`_src_settings`
+    y `_generated` para el "N más".
+  · `/api/render` + `_run_render_job`: params `n_versions`/`start_version`. El flujo CON VOZ reusa el
+    MISMO job (pool ya enmascarado del paso /scripts) → el "N más" NO re-analiza ni re-enmascara (barato).
+    Índice ABSOLUTO para guion+voz (B siempre = guion[1]/voz[1]).
+  · `/api/scripts`: ahora captura `banner_start`/`banner_dur`/`hook_seconds` en settings.
+  · NUEVO `/api/more-versions` (+ `_run_more_versions_job`) para el flujo SIN voz: re-render de N extra
+    reusando los mismos videos subidos, arrancando donde quedó (máx 8 total).
+- **🏷️ FIX BANNER (queja de Jack "le puse seg 5 y no hizo caso")**: en el flujo CON VOZ
+  (`_run_render_job`) el banner se ponía SIN start/dur → full-video desde el seg 0. AHORA pasa
+  `start`/`dur` de settings → respeta el "aparece al seg N · dura M". (En Cortar clips sin voz ya
+  estaba bien.) La causa: `/api/scripts` no guardaba banner_start (ya corregido).
+- **frontend**: Cortar clips genera 1 de PRUEBA (con o sin voz); al salir aparece panel
+  "✅ ¿Te gustó? Genera [1–7] más" (selector) → llama la ruta correcta según el flujo (voz→/api/render
+  reusando pool; sin voz→/api/more-versions) y APPENDEA las nuevas a la grilla sin borrar. Labels de
+  guiones actualizados ("1 de prueba" en vez de "8 videos").
+- VERIFICADO SIN GASTAR ($0): py_compile OK; JS 15/15; app importa (52 rutas); /api/more-versions viva
+  (422 sin params); plan_variations tajadas correctas; server reiniciado sano. NO corrí un render E2E
+  real (necesita subir videos + ElevenLabs) → Jack lo prueba en vivo.
+AVISO Juan: plan_variations/render_versions/process_job ganaron params OPCIONALES (n_versions=8,
+start_version=0) → tus llamadas sin ellos = comportamiento idéntico. Nada tuyo tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🎭 B-roll IA: quitar los que no gustan + bajar solo los que queden + mejorar búsqueda
+Pedido de Jack: en "Buscar B-roll con IA (Claude)", poder ELIMINAR los que no sirven y bajar SOLO los
+que queden; y si no le gusta ninguno, un botón para mejorar la búsqueda y refrescar. Solo frontend:
+- **🗑️ Quitar** en cada tarjeta de B-roll (`brollPrevDel`): saca el clip del preview Y del textarea
+  `tkBrollLinks` (+ del `brollFaseMap`), así "Bajar" ya NO lo baja. Re-pinta al instante.
+- **📥 Bajar los que quedaron (N)**: el botón de bajar ahora muestra el conteo y SOLO existe cuando hay
+  resultados (baja lo que quede en el textarea = los que Jack no borró). Reusa `bajarLinks` (sin cambios).
+- **🔄 Mejorar búsqueda y refrescar** (`refrescarBrollIA`): limpia el preview + textarea + faseMap y
+  vuelve a buscar con el ángulo (editado) de arriba; si el ángulo está vacío, pide llenarlo primero.
+- Los botones "Bajar/Refrescar" + un hint explicativo aparecen solo cuando hay B-roll para revisar
+  (los oculta `brollPrevPaint` cuando la lista está vacía).
+- Verificado: JS 15/15 OK. Cambio SOLO en index.html → no hay que reiniciar server, solo refrescar el
+  navegador. AVISO Juan: nada de backend tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔁 Loop de feedback en la prueba (Cortar clips) + 🔵 blur ajustable
+Pedido de Jack: cuando la prueba no le gusta, decirle DESDE LA APP qué está mal → que se corrija y
+vuelva a probar, y lo que sea de código que se lo mande a la terminal (a mí) para mejorarlo; iterar
+hasta que quede → ahí sí generar los que pida.
+- **Blur ajustable en la app** (su ejemplo): `text_detect._obscure(strength)` con niveles
+  suave/medio/fuerte (`_BLUR_LEVELS`), fijado por `mask_video`/`mask_captions_smart` por-thread.
+  Plomado `blur_strength` por render_versions/process_job + `/api/process` + `/api/scripts` +
+  `/api/render` (+ more-versions). Front: selector "Blur suave/medio/fuerte" junto a "Tapar con blur".
+  Verificado: fuerte borra más que suave (std 42 vs 48).
+- **Canal a la terminal**: NUEVO `/api/feedback` → guarda en `feedback-jack.md` (raíz del repo) lo que
+  Jack marca/escribe sobre una prueba. PROTOCOLO: agregué a CLAUDE.md que al arrancar se lea ese archivo
+  y se implementen las mejoras (marcar ✅ hecho). Probado en vivo (crea el .md con la entrada).
+- **Frontend (panel de la prueba)**: además de "✅ genera N más", ahora hay "❌ ¿Algo mal?" con chips
+  (blur / clips no cuadran con la voz / banner / clips feos / gancho / otro) + textarea. Botones:
+  "📝 Mandar a Claude (mejora el código)" (→ /api/feedback) y "🔧 Corregir y volver a probar" (guarda el
+  feedback + re-genera la prueba con los ajustes de arriba, ej. el blur nuevo). Iteras hasta que quede y
+  ahí generas los que pidas.
+- Verificado $0: py_compile 4/4; JS 15/15; blur strength responde; /api/feedback vivo (crea .md); server
+  reiniciado sano. NO corrí render E2E. AVISO Juan: params OPCIONALES nuevos (blur_strength="medio" en
+  render_versions/process_job/mask_*) → tus llamadas sin ellos = idénticas. Nada tuyo tocado.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🎯 Hook por versión (pastilla editable) + 🎁 oferta personalizada + 🚫 clips sin texto (menos blur feo)
+Jack mandó 2 screenshots reales (almohadillas): el blur salía como un BLOQUE ENORME feo cuando el clip
+usado tiene mucho texto quemado. Pidió 3 cosas (todas hechas y verificadas con VIDEO real, $0):
+
+- **🚫 PRIORIZAR CLIPS SIN TEXTO (menos blur feo)** — su queja raíz: "prioriza que los videos que se usen
+  no tengan texto, o si tienen que sea chico". `text_detect.text_coverage()` NUEVA: estima con EAST (2
+  frames, barato) qué fracción del frame cubre el texto quemado de cada candidato. `orchestrator.
+  _select_for_target` ahora PENALIZA el score por esa cobertura (cov<5% no resta; 15%≈-24; 25%+ lo hunde)
+  y re-ordena → las tomas cargadas de texto casi nunca se eligen si hay limpias, así el blur (cuando toca)
+  es chico. Best-effort: sin EAST no penaliza (= comportamiento viejo). VERIFICADO: el plagas (con
+  "CHINCHES" quemado) da text_coverage=0.21 → -41 pts. Corre en cada job (~5-7s, paralelo) porque es su
+  queja #1.
+- **🎁 OFERTA PERSONALIZADA** — "si no hay 2x1 que muestre solo envío gratis; o si tengo otra oferta que yo
+  la escriba y salga igual que el 2x1". `offer_banner.render_banner` ya soportaba line2; ahora `app.
+  _agregar_banner_oferta` recibe `line2` y `/api/process` + `/api/scripts` un Form `oferta_texto` (default
+  "OFERTA 2X1"). Campo nuevo en Cortar clips ("🎁 tu oferta"): escribe "3X2 · 50% OFF" y sale tal cual;
+  VACÍO = solo "ENVÍO GRATIS · PAGAS AL RECIBIR". VERIFICADO con PNG real (pill roja + tu texto / o sola).
+- **🎯 HOOK DE TEXTO POR VERSIÓN (pastilla blanca arriba, 0-3s, editable)** — referencia de Jack: el
+  "MIRA LA SOLUCIÓN" del plagas. Antes había UN solo gancho para todas (caja oscura). Ahora, por CADA
+  versión (cada ángulo), la IA escribe un hook COHERENTE con lo que dice esa versión (usa el guion del
+  `_regen`), se quema como PASTILLA BLANCA arriba SOLO los primeros 3s, y en los resultados hay una cajita
+  EDITABLE + botón "🔁 Re-aplicar hook" para reescribir el que quieras (o vaciarlo = quitarlo). Piezas:
+  `text_overlay.burn_hook_pill` + `_render_pill_png` (pastilla blanca, texto negro bold, PNG único por
+  versión) · `hook_gen.generate_hooks_for_versions` (1 llamada batched a Gemini → JSON array, SIN precios,
+  coherente) · `app._agregar_hooks_por_version` (se aplica AL FINAL, encima de todo; guarda v['_prehook']
+  = base sin hook para re-aplicar sin doble overlay + v['hook_text']) · endpoint `/api/reaplicar-hook` ·
+  UI en renderResults (las 2 funciones: normal + "N más") · JS `reaplicarHook` (refresca el video y el
+  botón descargar con la ruta nueva). Toggle nuevo "🎯 Hook por versión" (default ON, REEMPLAZA el gancho
+  global → no doble pastilla: cuando está ON el backend blanquea hook_text/auto_hook). Fallback honesto:
+  con key Gemini caído → `elegir_hook`; sin key → genéricos seguros de curiosidad ROTANDO (nunca off-topic
+  ni cifras), no un hook de librería que no cuadre con el producto.
+- **VERIFICADO SIN GASTAR ($0)**: py_compile 6/6; JS 15/15; `burn_hook_pill` sobre video real → pastilla
+  idéntica a la referencia (miré el frame); `text_coverage` real=0.21 en el plagas; `_agregar_hooks_por_
+  version` corrido ENTERO offline (sin key) sobre 2 clips → 2 pastillas aplicadas + _prehook + path nuevo;
+  `/api/reaplicar-hook` probado (aplicar texto nuevo + quitar=volver a base); ruta registrada (54 rutas).
+  NO corrí un render Gemini E2E (regla $0) — hay que REINICIAR :8420 para probarlo en la app.
+- AVISO Juan: NUEVOS: text_overlay.burn_hook_pill/_render_pill_png, hook_gen.generate_hooks_for_versions,
+  text_detect.text_coverage, app._agregar_hooks_por_version + /api/reaplicar-hook. OPCIONALES/aditivos:
+  offer_banner ya tenía line2; _agregar_banner_oferta gana kwarg `line2` (default = igual que antes);
+  _select_for_target penaliza texto SOLO si east_available (si no, idéntico). /api/process y /api/scripts
+  ganan Form `oferta_texto` + `hooks_por_version` (defaults retrocompatibles). Nada de tu terreno de
+  guiones/voz tocado.

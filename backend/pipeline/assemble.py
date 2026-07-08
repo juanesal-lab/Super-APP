@@ -293,18 +293,28 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
 
 
 def plan_variations(selected: list[Segment], target_seconds: float = 15.0,
-                    n_versions: int | None = None) -> list[tuple[str, list[int]]]:
+                    n_versions: int | None = None, start_version: int = 0
+                    ) -> list[tuple[str, list[int]]]:
     """Decide QUÉ clips (indices de `selected`) usa cada versión, SIN renderizar nada.
 
     Separado de build_variations para poder saber ANTES qué cortes se usan de verdad
     (así el tapado de textos procesa solo esos). Devuelve [(nombre, [indices]), ...].
 
-    `n_versions`: opcional. Por defecto 8 (comportamiento clásico). Si viene (embudo
-    TOFU/MOFU/BOFU: una versión por guion), se generan ESA cantidad de versiones."""
+    Fusión de dos flujos (ambos retrocompatibles: sin params = las 8 de siempre):
+    - `n_versions`: cuántas versiones DEVOLVER. Por defecto 8. Puede pasar de 8 (embudo
+      TOFU/MOFU/BOFU = una versión por guion) → los nombres más allá de 8 se autogeneran V9, V10…
+    - `start_version`: offset para el flujo "1 de prueba → N más" — se computa el set completo (el
+      reparto de clips usa el índice ABSOLUTO, así 'B' siempre recibe los clips de 'B' aunque salga en
+      el lote de 'N más') y se DEVUELVE solo la tajada [start_version : start_version+n_versions]."""
     n = len(selected)
-    NV = int(n_versions) if n_versions and int(n_versions) > 0 else 8
     _base_names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express",
                    "G_mixta", "H_alterna"]
+    if n_versions is None:
+        NV = 8; start_version = 0; n_versions = 8            # clásico: las 8
+    else:
+        n_versions = max(1, int(n_versions))
+        start_version = max(0, int(start_version))
+        NV = max(8, start_version + n_versions)              # computa >=8 (reparto estable) o más (embudo)
     # nombres ÚNICOS para cualquier NV (los de más allá de 8 se autogeneran V9, V10, …)
     names = [_base_names[i] if i < len(_base_names) else f"V{i + 1}" for i in range(NV)]
     cpv = max(4, min(10, round(target_seconds / 2.2)))   # clips por version
@@ -415,7 +425,7 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0,
             for i in order:
                 usage[i] += 1
             version_orders.append((names[vi], order))
-    return version_orders
+    return version_orders[start_version:start_version + n_versions]
 
 
 def build_variations(selected: list[Segment], work_dir: str,

@@ -196,15 +196,19 @@ def _load_shopify() -> tuple[str | None, str | None, str | None]:
 
 
 def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress,
-                           start: float = 0.0, dur: float = 0.0) -> None:
-    """Cortar clips: pill 'ENVÍO GRATIS · PAGAS AL RECIBIR' + 'OFERTA 2X1' arriba (como la foto
-    de Jack). La IA elige la altura para no tapar caras/producto (offer_banner.safe_top_y).
-    `start`/`dur`: el banner aparece en ese segundo por esa duración (no choca con el gancho)."""
+                           start: float = 0.0, dur: float = 0.0,
+                           line2: str = "OFERTA 2X1") -> None:
+    """Cortar clips: pill 'ENVÍO GRATIS · PAGAS AL RECIBIR' + 2ª línea (por defecto 'OFERTA 2X1',
+    pero Jack puede poner SU oferta o dejarla vacía = solo envío gratis). La IA elige la altura para
+    no tapar caras/producto (offer_banner.safe_top_y). `start`/`dur`: el banner aparece en ese
+    segundo por esa duración (no choca con el gancho). `line2`: texto de la 2ª línea ('' = sin ella)."""
     from pipeline.offer_banner import add_offer_banner
     from pipeline.assemble import WORKERS
     from concurrent.futures import ThreadPoolExecutor
+    line2 = (line2 or "").strip()
     cuando = f" (aparece al seg {start:.0f})" if start and start > 0 else ""
-    progress(f"🏷️ Poniendo el banner de oferta (2x1 · envío gratis){cuando}...", 97)
+    etq = line2 or "envío gratis"
+    progress(f"🏷️ Poniendo el banner de oferta ({etq}){cuando}...", 97)
     gk = _load_env_key()
 
     # EN PARALELO (antes en serie: 1 llamada Gemini + 1 re-encode por versión, una tras otra).
@@ -212,12 +216,76 @@ def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress,
     def _banner_one(v):
         try:
             out = v["path"][:-4] + "_of.mp4"
-            v["path"] = add_offer_banner(v["path"], out, work_dir, start=start, dur=dur, gemini_key=gk)
+            v["path"] = add_offer_banner(v["path"], out, work_dir, line2=line2,
+                                         start=start, dur=dur, gemini_key=gk)
         except Exception:  # noqa: BLE001
             pass
 
     with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
         list(ex.map(_banner_one, versions))
+
+
+def _agregar_hooks_por_version(result: dict, work_dir: str, product_desc: str, progress) -> None:
+    """🎯 Un HOOK de texto (pastilla blanca arriba, 0-3s) por versión, COHERENTE con lo que dice
+    cada ángulo (referencia de Jack: 'MIRA LA SOLUCIÓN'). La IA lo escribe; Jack lo edita/re-aplica
+    desde los resultados (/api/reaplicar-hook). Se aplica AL FINAL (encima de todo) sobre una base
+    que se guarda en v['_prehook'] para poder re-aplicar otro texto sin doble overlay.
+    Guarda v['hook_text'] (lo que se muestra en la cajita editable del front)."""
+    from pipeline.text_overlay import burn_hook_pill
+    from pipeline.hook_gen import generate_hooks_for_versions
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
+    versions = result.get("versions") or []
+    if not versions:
+        return
+    progress("🎯 Escribiendo los hooks de texto por versión...", 98)
+    gk = _load_env_key()
+    # guion por versión (para que el hook sea coherente con lo que DICE) — del estado de regen
+    guiones: dict[str, str] = {}
+    try:
+        for nm, d in ((result.get("_regen") or {}).get("versions") or {}).items():
+            guiones[str(nm)] = d.get("guion", "") or ""
+    except Exception:  # noqa: BLE001
+        guiones = {}
+    infos = [{"name": v.get("name", f"V{i}"),
+              "guion": guiones.get(v.get("name", ""), "")} for i, v in enumerate(versions)]
+    try:
+        hooks = generate_hooks_for_versions(gk, product_desc, infos)
+    except Exception:  # noqa: BLE001
+        hooks = [""] * len(versions)
+    # fallback por versión si la IA no dio hook para alguna. Con key: elegir_hook (Gemini adapta al
+    # producto). Sin key/IA caída: hooks genéricos SEGUROS de curiosidad (rotando, nunca off-topic ni
+    # cifras) — mejor eso que un hook de librería que no cuadra con el producto.
+    _GEN = ["MÍRALO HASTA EL FINAL", "NO VAS A CREER ESTO", "MIRA LA DIFERENCIA",
+            "ESTO LO CAMBIA TODO", "LO QUE NADIE TE CONTÓ", "MÍRALO ANTES DE QUE SE AGOTE",
+            "PRESTA ATENCIÓN A ESTO", "ASÍ DE FÁCIL"]
+    for i, v in enumerate(versions):
+        h = ((hooks[i] if i < len(hooks) else "") or "").strip()
+        if not h and gk:                    # la IA está viva pero el batch no dio esta → que adapte una
+            try:
+                from pipeline.winner_blueprint import elegir_hook
+                h = (elegir_hook(product_desc, gk, angulo=v.get("name", "")) or "").strip()
+            except Exception:  # noqa: BLE001
+                h = ""
+        if not h:                           # IA caída/sin key → genérico seguro (coherente, no inventa)
+            h = _GEN[i % len(_GEN)]
+        v["hook_text"] = h.upper()[:50]
+
+    def _one(item):
+        i, v = item
+        try:
+            base = v["path"]
+            out = base[:-4] + "_hk.mp4"
+            new, ok = burn_hook_pill(base, out, work_dir, v["hook_text"], seconds=3.0,
+                                     uid=f"{i}_{os.path.basename(base)}")
+            if ok:
+                v["_prehook"] = base       # base SIN hook → re-aplicar otro texto sin doble overlay
+                v["path"] = new
+        except Exception:  # noqa: BLE001
+            pass
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_one, list(enumerate(versions))))
 
 
 def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, progress) -> None:
@@ -263,6 +331,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         job["message"] = msg
         job["progress"] = pct
 
+    # guardo los inputs para el flujo "1 de prueba → N más" (re-render reusando estos mismos videos)
+    job["_src_paths"] = list(paths)
+    job["_src_settings"] = settings
     try:
         result = process_job(
             paths,
@@ -285,8 +356,13 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             destino=settings.get("destino", "tiktok"),
             gemini_key=_load_env_key(),
             broll_fases=settings.get("broll_fases"),
+            n_versions=int(settings.get("n_versions", 8)),
+            start_version=int(settings.get("start_version", 0)),
+            blur_strength=settings.get("blur_strength", "medio"),
             progress=progress,
         )
+        # cuántas versiones se han generado de ESTE origen (para el "N más": arranca donde quedó)
+        job["_generated"] = int(settings.get("start_version", 0)) + len((result or {}).get("versions") or [])
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
                 and settings.get("musica", True):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
@@ -294,7 +370,11 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
             _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress,
                                    start=settings.get("banner_start", 0.0),
-                                   dur=settings.get("banner_dur", 0.0))
+                                   dur=settings.get("banner_dur", 0.0),
+                                   line2=settings.get("banner_line2", "OFERTA 2X1"))
+        if result.get("ok") and result.get("versions") and settings.get("hooks_por_version"):
+            _agregar_hooks_por_version(result, os.path.join(WORK_DIR, job_id),
+                                       settings.get("product_desc", ""), progress)
         _stash_regen(job, result, job_id)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -443,8 +523,12 @@ def process(
     banner_oferta: bool = Form(False),
     banner_start: float = Form(0.0),
     banner_dur: float = Form(0.0),
+    oferta_texto: str = Form("OFERTA 2X1"),   # 2ª línea del banner (tu oferta; vacío = solo envío gratis)
+    hooks_por_version: bool = Form(False),    # 🎯 hook de texto (pastilla) por versión, 0-3s, editable
     hook_seconds: float = Form(0.0),
     destino: str = Form("tiktok"),
+    n_versions: int = Form(8),          # "1 de prueba → N más": el front manda 1 en la prueba
+    blur_strength: str = Form("medio"), # fuerza del desenfoque de textos (suave/medio/fuerte)
 ):
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
@@ -483,14 +567,156 @@ def process(
         "banner_oferta": bool(banner_oferta),
         "banner_start": max(0.0, float(banner_start)),
         "banner_dur": max(0.0, float(banner_dur)),
+        "banner_line2": oferta_texto.strip(),          # tu oferta (o '' = solo envío gratis)
+        "hooks_por_version": bool(hooks_por_version),   # 🎯 hook por versión (pastilla 0-3s, editable)
         "hook_seconds": max(0.0, float(hook_seconds)),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "broll_fases": broll_fases,
         "destino": destino if destino in ("tiktok", "meta") else "tiktok",
+        "n_versions": max(1, min(8, int(n_versions))),
+        "start_version": 0,
+        "blur_strength": blur_strength if blur_strength in ("suave", "medio", "fuerte") else "medio",
     }
+    if settings["hooks_por_version"]:      # el hook por versión reemplaza al global (no doble pastilla)
+        settings["hook_text"] = ""
+        settings["auto_hook"] = False
     threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
+
+
+@app.post("/api/reaplicar-hook")
+def reaplicar_hook(job_id: str = Form(...), i: int = Form(...), texto: str = Form("")):
+    """🎯 Re-aplica el HOOK de texto (pastilla arriba, 0-3s) de UNA versión con el texto que Jack
+    escribió. Vuelve a quemar sobre la base SIN hook (v['_prehook']) → no se acumulan overlays.
+    Texto vacío = quitar el hook (vuelve a la base). Devuelve la ruta nueva para refrescar el video."""
+    job = JOBS.get(job_id)
+    if not job or not isinstance(job.get("result"), dict):
+        raise HTTPException(404, "Ese proyecto ya no está disponible (genera de nuevo).")
+    versions = job["result"].get("versions") or []
+    if i < 0 or i >= len(versions):
+        raise HTTPException(400, "Versión inválida")
+    v = versions[i]
+    base = v.get("_prehook") or v.get("path")
+    if not base or not os.path.exists(base):
+        raise HTTPException(400, "No se puede re-aplicar el hook en esta versión.")
+    txt = (texto or "").strip()
+    if not txt:                       # quitar el hook: volver a la base sin pastilla
+        v["path"] = base
+        v["hook_text"] = ""
+        return {"ok": True, "path": base, "hook_text": ""}
+    from pipeline.text_overlay import burn_hook_pill
+    c = int(v.get("_hk_n", 0)) + 1    # contador → nombre único (el navegador no cachea el viejo)
+    v["_hk_n"] = c
+    out = base[:-4] + f"_hk{c}.mp4"
+    new, ok = burn_hook_pill(base, out, os.path.dirname(base), txt, seconds=3.0, uid=f"re{i}_{c}")
+    if not ok:
+        raise HTTPException(500, "No se pudo aplicar el hook (revisa que el video exista).")
+    v["path"] = new
+    v["hook_text"] = txt.upper()[:50]
+    return {"ok": True, "path": new, "hook_text": v["hook_text"]}
+
+
+@app.post("/api/more-versions")
+def more_versions(job_id: str = Form(...), n: int = Form(1)):
+    """Genera N versiones MÁS del mismo origen (flujo '1 de prueba → N más'). Reusa los videos ya
+    subidos + los mismos ajustes; arranca donde quedó la última tanda. Devuelve un job_id nuevo
+    para polling con /api/status. Máx 8 versiones en total."""
+    src = JOBS.get(job_id)
+    if not src or not src.get("_src_paths"):
+        raise HTTPException(404, "Ese proyecto no está disponible para generar más (genera de nuevo).")
+    ya = int(src.get("_generated", 1))
+    if ya >= 8:
+        raise HTTPException(400, "Ya tienes las 8 versiones (es el máximo).")
+    n = max(1, min(7, min(int(n), 8 - ya)))
+    rid = uuid.uuid4().hex[:12]
+    JOBS[rid] = {"status": "running", "progress": 0, "message": "Iniciando…",
+                 "result": None, "created": time.time()}
+    threading.Thread(target=_run_more_versions_job, args=(rid, job_id, ya, n), daemon=True).start()
+    return {"job_id": rid}
+
+
+def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
+    """Re-render de N versiones extra (start_version..+n) reusando los MISMOS videos y ajustes del
+    proyecto origen. Mismo post-proceso (música + banner) que el lote normal."""
+    job = JOBS[rid]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = int(pct)
+
+    try:
+        src = JOBS.get(src_job) or {}
+        paths = src.get("_src_paths") or []
+        s = dict(src.get("_src_settings") or {})
+        if not paths:
+            job["status"] = "error"; job["message"] = "El proyecto origen ya no está (genera de nuevo)."
+            return
+        wd = os.path.join(WORK_DIR, rid)
+        result = process_job(
+            paths, wd,
+            target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
+            use_gemini=s["use_gemini"], product_desc=s["product_desc"], aspect=s["aspect"],
+            hook_text=s["hook_text"], hook_pos=s["hook_pos"], hook_seconds=s.get("hook_seconds", 0.0),
+            auto_hook=s["auto_hook"], page_url=s["page_url"], enhance=s["enhance"],
+            effects=s.get("effects", False), blur_captions=s.get("blur_captions", False),
+            text_mode=s.get("text_mode", "tapar"), caption_pos=s.get("caption_pos", "abajo"),
+            destino=s.get("destino", "tiktok"), gemini_key=_load_env_key(),
+            broll_fases=s.get("broll_fases"),
+            n_versions=n, start_version=start_version,
+            blur_strength=s.get("blur_strength", "medio"), progress=progress)
+        if isinstance(result, dict) and result.get("ok") and result.get("versions") \
+                and s.get("musica", True):
+            _agregar_musica_sfx(result["versions"], wd, s.get("product_desc", ""), progress)
+        if result.get("ok") and result.get("versions") and s.get("banner_oferta"):
+            _agregar_banner_oferta(result["versions"], wd, progress,
+                                   start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
+                                   line2=s.get("banner_line2", "OFERTA 2X1"))
+        if result.get("ok") and result.get("versions") and s.get("hooks_por_version"):
+            _agregar_hooks_por_version(result, wd, s.get("product_desc", ""), progress)
+        _stash_regen(job, result, rid)
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "No se pudieron generar más versiones")
+        else:
+            # avanzar el contador del ORIGEN para que un 2º "N más" siga donde quedó (sin duplicar)
+            src["_generated"] = start_version + len(result.get("versions") or [])
+            job["message"] = "Listo"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error generando más versiones: {e}"
+
+
+@app.post("/api/feedback")
+def feedback(job_id: str = Form(""), texto: str = Form(""), issues: str = Form(""),
+             version_path: str = Form("")):
+    """Canal a la TERMINAL (el Claude que CONSTRUYE la app): desde la prueba, Jack anota qué mejorar
+    y se guarda en feedback-jack.md (raíz del repo) para mejorar el CÓDIGO. No corrige por sí mismo —
+    es la bitácora de mejoras pedidas desde la app (la IA la lee al arrancar)."""
+    texto = (texto or "").strip()
+    issues = (issues or "").strip()
+    if not texto and not issues:
+        raise HTTPException(400, "Escribe qué mejorar antes de enviarlo.")
+    from datetime import datetime
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    entry = (f"\n## {stamp}" + (f" · job {job_id}" if job_id else "") + "\n"
+             + (f"- **Problemas marcados:** {issues}\n" if issues else "")
+             + (f"- **Jack dice:** {texto}\n" if texto else "")
+             + (f"- **Video:** {version_path}\n" if version_path else ""))
+    fpath = os.path.join(BASE, "feedback-jack.md")
+    try:
+        nuevo = not os.path.exists(fpath)
+        with open(fpath, "a", encoding="utf-8") as f:
+            if nuevo:
+                f.write("# 📮 Feedback de Jack desde la app (para que la terminal/Claude mejore el CÓDIGO)\n\n"
+                        "Cada entrada = una prueba que no gustó + qué mejorar. La IA lo lee al arrancar "
+                        "una sesión y ajusta el código (blur, sincronía, etc.). Al resolver, marca la "
+                        "entrada como ✅ hecho.\n")
+            f.write(entry)
+        return {"ok": True, "message": "Anotado ✅ — Claude lo verá y lo mejora en el código."}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo guardar el feedback: {e}")
 
 
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
@@ -1090,6 +1316,12 @@ def scripts(
     use_captions: bool = Form(False),
     oferta_2x1: bool = Form(False),
     banner_oferta: bool = Form(False),
+    banner_start: float = Form(0.0),
+    banner_dur: float = Form(0.0),
+    oferta_texto: str = Form("OFERTA 2X1"),   # 2ª línea del banner (tu oferta; vacío = solo envío gratis)
+    hooks_por_version: bool = Form(False),    # 🎯 hook de texto (pastilla) por versión, 0-3s, editable
+    hook_seconds: float = Form(0.0),
+    blur_strength: str = Form("medio"),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     destino: str = Form("tiktok"),
@@ -1128,6 +1360,12 @@ def scripts(
         "use_music": bool(use_music), "captions": bool(use_captions),
         "oferta_2x1": bool(oferta_2x1),
         "banner_oferta": bool(banner_oferta),   # banner 2x1 arriba — antes SOLO existía sin voz
+        "banner_start": max(0.0, float(banner_start)),   # "aparece al seg N" (fix: antes se ignoraba)
+        "banner_dur": max(0.0, float(banner_dur)),       # "dura M s" (0 = hasta el final)
+        "banner_line2": oferta_texto.strip(),            # tu oferta (o '' = solo envío gratis)
+        "hooks_por_version": bool(hooks_por_version),    # 🎯 hook por versión (pastilla 0-3s, editable)
+        "hook_seconds": max(0.0, float(hook_seconds)),
+        "blur_strength": blur_strength if blur_strength in ("suave", "medio", "fuerte") else "medio",
         "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
         "broll_fases": broll_fases,
@@ -1137,6 +1375,9 @@ def scripts(
     _mix = {"TOFU": max(0, int(tofu)), "MOFU": max(0, int(mofu)), "BOFU": max(0, int(bofu))}
     if sum(_mix.values()) > 0:
         settings["mix"] = _mix
+    if settings["hooks_por_version"]:      # el hook por versión reemplaza al global (no doble pastilla)
+        settings["hook_text"] = ""
+        settings["auto_hook"] = False
     threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
 
@@ -1146,7 +1387,8 @@ N_VERSIONS = 8   # DEBE ir igual a orchestrator._N_VERSIONS: con 6, las versione
 
 
 def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
-                    voces: list[str] | None = None, stages: list[str] | None = None):
+                    voces: list[str] | None = None, stages: list[str] | None = None,
+                    n_versions: int = N_VERSIONS, start_version: int = 0):
     job = JOBS[job_id]
 
     def progress(msg, pct):
@@ -1158,18 +1400,26 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         wd = job["work_dir"]
         os.makedirs(wd, exist_ok=True)
         key = _load_eleven_key()
-        # Embudo: si vienen etapas (una por guion), se hace UNA versión por guion (1:1) y cada
-        # una queda etiquetada con su etapa. Sin etapas → 8 versiones clásicas (guiones ciclados).
+        # Dos modos (fusión):
+        #  • EMBUDO (hay etapas, una por guion) → UNA versión por guion (1:1), cada una etiquetada
+        #    con su etapa TOFU/MOFU/BOFU. nv = nº de guiones, desde 0.
+        #  • "1 de prueba → N más" (sin etapas) → tajada [sv : sv+nv] de las 8 (defaults = las 8).
+        #    Índice ABSOLUTO (sv+i) para que 'B' reciba SIEMPRE el mismo guion/voz salga en la
+        #    prueba o en "N más". El pool YA enmascarado (job["selected"]) se reusa (barato).
         stage_mode = bool(stages) and len(stages) == len(scripts)
-        n_ver = len(scripts) if stage_mode else N_VERSIONS
-        # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan).
-        # EN PARALELO y pagando TTS solo por cada par (guion, voz) ÚNICO — mismo patrón
-        # probado de producto_clips._guiones_y_narraciones (antes: 8 llamadas en serie).
-        chosen = [(scripts * (n_ver // max(1, len(scripts)) + 1))[i] for i in range(n_ver)]
+        if stage_mode:
+            nv, sv = len(scripts), 0
+            chosen = [scripts[i] for i in range(nv)]
+            _voz = lambda i: voces[i % len(voces)] if voces else voice_key   # noqa: E731
+        else:
+            nv = max(1, min(N_VERSIONS - int(start_version), int(n_versions)))
+            sv = max(0, min(N_VERSIONS - 1, int(start_version)))
+            _cyc = scripts * (N_VERSIONS // max(1, len(scripts)) + 1)
+            chosen = [_cyc[sv + i] for i in range(nv)]
+            _voz = lambda i: voces[(sv + i) % len(voces)] if voces else voice_key   # noqa: E731
         from pipeline.voiceover import acelerar as _acelerar_vo
         from concurrent.futures import ThreadPoolExecutor
-        pares = [(chosen[i], voces[i % len(voces)] if voces else voice_key)
-                 for i in range(n_ver)]
+        pares = [(chosen[i], _voz(i)) for i in range(nv)]
         unicos = sorted(set(pares))
         progress(f"Generando {len(unicos)} voces con ElevenLabs (en paralelo)...", 14)
         hechas_ct = [0]
@@ -1232,13 +1482,19 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
-            broll_fases=s.get("broll_fases"),
-            n_versions=(n_ver if stage_mode else None),
-            stages=(stages if stage_mode else None), progress=progress)
+            broll_fases=s.get("broll_fases"), n_versions=nv, start_version=sv,
+            stages=(stages if stage_mode else None),
+            blur_strength=s.get("blur_strength", "medio"), progress=progress)
         # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
-        # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1")
+        # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1").
+        # FIX 2026-07-08: ahora respeta el "aparece al seg N · dura M" (antes iba full-video desde
+        # el seg 0 aunque Jack pusiera 5 — su queja "le puse esto y no hizo caso").
         if manifest.get("ok") and manifest.get("versions") and s.get("banner_oferta"):
-            _agregar_banner_oferta(manifest["versions"], wd, progress)
+            _agregar_banner_oferta(manifest["versions"], wd, progress,
+                                   start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
+                                   line2=s.get("banner_line2", "OFERTA 2X1"))
+        if manifest.get("ok") and manifest.get("versions") and s.get("hooks_por_version"):
+            _agregar_hooks_por_version(manifest, wd, s.get("product_desc", ""), progress)
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
         _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})
@@ -1277,7 +1533,8 @@ def preview_voice(text: str = Form(...), voice: str = Form("kate")):
 def render(job_id: str = Form(...), voice: str = Form("kate"),
            voz_jc: int = Form(0), voz_kate: int = Form(0),
            scripts_json: str = Form(""), script_text: str = Form(""),
-           stages_json: str = Form("")):
+           stages_json: str = Form(""),
+           n_versions: int = Form(8), start_version: int = Form(0)):
     job = JOBS.get(job_id)
     if not job or "selected" not in job:
         raise HTTPException(404, "Sesión no encontrada (vuelve a generar los guiones)")
@@ -1307,7 +1564,10 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
     # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
     voces = (["juan_carlos"] * max(0, min(8, int(voz_jc)))
              + ["kate"] * max(0, min(8, int(voz_kate)))) or None
-    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces, stages),
+    nv = max(1, min(8, int(n_versions)))
+    sv = max(0, min(7, int(start_version)))
+    threading.Thread(target=_run_render_job,
+                     args=(job_id, scripts, voice, voces, stages, nv, sv),
                      daemon=True).start()
     return {"job_id": job_id}
 
@@ -1518,7 +1778,8 @@ def _run_producto_job(job_id: str, winner_urls: list[str], product_url: str,
         if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
             _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress,
                                    start=settings.get("banner_start", 0.0),
-                                   dur=settings.get("banner_dur", 0.0))
+                                   dur=settings.get("banner_dur", 0.0),
+                                   line2=settings.get("banner_line2", "OFERTA 2X1"))
         # Estado para "🔄 Regenerar UNA versión" (faltaba SOLO aquí → daba 404 y filtraba el pool
         # pesado _regen al frontend). Mismo patrón que Cortar clips / render con voz.
         _stash_regen(job, result, job_id, {"voz": settings.get("voz")})

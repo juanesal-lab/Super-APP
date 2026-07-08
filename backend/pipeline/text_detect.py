@@ -270,34 +270,50 @@ def _box_at(track: dict, i: int) -> tuple:
     return box
 
 
-def _obscure(roi):
-    """Tapa el texto con un RELLENO SÓLIDO (no mosaico pixelado, que se veía feo).
+# Fuerza del desenfoque (ajustable por Jack desde la app). Cada nivel = (divisor de downscale,
+# divisor del kernel gaussiano). Más divisor de downscale = más pequeño = MÁS borroso e ilegible.
+_BLUR_LEVELS = {
+    "suave":  (16, 8),    # menos agresivo (se transparenta más), sigue ilegible por la gaussiana
+    "medio":  (22, 6),    # el equilibrio (default)
+    "fuerte": (34, 4),    # muy esmerilado / máxima cobertura
+}
+_BLUR_STRENGTH = "medio"   # lo fija mask_video por-thread según el ajuste del usuario
 
-    Rellena la caja con el COLOR DE FONDO de la propia zona = la MEDIANA de sus píxeles: como el
-    texto es minoría frente al fondo, la mediana ≈ el fondo → el texto desaparece bajo un bloque
-    sólido del mismo color, que se ve limpio y se funde con el entorno. Los bordes se difuminan
-    apenas ~2 px para que el rectángulo no tenga un canto duro (queda 'perfecto', sin parche). Como
-    la caja del track es continua y el fondo del caption es estable, no parpadea."""
+
+def _obscure(roi, strength: str = None):
+    """Desenfoque tipo VIDRIO ESMERILADO: el texto del proveedor queda ILEGIBLE pero se ve como un
+    BLUR REAL — NO un bloque de color sólido (se veía horrible, queja de Jack) ni cuadros de mosaico
+    (parpadeaba). Se conserva el color y la forma del fondo (se transparenta borroso), como una zona
+    difuminada natural. Como la caja del track es FIJA y el fondo del caption es estable, no parpadea
+    ni se desliza. `strength` (suave/medio/fuerte) lo ajusta Jack desde la app.
+
+    Cómo: 1) downscale MUY fuerte con INTER_AREA (promedia → destruye la legibilidad del texto);
+    2) upscale CUBIC (liso, sin cuadros de mosaico) → vidrio esmerilado; 3) gaussiana leve."""
     import numpy as np
     h, w = roi.shape[:2]
     if h < 2 or w < 2:
         return roi
-    flat = roi.reshape(-1, roi.shape[2]) if roi.ndim == 3 else roi.reshape(-1, 1)
-    med = np.median(flat, axis=0)
-    solid = np.empty_like(roi)
-    solid[:] = med.astype(roi.dtype)
-    # feather MÍNIMO (1-2 px) SOLO en el borde para fundir el bloque con el entorno sin canto duro.
-    # (Se redujo: un feather grande mezcla de vuelta los píxeles ORIGINALES del borde y podía dejar
-    # asomar el filo de las letras; con más padding de caja el borde ya cae sobre el fondo.)
-    b = max(1, min(2, min(w, h) // 40))
-    if b >= 1 and w > 4 * b and h > 4 * b:
+    down_div, k_div = _BLUR_LEVELS.get(strength or _BLUR_STRENGTH, _BLUR_LEVELS["medio"])
+    # 1) downscale fuerte: la línea de texto queda poquísimos px de alto (ilegible), sin color plano
+    sh = max(2, h // down_div) if h >= 2 * down_div else max(2, h // 4)
+    sw = max(2, int(w * sh / max(1, h)))
+    small = cv2.resize(roi, (sw, sh), interpolation=cv2.INTER_AREA)
+    # 2) upscale suave (cubic) = esmerilado, sin los cuadros del mosaico
+    up = cv2.resize(small, (w, h), interpolation=cv2.INTER_CUBIC)
+    # 3) gaussiana leve para fundir cualquier resto de estructura
+    k = max(3, (h // k_div) | 1)
+    k = min(k, 61)
+    frosted = cv2.GaussianBlur(up, (k, k), 0)
+    # 4) feather en el borde para fundir el desenfoque con el entorno (sin canto duro)
+    b = max(1, min(6, min(w, h) // 16))
+    if w > 4 * b and h > 4 * b:
         mask = np.zeros((h, w), np.float32)
         mask[b:h - b, b:w - b] = 1.0
         mask = cv2.GaussianBlur(mask, (2 * b + 1, 2 * b + 1), 0)
         if roi.ndim == 3:
             mask = mask[:, :, None]
-        return (solid * mask + roi * (1.0 - mask)).astype(roi.dtype)
-    return solid
+        return (frosted * mask + roi * (1.0 - mask)).astype(roi.dtype)
+    return frosted.astype(roi.dtype)
 
 
 def _iou(a: tuple, b: tuple) -> float:
@@ -334,9 +350,52 @@ def _confirm(detections: list[tuple], min_det: int) -> dict[int, list[tuple]]:
     return confirmed
 
 
+def text_coverage(video_path: str, start: float = 0.0, end: float | None = None,
+                  samples: int = 2) -> float:
+    """Fracción aprox. del frame cubierta por TEXTO quemado (0..1), en el tramo [start,end].
+
+    Barato: muestrea `samples` frames del tramo y corre EAST (mismo detector del blur). Sirve para
+    PRIORIZAR en la selección las tomas SIN texto (menos blur feo): un clip con texto grande da una
+    cobertura alta y se penaliza. Best-effort: si no hay modelo o falla, devuelve 0.0 (no penaliza)."""
+    if not available():
+        return 0.0
+    try:
+        net = _load()
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return 0.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30
+        W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1
+        H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1
+        nframes = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        dur = nframes / max(1.0, fps)
+        s = max(0.0, float(start))
+        e = float(end) if (end and end > s) else (dur or (s + 1.0))
+        area = float(W * H) or 1.0
+        best = 0.0
+        for k in range(max(1, samples)):
+            t = s + (e - s) * (k + 1) / (max(1, samples) + 1)
+            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
+            ok, fr = cap.read()
+            if not ok or fr is None:
+                continue
+            try:
+                boxes = _detect(net, fr)
+            except Exception:
+                boxes = []
+            cov = sum(max(0, w) * max(0, h) for (x, y, w, h) in boxes) / area
+            best = max(best, min(1.0, cov))
+        cap.release()
+        return best
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
 def mask_video(in_path: str, out_path: str,
-               min_wh: float | None = None, conf: float | None = None) -> str:
-    """Tapa el texto detectado frame por frame y conserva el audio.
+               min_wh: float | None = None, conf: float | None = None,
+               strength: str = "medio") -> str:
+    """Tapa el texto detectado frame por frame y conserva el audio. `strength` (suave/medio/fuerte)
+    ajusta la intensidad del desenfoque (lo elige Jack desde la app).
 
     Tres pases para evitar falsos positivos (blur donde NO hay texto) y parpadeos:
       1) DETECTAR: recorre el video guardando solo las CAJAS de cada frame de detección
@@ -353,6 +412,8 @@ def mask_video(in_path: str, out_path: str,
     """
     if not available():
         return in_path
+    global _BLUR_STRENGTH
+    _BLUR_STRENGTH = strength if strength in _BLUR_LEVELS else "medio"
     mw = _MIN_WH if min_wh is None else min_wh
     cf = _CONF if conf is None else conf
     net = _load()

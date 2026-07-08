@@ -147,3 +147,65 @@ def generate_hook(api_key: str | None, product_desc: str = "",
         return hook[:50].upper()
     except Exception:
         return ""
+
+
+def generate_hooks_for_versions(api_key: str | None, product_desc: str,
+                                versiones: list[dict]) -> list[str]:
+    """UN hook de texto (pastilla arriba, 0-3s) POR versión, COHERENTE con lo que dice cada una.
+
+    `versiones`: lista de {"name": str, "guion": str} (el guion es lo que dice la voz de esa
+    versión; puede venir vacío en el flujo sin voz → el hook se basa en el producto + ángulo).
+    Devuelve una lista de hooks alineada a `versiones` (mismo largo/orden). Si la IA no responde,
+    devuelve '' en esa posición (el caller pone un fallback honesto, nunca inventa cifras).
+
+    Una sola llamada a Gemini (JSON array) para las N versiones → barato. Regla de Jack: SIN
+    precios/cifras en el gancho, español, corto, coherente con el video."""
+    n = len(versiones)
+    if n == 0:
+        return []
+    api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return [""] * n
+    bloques = []
+    for i, v in enumerate(versiones):
+        g = (v.get("guion") or "").strip()
+        g = (g[:280] + "…") if len(g) > 280 else g
+        bloques.append(f'{i}) ángulo "{v.get("name", "")}": '
+                       + (f'lo que dice: "{g}"' if g else "(sin voz — básate en el producto)"))
+    prompt = (
+        "Eres copywriter de ads de dropshipping para LATAM (Colombia). Para CADA versión de un "
+        f"anuncio del producto: {product_desc.strip() or '(producto)'}\n"
+        "escribe UN hook de texto para los PRIMEROS 3 SEGUNDOS (va como pastilla arriba del video).\n"
+        "REGLAS: español, MAYÚSCULAS, máximo 6 palabras, sin comillas/hashtags/emojis, "
+        "NADA de precios ni cifras de dinero (ej: nada de '$', '2x1', '50%'). El hook debe ser "
+        "COHERENTE con lo que dice/muestra ESA versión (curiosidad, problema→solución o deseo).\n"
+        "Versiones:\n" + "\n".join(bloques) + "\n\n"
+        f"Devuelve SOLO un JSON array de {n} strings, en el MISMO orden (uno por versión)."
+    )
+    texto = ""
+    try:
+        from . import gemini_fast
+        texto = gemini_fast.generate(api_key, [prompt]) or ""
+    except Exception:
+        texto = ""
+    if not texto:
+        try:
+            from google import genai
+            resp = genai.Client(api_key=api_key).models.generate_content(
+                model=_MODEL, contents=[prompt])
+            texto = resp.text or ""
+        except Exception:
+            return [""] * n
+    # parsear el JSON array (viene entre ```json ... ``` a veces)
+    import json
+    m = re.search(r"\[.*\]", texto, re.S)
+    hooks: list[str] = []
+    if m:
+        try:
+            arr = json.loads(m.group(0))
+            hooks = [str(x).strip().strip('"').strip("'").strip()[:50].upper() for x in arr]
+        except Exception:
+            hooks = []
+    if len(hooks) < n:                    # respaldo: reparte lo que haya, rellena con ''
+        hooks += [""] * (n - len(hooks))
+    return hooks[:n]

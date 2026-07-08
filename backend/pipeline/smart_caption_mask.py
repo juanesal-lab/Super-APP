@@ -131,12 +131,15 @@ def _classify_gemini(regions, frames, W, H, gemini_key) -> set[int]:
 
 
 def mask_captions_smart(in_path: str, out_path: str, *, gemini_key: str | None = None,
+                        strength: str = "medio",
                         progress: Callable[[str, int], None] | None = None) -> str:
-    """Tapa SOLO las captions (EAST localiza + Gemini clasifica). Devuelve out_path o in_path."""
+    """Tapa SOLO las captions (EAST localiza + Gemini clasifica). Devuelve out_path o in_path.
+    `strength` (suave/medio/fuerte): intensidad del desenfoque (ajuste de Jack)."""
     def rep(m, p):
         if progress:
             progress(m, p)
 
+    td._BLUR_STRENGTH = strength if strength in td._BLUR_LEVELS else "medio"
     if not td.available():
         return in_path
     net = td._load()

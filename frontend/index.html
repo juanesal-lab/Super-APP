@@ -2962,6 +2962,7 @@ function buildForm(){
   fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
   fd.append("destino", document.getElementById("destino").value);
+  fd.append("n_versions", "1");   // "1 de prueba → N más": el 1er render es solo 1 versión
   return fd;
 }
 
@@ -2974,6 +2975,9 @@ document.getElementById("go").onclick = async ()=>{
   const endpoint = useVO.checked ? "/api/scripts" : "/api/process";
   const r = await fetch(endpoint,{method:"POST",body:buildForm()});
   const j = await r.json();
+  // contexto para "1 de prueba → N más". Sin voz: ya tenemos el job del render. Con voz: el
+  // job del render se fija al elegir guiones (renderVO); aquí aún es el paso de guiones.
+  window._gen = useVO.checked ? null : {flow:'novoice', jobId:j.job_id, generated:0};
   poll(j.job_id);
 };
 
@@ -3098,7 +3102,7 @@ function renderScripts(jobId, scripts){
     return;
   }
   let html = `<div class="card"><h2>📝 Guiones de voz en off</h2>
-    <p class="pmsg" style="margin:-6px 0 14px">Se generan <b>8 versiones</b>, cada una con un guion distinto. Marca hasta 8 (vienen marcados los primeros 8). Puedes escuchar cada uno antes.</p>
+    <p class="pmsg" style="margin:-6px 0 14px">Primero se genera <b>1 video de PRUEBA</b> con el orden de guiones que marques. Si te gusta, abajo eliges <b>cuántos más</b> (1 a 7). Marca los guiones y escúchalos antes.</p>
     <div style="display:flex;flex-direction:column;gap:8px" id="scriptList">`;
   scripts.forEach((s,i)=>{
     const chk = i < 8 ? "checked" : "";
@@ -3116,7 +3120,7 @@ function renderScripts(jobId, scripts){
       </div></div>`;
   });
   html += `</div>
-    <button class="btn" id="renderVO" style="margin-top:16px">🔊  Generar 8 videos (un guion por versión)</button>
+    <button class="btn" id="renderVO" style="margin-top:16px">🔊  Generar 1 de prueba</button>
     </div>`;
   root.innerHTML = html;
 
@@ -3131,12 +3135,17 @@ function renderScripts(jobId, scripts){
     document.getElementById("renderVO").disabled = true;
     root.innerHTML = "";
     document.getElementById("progCard").classList.remove("hidden");
+    const scriptsJson = JSON.stringify(chosen);
     const fd = new FormData();
     fd.append("job_id", jobId);
-    fd.append("scripts_json", JSON.stringify(chosen));
+    fd.append("scripts_json", scriptsJson);
     fd.append("voice", document.getElementById("voice").value);
     const vm=(document.getElementById("voiceMezcla").value||'').split(',');
     fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
+    fd.append("n_versions", "1");        // 1 de PRUEBA (luego "N más")
+    fd.append("start_version", "0");
+    // contexto para "N más": el flujo con voz reusa el MISMO job (pool ya enmascarado) + estos guiones
+    window._gen = {flow:'voice', jobId:jobId, scriptsJson:scriptsJson, generated:0};
     const r = await fetch("/api/render",{method:"POST",body:fd});
     const j = await r.json();
     poll(j.job_id);
@@ -3211,6 +3220,133 @@ function renderResults(res, rootId){
     html += `</div></div>`;
   }
   root.innerHTML = html;
+  // "1 de prueba → N más": solo en Cortar clips (root por defecto) y si hay contexto de generación
+  if(!rootId && window._gen){
+    window._gen.generated = (res.versions||[]).length;
+    appendMorePanel();
+  }
+}
+
+// ── "1 de prueba → N más" ────────────────────────────────────────────────────────────────
+function appendMorePanel(){
+  const g = window._gen; if(!g) return;
+  const results = document.getElementById("results");
+  const viejo = document.getElementById("morePanel"); if(viejo) viejo.remove();
+  const restantes = 8 - (g.generated||0);
+  if(restantes <= 0){
+    const done = document.createElement("div");
+    done.id = "morePanel"; done.className = "card"; done.style = "background:var(--card2)";
+    done.innerHTML = `<b>✅ Ya tienes las 8 versiones.</b> <span style="color:var(--muted)">Es el máximo por proyecto.</span>`;
+    results.appendChild(done); return;
+  }
+  const maxSel = Math.min(7, restantes);
+  let opts = "";
+  for(let k=1;k<=maxSel;k++) opts += `<option value="${k}">${k}</option>`;
+  const panel = document.createElement("div");
+  panel.id = "morePanel"; panel.className = "card";
+  panel.style = "background:var(--card2);display:flex;align-items:center;gap:12px;flex-wrap:wrap";
+  panel.innerHTML = `<b>✅ ¿Te gustó?</b> <span style="color:var(--muted)">Genera</span>
+    <select id="moreN" style="background:var(--card);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:8px">${opts}</select>
+    <span style="color:var(--muted)">más &nbsp;(tienes ${g.generated}/8)</span>
+    <button class="btn" id="moreBtn" style="white-space:nowrap;width:auto">🔁 Generar los que elegí</button>`;
+  results.appendChild(panel);
+  document.getElementById("moreBtn").onclick = generarMas;
+}
+
+async function generarMas(){
+  const g = window._gen; if(!g) return;
+  const n = parseInt((document.getElementById("moreN")||{}).value||"1",10);
+  const btn = document.getElementById("moreBtn"); if(btn) btn.disabled = true;
+  document.getElementById("progCard").classList.remove("hidden");
+  document.getElementById("progMsg").textContent = "Generando "+n+" versión(es) más…";
+  document.getElementById("barFill").style.width = "0%";
+  let jobId;
+  try{
+    if(g.flow === 'voice'){
+      const fd = new FormData();
+      fd.append("job_id", g.jobId);
+      fd.append("scripts_json", g.scriptsJson);
+      fd.append("voice", document.getElementById("voice").value);
+      const vm=(document.getElementById("voiceMezcla").value||'').split(',');
+      fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
+      fd.append("n_versions", String(n));
+      fd.append("start_version", String(g.generated));
+      const r = await fetch("/api/render",{method:"POST",body:fd});
+      jobId = (await r.json()).job_id;
+    } else {
+      const fd = new FormData();
+      fd.append("job_id", g.jobId);
+      fd.append("n", String(n));
+      const r = await fetch("/api/more-versions",{method:"POST",body:fd});
+      const jj = await r.json();
+      if(!r.ok || jj.detail){ throw new Error(jj.detail || "No se pudo"); }
+      jobId = jj.job_id;
+    }
+  }catch(e){
+    document.getElementById("progMsg").innerHTML = `<span class="err">${e.message||e}</span>`;
+    appendMorePanel(); return;
+  }
+  pollMore(jobId);
+}
+
+async function pollMore(id){
+  const r = await fetch("/api/status/"+id);
+  const j = await r.json();
+  document.getElementById("barFill").style.width = j.progress+"%";
+  document.getElementById("progMsg").textContent = j.message;
+  if(j.status==="running"){ setTimeout(()=>pollMore(id),1200); return; }
+  document.getElementById("progCard").classList.add("hidden");
+  if(j.status==="error"){
+    document.getElementById("progMsg").innerHTML = `<span class="err">${j.message}</span>`;
+    appendMorePanel(); return;
+  }
+  if(j.result && j.result.versions && j.result.versions.length){
+    j.result._job_id = id;
+    appendVersions(j.result);
+    window._gen.generated += j.result.versions.length;
+  }
+  appendMorePanel();
+}
+
+// Agrega tarjetas de versión a la grilla existente (sin borrar las que ya están)
+function appendVersions(res){
+  let grid = document.querySelector("#results .vgrid");
+  if(!grid){ renderResults(res); return; }
+  const ar = ({"1:1":"1 / 1","9:16":"9 / 16","4:5":"4 / 5","16:9":"16 / 9"})[res.aspect] || "9 / 16";
+  const names = {A_gancho:"Versión A · Gancho primero", B_narrativa:"Versión B · Narrativa", C_corta:"Versión C · Corta", D_dinamica:"Versión D · Dinámica", E_inversa:"Versión E · Inversa", F_express:"Versión F · Express", G_mixta:"Versión G · Mixta", H_alterna:"Versión H · Alterna"};
+  const base = document.querySelectorAll("#results .vcard").length;   // índices únicos para los <select>
+  res.versions.forEach((v,k)=>{
+    const i = base + k;
+    const file = "/api/file?path="+enc(v.path);
+    const div = document.createElement("div");
+    div.className = "vcard";
+    div.innerHTML = `<video src="${file}" controls muted loop preload="metadata" style="aspect-ratio:${ar}"></video>
+      <div class="body">
+        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
+        <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
+        <div class="dlrow">
+          <select id="res${i}">
+            <option value="2160">4K · 2160</option>
+            <option value="1440">2K · 1440</option>
+            <option value="1080" selected>Alta · 1080</option>
+            <option value="720">Media · 720</option>
+            <option value="480">Baja · 480</option>
+          </select>
+          <button class="dl" onclick="dl('${enc(v.path)}','res${i}','${v.name}',this)">Descargar</button>
+        </div>
+        ${res._job_id ? `<div class="regenRow" data-jid="${res._job_id}" data-name="${v.name}">
+          <select class="regenSel">
+            <option value="edicion">🎬 Otra edición (efectos, cortes, ritmo)</option>
+            <option value="clips">🎞️ Otros clips (cámbialos por otros)</option>
+            <option value="guion">✍️ Otro guion + voz</option>
+            <option value="otra">🎲 Una versión totalmente distinta</option>
+          </select>
+          <button class="regenBtn" onclick="regenVersion(this)">🔄 Regenerar</button>
+        </div>` : ''}
+      </div>`;
+    grid.appendChild(div);
+  });
 }
 
 async function dl(path, selId, name, btn){

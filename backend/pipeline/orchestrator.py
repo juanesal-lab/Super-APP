@@ -212,6 +212,8 @@ def render_versions(
     target_seconds: float = 15.0,
     max_clip_seconds: float = 3.0,
     broll_fases: dict | None = None,   # {ruta fuente B-roll: fase forzada (problema/resultado/...)}
+    n_versions: int = 8,          # cuántas versiones RENDERIZAR (flujo "1 de prueba → N más")
+    start_version: int = 0,       # desde cuál (0='A'; la prueba=1 desde 0, luego "N más"=N desde 1)
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos."""
@@ -286,7 +288,8 @@ def render_versions(
                 fases_por_idx[_i] = _f
         fases_pool = [fases_por_idx[i] for i in pool_idx]
 
-    version_orders = plan_variations(selected, target_seconds=plan_seconds)
+    version_orders = plan_variations(selected, target_seconds=plan_seconds,
+                                      n_versions=n_versions, start_version=start_version)
 
     # ── MONTAJE GUIADO POR EL GUION (flujo de Juan: primero el guion, después la edición) ──
     # Si la voz de cada versión ya existe con tiempos por palabra, el plan ciego se REEMPLAZA:
@@ -832,6 +835,8 @@ def process_job(
     destino: str = "tiktok",
     gemini_key: str | None = None,
     broll_fases: dict | None = None,
+    n_versions: int = 8,          # cuántas versiones renderizar (flujo "1 de prueba → N más")
+    start_version: int = 0,       # desde cuál version arranca (para el lote de "N más")
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Pipeline de una pasada: analiza y renderiza. Si `version_vos` viene (voz por versión ya
@@ -854,4 +859,5 @@ def process_job(
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
-        broll_fases=broll_fases, progress=progress)
+        broll_fases=broll_fases, n_versions=n_versions, start_version=start_version,
+        progress=progress)

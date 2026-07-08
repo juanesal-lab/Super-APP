@@ -3387,3 +3387,34 @@ DIAGNÓSTICO de las OTRAS 2 quejas de Jack (no toqué código de esto aún):
   voz con tiempos por palabra. El descoordine es CALIDAD del matching (Gemini clasifica cada clip por
   fase/contenido) + pool de clips corto. Mejorarlo toca `guion_match.py` (terreno de Juan) → PENDIENTE
   coordinar con Juan. AVISO Juan: solo toqué text_detect.py (_obscure) + docs.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🧪 "1 de prueba → N más" + 🏷️ FIX banner con voz (aditivo, mi terreno)
+Pedido de Jack: "antes de darme los 8, dame 1 de prueba; yo lo apruebo y genero la cantidad que
+seleccione (1 a 7 más)". Construido punta a punta, aditivo (defaults = las 8 de siempre, no rompe
+nada de Juan):
+- **assemble.plan_variations(n_versions, start_version)**: computa SIEMPRE las 8 (la repartición de
+  clips usa el índice ABSOLUTO de versión → 'B' recibe SIEMPRE los clips de 'B') y DEVUELVE solo la
+  tajada [start:start+n]. Verificado: prueba='A', "3 más desde 1"=B,C,D (sin duplicar A).
+- **orchestrator.render_versions / process_job**: pasan n_versions/start_version a plan_variations.
+- **app.py**:
+  · `/api/process` + `_run_job`: param `n_versions` (front manda 1). Guarda `_src_paths`/`_src_settings`
+    y `_generated` para el "N más".
+  · `/api/render` + `_run_render_job`: params `n_versions`/`start_version`. El flujo CON VOZ reusa el
+    MISMO job (pool ya enmascarado del paso /scripts) → el "N más" NO re-analiza ni re-enmascara (barato).
+    Índice ABSOLUTO para guion+voz (B siempre = guion[1]/voz[1]).
+  · `/api/scripts`: ahora captura `banner_start`/`banner_dur`/`hook_seconds` en settings.
+  · NUEVO `/api/more-versions` (+ `_run_more_versions_job`) para el flujo SIN voz: re-render de N extra
+    reusando los mismos videos subidos, arrancando donde quedó (máx 8 total).
+- **🏷️ FIX BANNER (queja de Jack "le puse seg 5 y no hizo caso")**: en el flujo CON VOZ
+  (`_run_render_job`) el banner se ponía SIN start/dur → full-video desde el seg 0. AHORA pasa
+  `start`/`dur` de settings → respeta el "aparece al seg N · dura M". (En Cortar clips sin voz ya
+  estaba bien.) La causa: `/api/scripts` no guardaba banner_start (ya corregido).
+- **frontend**: Cortar clips genera 1 de PRUEBA (con o sin voz); al salir aparece panel
+  "✅ ¿Te gustó? Genera [1–7] más" (selector) → llama la ruta correcta según el flujo (voz→/api/render
+  reusando pool; sin voz→/api/more-versions) y APPENDEA las nuevas a la grilla sin borrar. Labels de
+  guiones actualizados ("1 de prueba" en vez de "8 videos").
+- VERIFICADO SIN GASTAR ($0): py_compile OK; JS 15/15; app importa (52 rutas); /api/more-versions viva
+  (422 sin params); plan_variations tajadas correctas; server reiniciado sano. NO corrí un render E2E
+  real (necesita subir videos + ElevenLabs) → Jack lo prueba en vivo.
+AVISO Juan: plan_variations/render_versions/process_job ganaron params OPCIONALES (n_versions=8,
+start_version=0) → tus llamadas sin ellos = comportamiento idéntico. Nada tuyo tocado.

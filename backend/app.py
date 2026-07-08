@@ -263,6 +263,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         job["message"] = msg
         job["progress"] = pct
 
+    # guardo los inputs para el flujo "1 de prueba → N más" (re-render reusando estos mismos videos)
+    job["_src_paths"] = list(paths)
+    job["_src_settings"] = settings
     try:
         result = process_job(
             paths,
@@ -285,8 +288,12 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
             destino=settings.get("destino", "tiktok"),
             gemini_key=_load_env_key(),
             broll_fases=settings.get("broll_fases"),
+            n_versions=int(settings.get("n_versions", 8)),
+            start_version=int(settings.get("start_version", 0)),
             progress=progress,
         )
+        # cuántas versiones se han generado de ESTE origen (para el "N más": arranca donde quedó)
+        job["_generated"] = int(settings.get("start_version", 0)) + len((result or {}).get("versions") or [])
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
                 and settings.get("musica", True):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
@@ -445,6 +452,7 @@ def process(
     banner_dur: float = Form(0.0),
     hook_seconds: float = Form(0.0),
     destino: str = Form("tiktok"),
+    n_versions: int = Form(8),          # "1 de prueba → N más": el front manda 1 en la prueba
 ):
     job_id = uuid.uuid4().hex[:12]
     job_upload = os.path.join(UPLOAD_DIR, job_id)
@@ -488,9 +496,78 @@ def process(
         "caption_pos": caption_pos if caption_pos in ("abajo", "arriba", "ambos") else "abajo",
         "broll_fases": broll_fases,
         "destino": destino if destino in ("tiktok", "meta") else "tiktok",
+        "n_versions": max(1, min(8, int(n_versions))),
+        "start_version": 0,
     }
     threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
     return {"job_id": job_id}
+
+
+@app.post("/api/more-versions")
+def more_versions(job_id: str = Form(...), n: int = Form(1)):
+    """Genera N versiones MÁS del mismo origen (flujo '1 de prueba → N más'). Reusa los videos ya
+    subidos + los mismos ajustes; arranca donde quedó la última tanda. Devuelve un job_id nuevo
+    para polling con /api/status. Máx 8 versiones en total."""
+    src = JOBS.get(job_id)
+    if not src or not src.get("_src_paths"):
+        raise HTTPException(404, "Ese proyecto no está disponible para generar más (genera de nuevo).")
+    ya = int(src.get("_generated", 1))
+    if ya >= 8:
+        raise HTTPException(400, "Ya tienes las 8 versiones (es el máximo).")
+    n = max(1, min(7, min(int(n), 8 - ya)))
+    rid = uuid.uuid4().hex[:12]
+    JOBS[rid] = {"status": "running", "progress": 0, "message": "Iniciando…",
+                 "result": None, "created": time.time()}
+    threading.Thread(target=_run_more_versions_job, args=(rid, job_id, ya, n), daemon=True).start()
+    return {"job_id": rid}
+
+
+def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
+    """Re-render de N versiones extra (start_version..+n) reusando los MISMOS videos y ajustes del
+    proyecto origen. Mismo post-proceso (música + banner) que el lote normal."""
+    job = JOBS[rid]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = int(pct)
+
+    try:
+        src = JOBS.get(src_job) or {}
+        paths = src.get("_src_paths") or []
+        s = dict(src.get("_src_settings") or {})
+        if not paths:
+            job["status"] = "error"; job["message"] = "El proyecto origen ya no está (genera de nuevo)."
+            return
+        wd = os.path.join(WORK_DIR, rid)
+        result = process_job(
+            paths, wd,
+            target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
+            use_gemini=s["use_gemini"], product_desc=s["product_desc"], aspect=s["aspect"],
+            hook_text=s["hook_text"], hook_pos=s["hook_pos"], hook_seconds=s.get("hook_seconds", 0.0),
+            auto_hook=s["auto_hook"], page_url=s["page_url"], enhance=s["enhance"],
+            effects=s.get("effects", False), blur_captions=s.get("blur_captions", False),
+            text_mode=s.get("text_mode", "tapar"), caption_pos=s.get("caption_pos", "abajo"),
+            destino=s.get("destino", "tiktok"), gemini_key=_load_env_key(),
+            broll_fases=s.get("broll_fases"),
+            n_versions=n, start_version=start_version, progress=progress)
+        if isinstance(result, dict) and result.get("ok") and result.get("versions") \
+                and s.get("musica", True):
+            _agregar_musica_sfx(result["versions"], wd, s.get("product_desc", ""), progress)
+        if result.get("ok") and result.get("versions") and s.get("banner_oferta"):
+            _agregar_banner_oferta(result["versions"], wd, progress,
+                                   start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0))
+        _stash_regen(job, result, rid)
+        job["result"] = result
+        job["status"] = "done" if result.get("ok") else "error"
+        if not result.get("ok"):
+            job["message"] = result.get("error", "No se pudieron generar más versiones")
+        else:
+            # avanzar el contador del ORIGEN para que un 2º "N más" siga donde quedó (sin duplicar)
+            src["_generated"] = start_version + len(result.get("versions") or [])
+            job["message"] = "Listo"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error generando más versiones: {e}"
 
 
 # ---- Cortar clips DESDE LINKS de TikTok (pegar links -> bajar -> cortar) ----
@@ -1041,6 +1118,9 @@ def scripts(
     use_captions: bool = Form(False),
     oferta_2x1: bool = Form(False),
     banner_oferta: bool = Form(False),
+    banner_start: float = Form(0.0),
+    banner_dur: float = Form(0.0),
+    hook_seconds: float = Form(0.0),
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     destino: str = Form("tiktok"),
@@ -1076,6 +1156,9 @@ def scripts(
         "use_music": bool(use_music), "captions": bool(use_captions),
         "oferta_2x1": bool(oferta_2x1),
         "banner_oferta": bool(banner_oferta),   # banner 2x1 arriba — antes SOLO existía sin voz
+        "banner_start": max(0.0, float(banner_start)),   # "aparece al seg N" (fix: antes se ignoraba)
+        "banner_dur": max(0.0, float(banner_dur)),       # "dura M s" (0 = hasta el final)
+        "hook_seconds": max(0.0, float(hook_seconds)),
         "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
         "broll_fases": broll_fases,
@@ -1089,7 +1172,8 @@ N_VERSIONS = 8   # DEBE ir igual a orchestrator._N_VERSIONS: con 6, las versione
 
 
 def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
-                    voces: list[str] | None = None):
+                    voces: list[str] | None = None,
+                    n_versions: int = N_VERSIONS, start_version: int = 0):
     job = JOBS[job_id]
 
     def progress(msg, pct):
@@ -1101,14 +1185,19 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         wd = job["work_dir"]
         os.makedirs(wd, exist_ok=True)
         key = _load_eleven_key()
-        # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan).
-        # EN PARALELO y pagando TTS solo por cada par (guion, voz) ÚNICO — mismo patrón
-        # probado de producto_clips._guiones_y_narraciones (antes: 8 llamadas en serie).
-        chosen = [(scripts * (N_VERSIONS // max(1, len(scripts)) + 1))[i] for i in range(N_VERSIONS)]
+        # "1 de prueba → N más": se renderiza solo la tajada de versiones [sv : sv+nv]. Con los
+        # defaults (nv=8, sv=0) = las 8 de siempre. El pool YA enmascarado (job["selected"]) del
+        # paso /scripts se reusa → el "N más" NO re-analiza ni re-enmascara (barato).
+        nv = max(1, min(N_VERSIONS - int(start_version), int(n_versions)))
+        sv = max(0, min(N_VERSIONS - 1, int(start_version)))
+        # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan). Se usa el índice
+        # ABSOLUTO (sv+i) para que 'B' reciba SIEMPRE el mismo guion/voz salga en la prueba o en "N más".
+        _cyc = scripts * (N_VERSIONS // max(1, len(scripts)) + 1)
+        chosen = [_cyc[sv + i] for i in range(nv)]
         from pipeline.voiceover import acelerar as _acelerar_vo
         from concurrent.futures import ThreadPoolExecutor
-        pares = [(chosen[i], voces[i % len(voces)] if voces else voice_key)
-                 for i in range(N_VERSIONS)]
+        pares = [(chosen[i], voces[(sv + i) % len(voces)] if voces else voice_key)
+                 for i in range(nv)]
         unicos = sorted(set(pares))
         progress(f"Generando {len(unicos)} voces con ElevenLabs (en paralelo)...", 14)
         hechas_ct = [0]
@@ -1171,11 +1260,14 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             caption_size=s.get("caption_size", "mediano"),
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
-            broll_fases=s.get("broll_fases"), progress=progress)
+            broll_fases=s.get("broll_fases"), n_versions=nv, start_version=sv, progress=progress)
         # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
-        # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1")
+        # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1").
+        # FIX 2026-07-08: ahora respeta el "aparece al seg N · dura M" (antes iba full-video desde
+        # el seg 0 aunque Jack pusiera 5 — su queja "le puse esto y no hizo caso").
         if manifest.get("ok") and manifest.get("versions") and s.get("banner_oferta"):
-            _agregar_banner_oferta(manifest["versions"], wd, progress)
+            _agregar_banner_oferta(manifest["versions"], wd, progress,
+                                   start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0))
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
         _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})
@@ -1213,7 +1305,8 @@ def preview_voice(text: str = Form(...), voice: str = Form("kate")):
 @app.post("/api/render")
 def render(job_id: str = Form(...), voice: str = Form("kate"),
            voz_jc: int = Form(0), voz_kate: int = Form(0),
-           scripts_json: str = Form(""), script_text: str = Form("")):
+           scripts_json: str = Form(""), script_text: str = Form(""),
+           n_versions: int = Form(8), start_version: int = Form(0)):
     job = JOBS.get(job_id)
     if not job or "selected" not in job:
         raise HTTPException(404, "Sesión no encontrada (vuelve a generar los guiones)")
@@ -1232,7 +1325,9 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
     # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
     voces = (["juan_carlos"] * max(0, min(8, int(voz_jc)))
              + ["kate"] * max(0, min(8, int(voz_kate)))) or None
-    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces),
+    nv = max(1, min(8, int(n_versions)))
+    sv = max(0, min(7, int(start_version)))
+    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces, nv, sv),
                      daemon=True).start()
     return {"job_id": job_id}
 

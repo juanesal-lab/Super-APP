@@ -292,16 +292,26 @@ def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
     return out_path
 
 
-def plan_variations(selected: list[Segment], target_seconds: float = 15.0
+def plan_variations(selected: list[Segment], target_seconds: float = 15.0,
+                    n_versions: int = 8, start_version: int = 0
                     ) -> list[tuple[str, list[int]]]:
     """Decide QUÉ clips (indices de `selected`) usa cada versión, SIN renderizar nada.
 
     Separado de build_variations para poder saber ANTES qué cortes se usan de verdad
-    (así el tapado de textos procesa solo esos). Devuelve [(nombre, [indices]), ...]."""
+    (así el tapado de textos procesa solo esos). Devuelve [(nombre, [indices]), ...].
+
+    `n_versions`/`start_version`: para el flujo "1 de prueba → N más" — se renderiza solo la
+    tajada de nombres [start_version : start_version+n_versions] (ej. prueba = 1 desde 0 = 'A';
+    luego 'N más' = N desde 1 = 'B','C'...). Sin ellos = las 8 de siempre (retrocompatible)."""
     n = len(selected)
     NV = 8
     names = ["A_gancho", "B_narrativa", "C_corta", "D_dinamica", "E_inversa", "F_express",
              "G_mixta", "H_alterna"]
+    # Se COMPUTAN siempre las 8 (la repartición de clips usa el índice ABSOLUTO de versión, así
+    # 'B' siempre recibe los clips de 'B' aunque salga en el lote de "N más") y al final se DEVUELVE
+    # solo la tajada [start_version : start_version+n_versions]. Sin params = las 8 (retrocompatible).
+    start_version = max(0, min(int(start_version), len(names) - 1))
+    n_versions = max(1, min(int(n_versions), len(names) - start_version))
     cpv = max(4, min(10, round(target_seconds / 2.2)))   # clips por version
     if n == 0:
         return []
@@ -410,7 +420,7 @@ def plan_variations(selected: list[Segment], target_seconds: float = 15.0
             for i in order:
                 usage[i] += 1
             version_orders.append((names[vi], order))
-    return version_orders
+    return version_orders[start_version:start_version + n_versions]
 
 
 def build_variations(selected: list[Segment], work_dir: str,

@@ -241,7 +241,8 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                  max_usos: int = 99,
                  firmas: dict[int, object] | None = None,
                  evitar: set[int] | None = None,
-                 afinidad: list[set[int]] | None = None) -> tuple[list[int], list[float]] | None:
+                 afinidad: list[set[int]] | None = None,
+                 broll_idx: set[int] | None = None) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
@@ -265,6 +266,7 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
     caps: list[float] = []
     hook_srcs = hook_srcs if hook_srcs is not None else set()
     evitar = evitar or set()          # clips a EVITAR (regenerar "cámbialos por otros")
+    broll_idx = broll_idx or set()    # clips B-ROLL: se FUERZAN a entrar (ganan su fase, sin tope de reuso)
 
     # bucket por ranking de score: la versión v "posee" los clips en las posiciones v, v+N, v+2N...
     ranking = sorted(fases_por_idx, key=lambda i: -selected[i].score)
@@ -307,6 +309,7 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                 i in evitar,                                # los "a evitar" van de últimos
                 selected[i].source_index in hook_srcs if es_hook else False,  # gancho: fuente NUEVA
                 _mismo_look(i, prev_i) if prev_i is not None else False,      # look distinto 1º
+                i not in broll_idx,                         # B-ROLL forzado: gana dentro de su fase
                 i not in afin_ids,                          # AFINIDAD: el clip que ilustra ESTA frase 1º
                 usage.get(i, 0),                            # menos usado por OTRAS versiones
                 bucket.get(i, 0) != version_i,              # su propia tajada del pool primero
@@ -321,7 +324,9 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
         # tope no servía: un clip salía en 7 de 8 versiones.)
         for relajar in (False, True):
             def _cabe(i: int) -> bool:
-                return i not in usados and (relajar or usage.get(i, 0) < max_usos)
+                # B-roll exento del tope de reuso: puede salir en TODAS las versiones (el usuario
+                # lo bajó para el momento de dolor y quiere verlo sí o sí).
+                return i not in usados and (relajar or i in broll_idx or usage.get(i, 0) < max_usos)
 
             candidato_misma_fuente: int | None = None
             for f in _PREFERENCIA.get(fase, list(FASES)):

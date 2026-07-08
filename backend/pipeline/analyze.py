@@ -55,6 +55,7 @@ class Segment:
     product_visible: bool = False  # Gemini: se ve el producto
     shows_use: bool = False        # Gemini: muestra como se usa / funciona
     tag: str = ""                  # Gemini: etiqueta corta de la escena
+    is_broll: bool = False         # el usuario lo bajó como B-ROLL (se FUERZA a entrar al montaje)
     def duration(self) -> float:
         return self.end - self.start
     def to_dict(self) -> dict:

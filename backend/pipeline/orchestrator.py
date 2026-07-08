@@ -57,6 +57,13 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     chosen_sigs: list = []
     per_source: dict[int, int] = {}
 
+    # B-ROLL FORZADO (bug real: los b-roll descargados no aparecían en el video). Los b-roll son
+    # escenas de APOYO que casi nunca muestran el producto → Gemini les da score bajo → nunca
+    # entraban al pool. Se reserva cupo aquí y se FUERZA su inclusión abajo (tras precalcular firmas).
+    n_broll_src = len({s.source_index for s in segments if getattr(s, "is_broll", False)})
+    if n_broll_src:
+        pool_size = min(120, pool_size + n_broll_src * 3)
+
     # Firmas perceptuales PRE-CALCULADAS EN PARALELO (cv2 abre/lee video: suelta el GIL).
     # Antes se calculaban una a una dentro del loop de dedup (~1-2s por corte, en serie).
     sig_cache: dict[int, list] = {}
@@ -67,6 +74,23 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
                 sig_cache[id(seg)] = sigs
     except Exception:  # noqa: BLE001
         sig_cache = {}
+
+    # B-ROLL: entran SÍ O SÍ (saltan el corte por score y el dedup), con tope por fuente para no
+    # inundar. El resto del pool se llena normal debajo (nunca re-agrega: `seg in chosen`).
+    if n_broll_src:
+        broll_cap = max(2, min(4, cap_per_source))
+        for seg in ranked:
+            if not getattr(seg, "is_broll", False) or seg in chosen:
+                continue
+            if per_source.get(seg.source_index, 0) >= broll_cap:
+                continue
+            sigs = sig_cache.get(id(seg))
+            if sigs is None:
+                sigs = segment_signatures(seg)
+                sig_cache[id(seg)] = sigs
+            chosen.append(seg)
+            chosen_sigs.extend(sigs)
+            per_source[seg.source_index] = per_source.get(seg.source_index, 0) + 1
 
     def is_duplicate(sigs) -> bool:
         # Duplicado REAL solo si: (a) algún frame es casi IDÉNTICO (<4 bits), o (b) COINCIDEN ≥2 de las
@@ -120,6 +144,7 @@ def analyze_select(
     use_gemini: bool = True,
     product_desc: str = "",
     gemini_key: str | None = None,
+    broll_paths: set[str] | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Analiza los videos, rankea con Gemini y selecciona los mejores cortes.
@@ -161,6 +186,13 @@ def analyze_select(
     if not all_segments:
         detail = (" Videos omitidos: " + "; ".join(skipped)) if skipped else ""
         return {"ok": False, "error": "No se encontraron segmentos utilizables en los videos." + detail}
+
+    # marcar los segmentos que vienen de fuentes B-ROLL → _select_for_target los FUERZA a entrar
+    if broll_paths:
+        _bset = {os.path.abspath(p) for p in broll_paths}
+        for s in all_segments:
+            if os.path.abspath(getattr(s, "video", "") or "") in _bset:
+                s.is_broll = True
 
     used_gemini = False
     if use_gemini:
@@ -278,13 +310,21 @@ def render_versions(
     # B-ROLL con intención: los clips que vienen de fuentes marcadas como B-roll usan la fase que
     # el usuario/Claude les dio (dolor/resultado/uso) en vez de la clasificación visual — así la
     # escena de DOLOR cae en el momento del dolor del guion, no donde sea (idea de Jack).
+    # FIX (2026-07-08): antes solo recorría pool_idx (top-60) → un b-roll de score bajo NO recibía
+    # su fase forzada. Ahora TODOS los seleccionados; y se junta broll_idx para forzarlos al montaje.
+    broll_idx: set[int] = set()
     if broll_fases:
         _bmap = {os.path.abspath(p): f for p, f in broll_fases.items()}
-        for _i in pool_idx:
+        for _i in range(len(selected)):
             _f = _bmap.get(os.path.abspath(getattr(selected[_i], "video", "") or ""))
             if _f in phase_classify.FASES:
                 fases_por_idx[_i] = _f
+                broll_idx.add(_i)
         fases_pool = [fases_por_idx[i] for i in pool_idx]
+    # respaldo: cualquier segmento marcado is_broll (aunque su ruta no calzara) también se fuerza
+    for _i in range(len(selected)):
+        if getattr(selected[_i], "is_broll", False):
+            broll_idx.add(_i)
 
     version_orders = plan_variations(selected, target_seconds=plan_seconds)
 
@@ -348,7 +388,8 @@ def render_versions(
                                                    n_versiones=len(version_orders),
                                                    hook_srcs=hook_srcs, max_usos=max_usos,
                                                    firmas=firmas,
-                                                   afinidad=(afinidad_pv[v_i] if afinidad_pv else None))
+                                                   afinidad=(afinidad_pv[v_i] if afinidad_pv else None),
+                                                   broll_idx=broll_idx)
                           if frases else None)
                 if frases:
                     frases_por_nombre[name] = frases
@@ -844,7 +885,8 @@ def process_job(
     subtítulos + mezcla pro se queman adentro del render (flujo de Mi producto)."""
     a = analyze_select(
         video_paths, target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
-        use_gemini=use_gemini, product_desc=product_desc, gemini_key=gemini_key, progress=progress)
+        use_gemini=use_gemini, product_desc=product_desc, gemini_key=gemini_key,
+        broll_paths=set(broll_fases or {}), progress=progress)
     if not a["ok"]:
         return a
     return render_versions(

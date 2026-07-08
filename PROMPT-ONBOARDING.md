@@ -93,8 +93,9 @@ cómo la uso, y lo que me gusta y lo que NO. Respétalo siempre.
   que le pido, no que me ponga peros.
 - Look pro: dorado/crema/negro, animado, tipo constructor de páginas premium. Mi garaje en
   la portada (Porsche 911 GT3 RS, Ducati Panigale V4, Lamborghini).
-- Blur de los textos del proveedor: SÓLIDO y QUIETO (relleno de color, caja fija) — NO
-  mosaico que se desliza ni parpadea.
+- Blur de los textos del proveedor: DESENFOQUE tipo vidrio esmerilado — ilegible pero se ve
+  como blur REAL (se transparenta el fondo), QUIETO (caja fija). NO bloque de color sólido
+  (horrible, no testeable) y NO mosaico que se desliza/parpadea.
 - Verticales 9:16 por defecto.
 
 ❌ **LO QUE NO ME GUSTA (NUNCA hagas esto):**

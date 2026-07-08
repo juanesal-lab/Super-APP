@@ -3360,3 +3360,30 @@ Jack: "cuando le dé a devolverme no me devuelva al home, sino a lo anterior que
   del `homeEnter` que ya empujó.
 - VERIFICADO SIN GASTAR ($0): bloques JS 15/15 OK (node --check). Cambio puramente de navegación en el
   navegador; no toca backend. AVISO Juan: cero backend tuyo tocado, solo el listener de pestañas en el front.
+
+### 2026-07-08 · Claude (jackingshop1-cell) · 🔵 Blur del proveedor: de BLOQUE SÓLIDO horrible → DESENFOQUE esmerilado (mi terreno)
+Jack mostró 8 clips reales (almohadillas) y se quejó FUERTE del "blur": era un RELLENO SÓLIDO (mediana
+del fondo) = un rectángulo de color plano, horrible y "no testeable". Antes fue mosaico (parpadeaba) →
+se pasaron a sólido → Jack ahora odia el sólido. Punto medio correcto = desenfoque real.
+- **`text_detect.py::_obscure` reescrito**: ahora es VIDRIO ESMERILADO → downscale MUY fuerte con
+  INTER_AREA (la línea de texto queda ~5px de alto = ILEGIBLE) → upscale CUBIC (liso, sin cuadros de
+  mosaico) → gaussiana leve → feather en el borde. El texto del proveedor queda ilegible pero se ve
+  como un blur natural (se transparenta el fondo), no un bloque plano. La caja del track ya era FIJA
+  (no se desliza/parpadea) — eso se conserva.
+- **VERIFICADO visualmente** (py_compile OK): probé la función REAL del módulo sobre un caption de
+  prueba con outline → texto ilegible + look esmerilado (comparé sólido actual vs 8 variantes de blur;
+  elegí downscale-area+cubic+gauss). NO corrí un render E2E (regla $0); el masking de video reusa esta
+  misma _obscure, así que aplica igual. Para verlo en la app hay que REINICIAR :8420.
+- Actualicé `PROMPT-ONBOARDING.md` (la regla vieja decía "blur SÓLIDO"; ahora dice esmerilado ilegible).
+
+DIAGNÓSTICO de las OTRAS 2 quejas de Jack (no toqué código de esto aún):
+- **Banner "aparece al seg 5" no obedecía**: en Cortar clips el frontend SÍ manda `banner_start` (default 5)
+  y `add_offer_banner` SÍ respeta start/dur (lo probé: t1 sin banner, t5 con, t9 sin) → el código de
+  Cortar clips está BIEN; el video de Jack es de una corrida vieja (banner_start=0). En la próxima
+  corrida obedece. OJO: la ruta "✨ Crear creativo" (`auto_studio.py:440`) SÍ pone el banner full-video
+  sin start/dur, pero esa UI (p-auto) no ofrece el control de timing → no es "desobedecer", es diseño.
+- **Frames no concuerdan con la voz**: el mecanismo SÍ existe — `render_versions` usa
+  `guion_match.plan_montaje` (a cada FRASE de la voz le asigna el clip que mejor la ilustra) cuando hay
+  voz con tiempos por palabra. El descoordine es CALIDAD del matching (Gemini clasifica cada clip por
+  fase/contenido) + pool de clips corto. Mejorarlo toca `guion_match.py` (terreno de Juan) → PENDIENTE
+  coordinar con Juan. AVISO Juan: solo toqué text_detect.py (_obscure) + docs.

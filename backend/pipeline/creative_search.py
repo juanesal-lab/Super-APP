@@ -25,8 +25,10 @@ from . import foreplay_search as fp
 from .tiktok_search import _expandir, _verificar, _verificar_video, analizar_foto, buscar
 
 # tope de thumbnails de Foreplay verificados con Gemini (costo acotado; flash es barato pero no gratis)
-_FP_VERIFY_MAX = 24
-_FP_TERMS = 3          # cuántos términos de búsqueda se mandan a Foreplay (cada uno gasta créditos)
+# Pool más grande (era 24): como ahora SOLO se devuelven matches alta/media (se descarta baja), hace
+# falta revisar más candidatos para llegar al N pedido SIN aflojar el juez.
+_FP_VERIFY_MAX = 32
+_FP_TERMS = 4          # cuántos términos de búsqueda se mandan a Foreplay (cada uno gasta créditos)
 
 # ── heurística barata para preferir los términos EN ESPAÑOL (analizar_foto mezcla ES+EN) ──────────
 _ES_CHARS = set("áéíóúñü¿¡")
@@ -112,9 +114,9 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 futs[ex.submit(_verificar, cand, ref_bytes, ref_desc, gemini_key)] = a
             for fut in as_completed(futs):
                 v, a = fut.result(), futs[fut]
-                # con rellenar_n conservamos también los match=true de confianza baja (tier 3),
-                # NUNCA los match=false → jamás otro producto.
-                if v and v.get("match") and (rellenar_n or v.get("confianza") != "baja"):
+                # SOLO match=true de confianza NO baja (alta/media). Nunca baja ni match=false →
+                # jamás otro producto (ni siquiera con rellenar_n: el juez NO se afloja).
+                if v and v.get("match") and v.get("confianza") != "baja":
                     a["_cover_conf"] = v.get("confianza")
                     cover_ok.append(a)
         # CONTENIDO: baja el video del ad y lo juzga por DENTRO (exacto = match + confianza no baja).
@@ -131,21 +133,21 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                     a["_conf"] = a.get("_cover_conf") or "media"   # de portada, que ya pasó el filtro
                     a["verificado_producto"] = True
                     confirmados.append(a)
-                elif v.get("match") and (rellenar_n or v.get("confianza") != "baja"):
+                elif v.get("match") and v.get("confianza") != "baja":
                     a["_conf"] = v.get("confianza")
                     a["verificado_producto"] = True
                     confirmados.append(a)
-                # match=False por contenido → fuera (no es el producto)
+                # match=False o confianza baja por contenido → fuera (no es seguro el mismo producto)
         confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
         if rellenar_n:
-            # TIERED: etiqueta por tier (1=alta, 2=media, 3=baja) y ordena tier→días. Baja a tiers
-            # menores SOLO para llegar al count; nunca cuela un match=false → jamás otro producto.
+            # TIERED (flujo "buscar creativos"): SOLO confianza ALTA (tier 1) o MEDIA (tier 2). Ya no
+            # hay confianza baja aquí (se filtró arriba); tier 3 nunca se devuelve. Ordena tier→días
+            # y baja a tier 2 solo para llegar al count. Si faltan, devuelve MENOS (honesto).
             for a in confirmados:
                 conf = a.get("_conf") or "media"
-                tier = 1 if conf == "alta" else (2 if conf == "media" else 3)
-                a["tier"] = tier
+                a["tier"] = 1 if conf == "alta" else 2
                 a["confianza"] = conf
-                a["verificado_producto"] = tier <= 2
+                a["verificado_producto"] = True
             confirmados.sort(key=lambda a: (a.get("tier", 2), -int(a.get("dias", 0) or 0)))
             ad_list = confirmados
         elif solo_confirmados:
@@ -180,16 +182,16 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
                      landing_text: str = "", rellenar_n: bool = False) -> dict:
     """Foto + nombre → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
 
-    `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
-    FRAMES de un video suyo — fotos primero) → ficha más completa; los jueces (TikTok y Foreplay)
-    usan las 2 primeras como referencia.
+    `image_paths` (opcional): hasta 6 imágenes del MISMO producto (fotos frente/lado/empaque y/o
+    los 5 mejores FRAMES de un video suyo — fotos primero) → ficha más completa; los jueces (TikTok
+    y Foreplay) usan las 2 primeras como referencia.
     `landing_text` (opcional): texto de la página de venta → contexto para la ficha y los términos
     (va dentro de la MISMA llamada de analizar_foto: cero llamadas extra).
     Devuelve {ok, keywords, desc, tiktok:{...igual que /api/tiktok-search...},
               foreplay:{ok, ads, n_confirmados, verificado, terminos, error?}}."""
     nombre = (nombre or "").strip()
     ref_bytes = None
-    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:4]
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
     if paths:
         info = analizar_foto(paths[0], nombre, gemini_key,     # 1 sola llamada para AMBAS fuentes
                              image_paths=paths, landing_text=landing_text)

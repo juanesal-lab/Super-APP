@@ -746,17 +746,21 @@ def _guardar_fotos_busqueda(foto, fotos, fotos_url: str = "") -> list[str]:
     return paths
 
 
-def _frames_de_videos(videos_ref) -> list[str]:
-    """Guarda los VIDEOS de referencia del producto (máx 2, tope 100MB c/u) y saca 2 frames nítidos
-    de cada uno con ffmpeg (al 25% y 60% de la duración, escala máx 1024) → rutas de jpgs que entran
-    como FOTOS de referencia adicionales. Cero llamadas de IA extra (los frames van dentro de la
-    misma llamada de analizar_foto). Cualquier video que falle se ignora sin romper."""
+def _frames_de_videos(videos_ref, total: int = 5) -> list[str]:
+    """Guarda los VIDEOS del producto (máx 2, tope 100MB c/u) y saca sus MEJORES frames como fotos de
+    referencia MULTI-FRAME: los más NÍTIDOS, sin negros ni borrosos (mejores_frames = varianza del
+    Laplaciano de cv2). Hasta ~`total` frames en total (repartidos si hay 2 videos). Más frames de
+    referencia = MUCHO mejor match del MISMO producto. Cero llamadas de IA extra (los frames van
+    dentro de la misma llamada de analizar_foto). Cualquier video que falle se ignora sin romper."""
+    from pipeline.tiktok_search import mejores_frames
+    vids = [up for up in list(videos_ref or []) if up is not None and up.filename][:2]
+    if not vids:
+        return []
     d = os.path.join(UPLOAD_DIR, "tksearch")
+    os.makedirs(d, exist_ok=True)
+    por_video = max(2, -(-total // len(vids)))            # ceil(total / n_videos), mínimo 2
     out: list[str] = []
-    for up in list(videos_ref or [])[:2]:
-        if up is None or not up.filename:
-            continue
-        os.makedirs(d, exist_ok=True)
+    for up in vids:
         vp = os.path.join(d, os.path.basename(up.filename))
         try:
             with open(vp, "wb") as o:
@@ -769,27 +773,38 @@ def _frames_de_videos(videos_ref) -> list[str]:
                     if escrito > 100 * 1024 * 1024:      # tope 100MB por video
                         break
                     o.write(chunk)
-            dur = float(subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", vp],
-                capture_output=True, text=True, timeout=30).stdout.strip() or 0)
         except Exception:  # noqa: BLE001
             continue
-        if dur <= 0:
+        try:
+            out += mejores_frames(vp, n=por_video, out_dir=d)
+        except Exception:  # noqa: BLE001
             continue
-        base = os.path.splitext(os.path.basename(vp))[0]
-        for pct in (0.25, 0.60):                          # 2 frames: producto en uso + otro ángulo
-            fp_img = os.path.join(d, f"{base}_f{int(pct * 100)}.jpg")
-            try:
-                subprocess.run(
-                    ["ffmpeg", "-y", "-ss", f"{dur * pct:.2f}", "-i", vp, "-frames:v", "1",
-                     "-vf", "scale='min(1024,iw)':'min(1024,ih)':force_original_aspect_ratio=decrease",
-                     "-q:v", "2", fp_img],
-                    capture_output=True, timeout=60)
-                if os.path.exists(fp_img) and os.path.getsize(fp_img) > 0:
-                    out.append(fp_img)
-            except Exception:  # noqa: BLE001
-                pass
+    return out[:total + 1]                                # tope 6 (5 + margen)
+
+
+def _thumbs_b64(paths: list[str], w: int = 160) -> list[str]:
+    """Miniaturas (data-URI base64) de los frames elegidos → el frontend las muestra para que el
+    usuario VEA qué fotogramas se usaron. Solo previsualización (no viajan los archivos)."""
+    out: list[str] = []
+    try:
+        import base64
+
+        import cv2
+    except ImportError:
+        return out
+    for p in paths:
+        try:
+            img = cv2.imread(p)
+            if img is None:
+                continue
+            h, ww = img.shape[:2]
+            if ww > w:
+                img = cv2.resize(img, (w, int(h * w / ww)))
+            ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            if ok:
+                out.append("data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode())
+        except Exception:  # noqa: BLE001
+            continue
     return out
 
 
@@ -830,17 +845,20 @@ def tiktok_search(nombre: str = Form(""), count: int = Form(20),
     → 2 frames c/u entran como fotos de referencia extra (tope total 4 imágenes, fotos primero).
     `landing`: link de la página de venta → contexto para la ficha y los términos. Todo opcional."""
     from pipeline.tiktok_search import buscar
-    img_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
-    img_paths = (img_paths + _frames_de_videos(videos_ref))[:4]
+    fotos_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
+    frames_video = _frames_de_videos(videos_ref)         # 5 mejores frames del video del producto
+    img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
     if not (nombre.strip() or img_paths):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
-    return buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
-                  api_key=_load_env_key(), count=int(count),
-                  anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
-                  foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
-                  image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
-                  landing_text=_texto_landing(landing),  # página de venta → mejores términos
-                  rellenar_n=True)                       # devolver los N pedidos (por tiers, mismo producto)
+    r = buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
+               api_key=_load_env_key(), count=int(count),
+               anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
+               foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
+               image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
+               landing_text=_texto_landing(landing),  # página de venta → mejores términos
+               rellenar_n=True)                       # devolver los N pedidos (por tiers, mismo producto)
+    r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
+    return r
 
 
 # ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
@@ -859,8 +877,9 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     `videos_ref` (máx 2): videos del producto → 2 frames c/u como fotos de referencia extra (tope
     total 4, fotos primero). `landing`: link de la página de venta → contexto para la ficha."""
     from pipeline.creative_search import buscar_creativos
-    img_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
-    img_paths = (img_paths + _frames_de_videos(videos_ref))[:4]
+    fotos_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
+    frames_video = _frames_de_videos(videos_ref)         # 5 mejores frames del video del producto
+    img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
     img_path = img_paths[0] if img_paths else None
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
@@ -873,6 +892,7 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
                          rellenar_n=True)   # devolver los N pedidos (por tiers, mismo producto)
     # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
     r["foto"] = os.path.basename(img_path) if img_path else ""
+    r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
     return r
 
 

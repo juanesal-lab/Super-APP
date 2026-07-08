@@ -38,12 +38,13 @@ def analizar_foto(image_path: str, nombre: str, api_key: str,
                   landing_text: str = "") -> dict:
     """Gemini: descripción precisa (producto + FORMA) + VARIAS búsquedas (amplía) + desc. Fallback: nombre.
 
-    `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
-    FRAMES sacados de un video suyo) → UNA sola llamada a Gemini con todas = ficha más completa.
+    `image_paths` (opcional): hasta 6 imágenes del MISMO producto (fotos frente/lado/empaque y/o
+    FRAMES sacados de un video suyo — p.ej. los 5 mejores frames de mejores_frames) → UNA sola
+    llamada a Gemini con todas = ficha más completa.
     `landing_text` (opcional): texto de la página de venta del producto → contexto para el nombre
     EXACTO, beneficios y sinónimos (mejores términos de búsqueda). Firma vieja intacta."""
     paths = [p for p in (image_paths or [image_path])
-             if p and os.path.exists(p)][:4]
+             if p and os.path.exists(p)][:6]
     if not (api_key and paths):
         return {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
     try:
@@ -118,6 +119,93 @@ def _expandir(kw: str, variants: list[str]) -> list[str]:
         if q and q.lower() not in {x.lower() for x in out}:
             out.append(q)
     return out[:16]
+
+
+def mejores_frames(video_path: str, n: int = 5, muestreo: int = 24,
+                   out_dir: str | None = None) -> list[str]:
+    """Del VIDEO del producto saca los N MEJORES frames como JPG para usarlos de referencia MULTI-FRAME.
+
+    Muestrea ~`muestreo` frames repartidos por todo el video (evitando intro/outro), puntúa cada uno
+    por NITIDEZ (varianza del Laplaciano de cv2), DESCARTA los casi-negros (brillo medio muy bajo) y
+    los borrosos, y devuelve las rutas de los N frames más nítidos y DISTINTOS entre sí (nada de 5
+    fotogramas casi idénticos). Más frames de referencia = MUCHO mejor match del MISMO producto.
+    Devuelve [] si no se pudo abrir el video o no hubo frames buenos."""
+    if not (video_path and os.path.exists(video_path)):
+        return []
+    try:
+        import cv2
+    except ImportError:
+        return []
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    out_dir = out_dir or os.path.dirname(video_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    base = os.path.splitext(os.path.basename(video_path))[0]
+    cand: list[tuple[float, "object", "object"]] = []   # (nitidez, mini_gris_32x32, frame_bgr)
+    try:
+        muestreo = max(6, muestreo)
+        if total > 1:
+            # posiciones repartidas evitando el primer/último 5% (intro/outro suelen ser malas)
+            idxs = [int(total * (0.05 + 0.90 * i / (muestreo - 1))) for i in range(muestreo)]
+        else:
+            idxs = None                                  # sin metadata de frames: leer secuencial
+        if idxs is not None:
+            for idx in idxs:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ok, fr = cap.read()
+                if not ok or fr is None:
+                    continue
+                _puntuar_frame(cv2, fr, cand)
+        else:
+            leidos = 0
+            while len(cand) < muestreo * 3 and leidos < 4000:
+                ok, fr = cap.read()
+                if not ok or fr is None:
+                    break
+                leidos += 1
+                if leidos % 5:                           # 1 de cada 5 fotogramas
+                    continue
+                _puntuar_frame(cv2, fr, cand)
+    finally:
+        cap.release()
+    if not cand:
+        return []
+    cand.sort(key=lambda x: x[0], reverse=True)          # más NÍTIDOS primero
+    # elige DISTINTOS: descarta el que sea casi igual (mini-gris) a uno ya elegido
+    elegidos: list[tuple[float, object, object]] = []
+    for tup in cand:
+        if any(float(cv2.absdiff(tup[1], e[1]).mean()) < 8 for e in elegidos):
+            continue
+        elegidos.append(tup)
+        if len(elegidos) >= n:
+            break
+    if len(elegidos) < n:                                # si el filtro dejó menos, completa con los mejores
+        ya = {id(e[2]) for e in elegidos}
+        for tup in cand:
+            if id(tup[2]) not in ya:
+                elegidos.append(tup)
+            if len(elegidos) >= n:
+                break
+    out: list[str] = []
+    for k, (_, _, fr) in enumerate(elegidos[:n]):
+        h, w = fr.shape[:2]
+        if w > 1024:
+            fr = cv2.resize(fr, (1024, int(h * 1024 / w)))
+        p = os.path.join(out_dir, f"{base}_best{k}.jpg")
+        if cv2.imwrite(p, fr, [cv2.IMWRITE_JPEG_QUALITY, 90]):
+            out.append(p)
+    return out
+
+
+def _puntuar_frame(cv2, fr, cand: list) -> None:
+    """Añade (nitidez, mini_gris_32x32, frame) a `cand` si el frame NO es casi-negro ni borroso."""
+    gray = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+    if float(gray.mean()) < 25:                          # casi negro → fuera
+        return
+    nit = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    if nit < 40:                                         # muy borroso → fuera
+        return
+    cand.append((nit, cv2.resize(gray, (32, 32)), fr))
 
 
 # Regiones donde el contenido suele estar en español (para priorizar sin gastar visión)
@@ -856,16 +944,17 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     y suma los que el juez de portada confirme (solo portada: tope de costo).
     `landing_text` (opcional): texto de la página de venta → mejor ficha y términos (cero llamadas
     extra: va dentro de la misma llamada de analizar_foto).
-    `rellenar_n` (flujo "buscar creativos"): en vez de descartar los match=true de confianza baja,
-    los CONSERVA por TIERS (1=alta, 2=media, 3=baja/título-fuerte) y baja a tiers menores SOLO para
-    llegar al `count` pedido. NUNCA cuela un match=false → jamás aparece OTRO producto. Cada link
-    lleva `tier`/`confianza` y `verificado_producto` (true en tier 1/2, false en tier 3). Default
-    False = comportamiento estricto de siempre para otros llamadores."""
+    `rellenar_n` (flujo "buscar creativos"): rellena hasta `count` usando SOLO matches CONFIRMADOS
+    de confianza ALTA o MEDIA (tier 1 y 2) — NUNCA confianza baja ni "solo por título". El juez NO
+    se afloja: para llegar al count se agranda el POOL de candidatos (más términos multilingües, más
+    páginas), no se bajan los estándares. Si hay menos de `count` matches verdaderos, devuelve MENOS
+    honestamente. Cada link lleva `tier`/`confianza` y `verificado_producto=True`. Default False =
+    comportamiento estricto de siempre para otros llamadores."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
     queries = _expandir(nombre, [])
-    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:4]
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
     if paths:
         info = analisis or analizar_foto(paths[0], nombre, api_key, image_paths=paths,
                                          landing_text=landing_text)
@@ -920,7 +1009,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                                       c.get("plays", 0)), reverse=True)
         # Verifica MUCHOS más (escalado a lo que pide el usuario): como el filtro estricto de "mismo
         # producto" descarta hartos, hay que revisar un pool grande para LLEGAR al count pedido.
-        pool_n = min(len(cand_list), max(120, count * 6))
+        pool_n = min(len(cand_list), max(150, count * 8))
         pool = cand_list[:pool_n]             # los más RELEVANTES primero (título > hispano > views)
         # ── VERIFICACIÓN EXACTA: por CONTENIDO del video, no por portada ─────────────────────
         # 1) PORTADA = pre-filtro BARATO. NO confirma sola (engaña: antes/después, cara, pie): solo
@@ -941,15 +1030,16 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
 
         def _confirmar_contenido(cands):
             """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja.
-            Con `rellenar_n` conserva TAMBIÉN los match=true de confianza baja (tier 3): nunca un
-            match=false. Cada match queda etiquetado con `_conf` (alta/media/baja) para el tier."""
+            SIEMPRE (también con `rellenar_n`) se DESCARTA la confianza baja: el flujo "buscar
+            creativos" solo devuelve el MISMO producto confirmado (alta/media), nunca match=false ni
+            baja. Cada match queda etiquetado con `_conf` (alta/media) para el tier."""
             out = []
             cands = [c for c in cands if (c.get("play") or c.get("video"))]
             with ThreadPoolExecutor(max_workers=4) as ex:
                 futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
                 for fut in as_completed(futs):
                     v = fut.result()
-                    if v and v.get("match") and (rellenar_n or v.get("confianza") != "baja"):
+                    if v and v.get("match") and v.get("confianza") != "baja":
                         c = futs[fut]
                         c["_conf"] = v.get("confianza")
                         c["_rank"] = (_CONF.get(v.get("confianza"), 0), v.get("muestra", False),
@@ -961,7 +1051,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         a_deep = [c for c in pool if (c.get("play") or c.get("video")) and
                   ((cover_res.get(id(c)) or {}).get("match") or _title_score(c) >= 2)]
         a_deep.sort(key=_prio, reverse=True)
-        a_deep = a_deep[:min(len(a_deep), max(40, count * 3))]   # presupuesto de descargas
+        a_deep = a_deep[:min(len(a_deep), max(60, count * 4))]   # presupuesto de descargas (pool amplio)
         matches = _confirmar_contenido(a_deep)
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
 
@@ -1003,17 +1093,22 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
             matches.extend(de_cuentas)
 
         if rellenar_n:
-            # TIERED (flujo "buscar creativos"): conserva TODO lo que un juez aprobó (match=true),
-            # etiquetado por tier — 1=alta, 2=media, 3=baja/título-fuerte. Ordena por tier y baja a
-            # tiers menores SOLO para llegar al count. NUNCA hay un match=false → jamás otro producto.
+            # TIERED (flujo "buscar creativos"): SOLO matches confirmados de confianza ALTA (tier 1)
+            # o MEDIA (tier 2). Se DESCARTA tier 3 (confianza baja / solo-título): el usuario exige
+            # literalmente el MISMO producto. Ordena tier 1 antes que 2 y baja a tier 2 solo para
+            # llegar al count. Si no hay suficientes, devuelve MENOS (honesto). Jamás match=false.
+            confirmados_t = []
             for c in matches:
                 conf = c.get("_conf") or "media"
                 tier = 1 if conf == "alta" else (2 if conf == "media" else 3)
+                if tier > 2:                           # baja/solo-título: FUERA (no es seguro que sea igual)
+                    continue
                 c["tier"] = tier
                 c["confianza"] = conf
-                c["verificado_producto"] = tier <= 2   # tier 1/2 = verificado; tier 3 = tentativo
-            matches.sort(key=lambda c: (c.get("tier", 2),) + tuple(-v for v in c.get("_rank", ())))
-            links = matches[:count]
+                c["verificado_producto"] = True        # tier 1/2 = MISMO producto confirmado
+                confirmados_t.append(c)
+            confirmados_t.sort(key=lambda c: (c.get("tier", 2),) + tuple(-v for v in c.get("_rank", ())))
+            links = confirmados_t[:count]
         else:
             for c in matches:
                 c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)

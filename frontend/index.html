@@ -679,8 +679,8 @@
         placeholder="🔗 …o pega el LINK de la foto (o de la página del producto) y presiona Enter">
       <div id="tkUrlChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
       <input type="file" id="tkVids" accept="video/*" multiple class="hidden">
-      <label class="autoDrop" for="tkVids" style="margin-top:8px"><b id="tkVidsName">🎥 Videos de tu producto (opcional)</b>
-        <div class="s">hasta 2 — saco fotos del video y la búsqueda sale más exacta</div></label>
+      <label class="autoDrop" for="tkVids" style="margin-top:8px"><b id="tkVidsName">🎥 Video de tu producto (opcional — alternativa a la foto)</b>
+        <div class="s">saco los 5 mejores frames (los más nítidos) del video → búsqueda mucho más exacta del MISMO producto</div></label>
       <div class="autoOpts">
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
         <input type="text" id="tkLanding" class="full" placeholder="🔗 Link de tu landing (opcional — mejora los términos de búsqueda)">
@@ -761,6 +761,7 @@
         const links=(tk.links||[]), ads=(fp.ads||[]);
         // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
+                     framesVideo:(j.frames_video||[]),   // miniaturas de los frames sacados del video
                      desc:j.desc||'', variants:(j.variants||[]), links:links, ads:ads,
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
                      fpOk:!!fp.ok, fpErr:fp.error||'', broll:(tk.broll||[]),
@@ -788,6 +789,14 @@
         const clTk=new Set(mas.filter(m=>m.fuente==='tiktok').flatMap(m=>m.idxs));
         const clFp=new Set(mas.filter(m=>m.fuente==='foreplay').flatMap(m=>m.idxs));
         let h='';
+        // ── frames del VIDEO usados como referencia (para que veas qué se usó) ──
+        if((S.framesVideo||[]).length){
+          h+='<div style="margin:14px 0 4px"><b>🎥 Frames de tu video usados de referencia ('+S.framesVideo.length+')</b>'+
+             '<div class="s" style="margin-bottom:6px">los más nítidos del video — con estos busqué el MISMO producto</div>'+
+             '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+             S.framesVideo.map(src=>'<img src="'+tkEsc(src)+'" style="width:78px;height:78px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">').join('')+
+             '</div></div>';
+        }
         // ── grupo 1: TikTok ──────────────────────────────────────────────
         const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1]));
         const conf=mainTk.map(p=>p[0]).filter(l=>l.verificado_producto);

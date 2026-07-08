@@ -152,26 +152,24 @@ def mask_captions_smart(in_path: str, out_path: str, *, gemini_key: str | None =
     # EAST AFINADO: input más grande (640x1280) + umbral más bajo para captar TAMBIÉN captions
     # grandes-abajo y chicas (hashtags/disclaimers) que el default (320x640) se saltaba. Capta de
     # MÁS a propósito (incluye reflejos/estantería); Gemini descarta lo que no es caption después.
-    _orig = (td._INW, td._INH, td._MIN_H)
-    td._INW, td._INH, td._MIN_H = 640, 1280, 0.013
+    # Los tamaños van POR PARÁMETRO a _detect (antes se mutaban globales → race entre hilos que hacía
+    # perder captions y dejaba pasar el texto del proveedor).
     rep("Detectando texto (EAST) frame por frame...", 10)
     detections, frames, i = [], {}, 0
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            if i % td.DETECT_EVERY == 0:
-                try:
-                    boxes = td._detect(net, frame, conf=0.5, min_wh=1.4)
-                except Exception:  # noqa: BLE001
-                    boxes = []
-                detections.append((i, boxes))
-                if boxes and len(frames) < 60:
-                    frames[i] = frame.copy()
-            i += 1
-    finally:
-        td._INW, td._INH, td._MIN_H = _orig   # restaura los globales (no afecta el path EAST normal)
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if i % td.DETECT_EVERY == 0:
+            try:
+                boxes = td._detect(net, frame, conf=0.5, min_wh=1.4,
+                                   inw=640, inh=1280, min_h=0.013)
+            except Exception:  # noqa: BLE001
+                boxes = []
+            detections.append((i, boxes))
+            if boxes and len(frames) < 60:
+                frames[i] = frame.copy()
+        i += 1
     cap.release()
 
     confirmed = td._confirm(detections, td._MIN_DETECTIONS if len(detections) >= 3 else 1)
@@ -184,7 +182,17 @@ def mask_captions_smart(in_path: str, out_path: str, *, gemini_key: str | None =
     keep_idx = _classify_gemini(regions, frames, W, H, gemini_key) if gemini_key else set(range(len(regions)))
     caption_regions = [regions[i] for i in range(len(regions)) if i in keep_idx]
     if not caption_regions:
-        return in_path   # nada era caption (todo era producto/escena) -> no tapa NADA
+        # FAIL-SAFE (pedido de Angelo "sigue el problema del blur"): EAST SÍ vio texto persistente,
+        # pero Gemini lo descartó TODO como escena/producto. Antes se devolvía el clip ORIGINAL con
+        # el texto del proveedor visible. Ahora, si hay texto en la ZONA típica de captions (banda
+        # inferior ~55%+ o superior ~18%), se tapa igual — mejor cubrir de más que dejar el texto ajeno.
+        def _en_zona_caption(r) -> bool:
+            x, y, w, h = r["box"]
+            cy = (y + h / 2.0) / max(1, H)
+            return cy >= 0.55 or cy <= 0.18
+        caption_regions = [r for r in regions if _en_zona_caption(r)]
+        if not caption_regions:
+            return in_path   # texto solo en el centro (parte de la escena) -> no tapa nada
 
     # Marca por frame solo las cajas que caen en una región-caption confirmada
     cap_boxes = {}

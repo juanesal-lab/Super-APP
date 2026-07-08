@@ -515,18 +515,19 @@ def fetch_links(links: str = Form("")):
 
 
 @app.post("/api/broll-dolor")
-def broll_dolor(producto: str = Form(...), angulo: str = Form(""),
+def broll_dolor(producto: str = Form(""), angulo: str = Form(""),
                 landing_url: str = Form(""), n: int = Form(8)):
     """🎭 Busca B-ROLL amarrado al ÁNGULO/PUNTO DE DOLOR sacado de la LANDING (fuente de verdad):
-    lee la página de venta → deriva el ángulo/dolor → busca en TikTok (sin Colombia) → juzga la
-    portada Y verifica el CONTENIDO de cada video (frames de adentro) para que de verdad ilustre la
-    escena. Devuelve links etiquetados por fase para el cajón de B-roll.
+    lee la página de venta → deriva el ángulo/dolor (y hasta el producto) → busca en TikTok (sin
+    Colombia) → juzga la portada Y verifica el CONTENIDO de cada video (frames de adentro) para que
+    de verdad ilustre la escena, PREFIERE b-roll SIN texto encima. Devuelve links por fase.
 
-    La landing (o al menos un ángulo con sustancia) es OBLIGATORIA: sin de dónde sacar el ángulo,
-    los b-roll salen genéricos y no cuadran (pedido de Angelo)."""
-    if not producto.strip():
-        raise HTTPException(400, "Describe el producto")
-    landing_url = landing_url.strip()
+    Con la LANDING NO hace falta escribir el producto (pedido de Angelo): se puede pegar el link en
+    el campo de ángulo también. Mínimo 5 escenas. Hace falta landing O un ángulo con sustancia."""
+    producto, angulo, landing_url = producto.strip(), angulo.strip(), landing_url.strip()
+    # Se puede pegar la landing en el campo de ÁNGULO: si el ángulo es un link, se usa como landing.
+    if not landing_url and angulo.startswith(("http://", "https://")):
+        landing_url, angulo = angulo, ""
     landing_text = ""
     if landing_url:
         if not landing_url.startswith(("http://", "https://")):
@@ -535,18 +536,21 @@ def broll_dolor(producto: str = Form(...), angulo: str = Form(""),
         if not landing_text:
             raise HTTPException(400, "No pude leer esa landing (¿link correcto y público?). "
                                      "Pégala bien o escribe el ángulo a mano.")
-    # Landing OBLIGATORIA salvo que des un ángulo con sustancia (≥3 palabras): de algún lado hay
-    # que sacar el ángulo de venta, si no el b-roll sale genérico.
-    if not landing_text and len(angulo.split()) < 3:
-        raise HTTPException(400, "Pega la LANDING del producto (recomendado) o escribe el ángulo / "
-                                 "punto de dolor con detalle — de ahí saco los B-roll acordes.")
+    # Hace falta de dónde sacar el ángulo: landing, o un ángulo con sustancia, o el producto escrito.
+    if not landing_text and len(angulo.split()) < 3 and not producto:
+        raise HTTPException(400, "Pega la LANDING del producto (recomendado, aquí mismo en el campo) "
+                                 "o escribe el ángulo / punto de dolor con detalle — de ahí saco los "
+                                 "B-roll acordes.")
+    # nombre para las búsquedas: el producto escrito, o algo derivable del ángulo/landing (buscar_broll
+    # arma las queries desde el landing_text de todos modos, así que el nombre es secundario).
+    nombre = producto or (angulo[:60] if angulo else "producto")
     from pipeline.tiktok_search import buscar_broll
-    res = buscar_broll(producto.strip(), producto.strip(), _load_env_key(),
-                       n=max(2, min(16, n)), angulo=angulo.strip(),
+    res = buscar_broll(nombre, nombre, _load_env_key(),
+                       n=max(5, min(16, n)), angulo=angulo,     # MÍNIMO 5 (pedido de Angelo)
                        anthropic_key=_load_anthropic_key(), landing_text=landing_text)
     if not res:
-        return {"links": [], "error": "No encontré escenas que cuadren con ese ángulo — afina la "
-                                      "landing o el punto de dolor"}
+        return {"links": [], "error": "No encontré escenas que cuadren — afina la landing o el "
+                                      "punto de dolor"}
     return {"links": res, "con_landing": bool(landing_text)}
 
 

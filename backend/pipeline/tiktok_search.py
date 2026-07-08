@@ -519,8 +519,10 @@ def _verificar_broll_video(cand: dict, punto_dolor: str, angulo: str, api_key: s
             "- fase: 'dolor' (se ve el sufrimiento/problema), 'resultado' (el después/alivio) o 'uso' "
             "(la situación de uso). Si sirve=false, fase='no'.\n"
             "- confianza: 'alta' si lo viste claro, 'media' si probable, 'baja' si dudoso.\n"
+            "- texto_overlay: cuánto TEXTO SOBREPUESTO tiene (subtítulos/carteles grandes que puso el "
+            "creador): 'nada', 'poco' o 'mucho'. (Preferimos b-roll LIMPIO, sin texto encima.)\n"
             'Responde SOLO JSON: {"sirve":true/false,"fase":"dolor"/"resultado"/"uso"/"no",'
-            '"confianza":"alta"/"media"/"baja"}')
+            '"confianza":"alta"/"media"/"baja","texto_overlay":"nada"/"poco"/"mucho"}')
         contents: list = [prompt]
         for fb in frames:
             contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
@@ -532,7 +534,8 @@ def _verificar_broll_video(cand: dict, punto_dolor: str, angulo: str, api_key: s
         fase = _FASE_BROLL.get(str(d.get("fase", "")).strip().lower())
         return {"sirve": bool(d.get("sirve")) and fase is not None,
                 "fase": fase or "problema",
-                "confianza": str(d.get("confianza", "media")).strip().lower()}
+                "confianza": str(d.get("confianza", "media")).strip().lower(),
+                "texto_overlay": str(d.get("texto_overlay", "poco")).strip().lower()}
     except Exception:  # noqa: BLE001
         return None
     finally:
@@ -605,25 +608,29 @@ def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
                     resultados[futs[f]] = f.result()
                 except Exception:  # noqa: BLE001
                     resultados[futs[f]] = None
-        for i, c in tras_cover:
+        for i, c in tras_cover:                            # NO cortar en n: junta todos, luego ordena
             r = resultados.get(i)
             if r is not None and not r["sirve"]:
                 continue                                   # el CONTENIDO lo rechazó: fuera
             fase = (r or {}).get("fase") or (fases_cover or {}).get(i, "problema")
             out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
                         "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
-                        "fase": fase, "verificado": r is not None and r["sirve"]})
-            if len(out) >= n:
-                break
+                        "fase": fase, "verificado": r is not None and r["sirve"],
+                        "texto_overlay": (r or {}).get("texto_overlay", "poco")})
     else:
         for i, c in tras_cover:
             out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
                         "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
-                        "fase": (fases_cover or {}).get(i, "problema"), "verificado": False})
-            if len(out) >= n:
-                break
-    # el DOLOR primero (es lo que pidió el ángulo); dentro de cada fase ya vienen por views
-    out.sort(key=lambda x: 0 if x["fase"] == "problema" else 1)
+                        "fase": (fases_cover or {}).get(i, "problema"), "verificado": False,
+                        "texto_overlay": "poco"})
+    # ORDEN (pedido de Angelo): (1) SIN texto encima primero (nada<poco<mucho), (2) el DOLOR primero,
+    # (3) verificados por contenido antes, (4) más views. Así los b-roll limpios y del dolor van arriba
+    # y los con mucho texto solo se usan para rellenar si hace falta.
+    _txt = {"nada": 0, "poco": 1, "mucho": 2}
+    out.sort(key=lambda x: (_txt.get(x.get("texto_overlay", "poco"), 1),
+                            0 if x["fase"] == "problema" else 1,
+                            0 if x.get("verificado") else 1,
+                            -int(x.get("plays", 0))))
     return out[:n]
 
 

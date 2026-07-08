@@ -1364,7 +1364,7 @@
       <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> del producto y la IA saca de ahí el ángulo y busca el b-roll que cuadra (verifica el contenido de cada video, no solo la portada).</label>
       <input id="tkBrollLanding" type="url" placeholder="🔗 Landing del producto (recomendado) — de aquí saco el ángulo de venta y el dolor"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
-      <input id="tkBrollAngulo" placeholder="🎯 …o escribe el ángulo / punto de dolor a mano (ej. mujer desesperada porque se orinó dormida)"
+      <input id="tkBrollAngulo" placeholder="🎯 …o pega aquí el link de la landing / escribe el ángulo de dolor (ej. mujer desesperada porque se orinó dormida) — sin producto"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
       <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
@@ -2984,12 +2984,13 @@ document.getElementById("go").onclick = async ()=>{
 let brollFaseMap = {};   // url → fase (problema/resultado/funcionamiento), del juez de Claude
 async function buscarBrollIA(){
   const producto = document.getElementById("productDesc").value.trim();
-  if(!producto){ alert("Primero escribe qué es tu producto (en Ajustes, abajo)"); return; }
-  const landing = document.getElementById("tkBrollLanding").value.trim();
-  const angulo = document.getElementById("tkBrollAngulo").value.trim();
-  // La landing (o un ángulo con sustancia) es obligatoria: de ahí sale el ángulo de venta
-  if(!landing && angulo.split(/\s+/).filter(Boolean).length < 3){
-    alert("Pega la LANDING del producto (recomendado) o escribe el ángulo / punto de dolor con detalle — de ahí saco los B-roll que cuadran."); return;
+  let landing = document.getElementById("tkBrollLanding").value.trim();
+  let angulo = document.getElementById("tkBrollAngulo").value.trim();
+  // Se puede pegar la landing en el campo de ÁNGULO: si el ángulo es un link, se usa como landing.
+  if(!landing && /^https?:\/\//i.test(angulo)){ landing = angulo; angulo = ""; }
+  // Con landing NO hace falta el producto. Sin landing, hace falta ángulo con sustancia o el producto.
+  if(!landing && angulo.split(/\s+/).filter(Boolean).length < 3 && !producto){
+    alert("Pega la LANDING del producto (puedes pegarla aquí mismo en el campo de ángulo) o escribe el ángulo / punto de dolor con detalle — de ahí saco los B-roll que cuadran."); return;
   }
   const btn = document.getElementById("goBrollIA");
   const orig = btn.textContent; btn.disabled = true;

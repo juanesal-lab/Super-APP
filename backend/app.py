@@ -20,7 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from pipeline.orchestrator import process_job, analyze_select, render_versions
 from pipeline.assemble import export_resolution, list_sfx, concat_clips
-from pipeline.ffmpeg_utils import probe as _probe
+from pipeline.ffmpeg_utils import probe as _probe, video_ok as _video_ok
 from pipeline.scripts import generate_scripts, suggest_music
 from pipeline.voiceover import (synthesize, synthesize_with_timestamps,
                                 music as gen_music, VOICES)
@@ -1194,6 +1194,10 @@ def _run_clone_job(job_id: str, winner: str, photos: list, videos: list, setting
             work_dir=os.path.join(WORK_DIR, job_id), progress=progress,
         )
         _stash_regen(job, result, job_id, {"voz": settings.get("voz")})   # era s.get → NameError (crash 100%)
+        # honestidad: si el mp4 final salió truncado/corrupto NO se entrega como "listo"
+        if result.get("ok") and not _video_ok(result.get("video") or ""):
+            result = dict(result, ok=False,
+                          error="El video clonado salió corrupto/truncado — vuelve a intentar.")
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
         if not result.get("ok"):
@@ -1695,6 +1699,10 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
                             generar_video=True, work_dir=wd,
                             progress=lambda m, p=None: progress(m, p if p is not None else 50))
             if d.get("ok") and d.get("video"):
+                if not _video_ok(d["video"]):   # mp4 truncado/corrupto → error honesto, no "Listo"
+                    job["status"] = "error"
+                    job["message"] = "El video doblado salió corrupto/truncado — vuelve a intentar."
+                    return
                 job["result"] = {"ok": True, "path": d["video"], "target_lang": "es-CO · 2x1"}
                 job["status"] = "done"; job["progress"] = 100
                 job["message"] = "Listo (voz colombiana · menciona el 2x1)"
@@ -1707,6 +1715,10 @@ def _run_dub_job(job_id: str, video_path: str, target_lang: str, source_lang: st
         out = os.path.join(wd, f"dubbed_{target_lang}.mp4")
         dub_video(_load_eleven_key(), video_path, target_lang, out,
                   source_lang=source_lang, progress=lambda m: progress(m))
+        if not _video_ok(out):   # mp4 truncado/corrupto → error honesto, no "Listo"
+            job["status"] = "error"
+            job["message"] = "El video doblado salió corrupto/truncado — vuelve a intentar."
+            return
         job["result"] = {"ok": True, "path": out, "target_lang": target_lang}
         job["status"] = "done"; job["progress"] = 100; job["message"] = "Listo"
     except Exception as e:  # noqa: BLE001
@@ -1853,6 +1865,10 @@ def _run_dub_generar_job(job_id: str, prev_job_id: str, voz: str, textos: list[s
             out = os.path.join(wd, f"dubbed_{target_lang}.mp4")
             dub_video(_load_eleven_key(), video_path, target_lang, out,
                       source_lang="auto", progress=lambda m: progress(m))
+            if not _video_ok(out):   # mp4 truncado/corrupto → error honesto, no "Listo"
+                job["status"] = "error"
+                job["message"] = "El video doblado salió corrupto/truncado — vuelve a intentar."
+                return
             job["result"] = {"ok": True, "path": out, "target_lang": target_lang, "voz": "exacto"}
             job["status"] = "done"; job["progress"] = 100
             job["message"] = "Listo (doblaje exacto · voz original)"
@@ -1877,6 +1893,10 @@ def _run_dub_generar_job(job_id: str, prev_job_id: str, voz: str, textos: list[s
                         segments_override=merged, generar_video=True, work_dir=wd,
                         progress=lambda m, p=None: progress(m, p if p is not None else 55))
         if d.get("ok") and d.get("video"):
+            if not _video_ok(d["video"]):   # mp4 truncado/corrupto → error honesto, no "Listo"
+                job["status"] = "error"
+                job["message"] = "El video doblado salió corrupto/truncado — vuelve a intentar."
+                return
             etq = "es-CO · 2x1" if oferta_2x1 else "es-CO"
             job["result"] = {"ok": True, "path": d["video"], "target_lang": etq,
                              "voz": d.get("voz", voz)}

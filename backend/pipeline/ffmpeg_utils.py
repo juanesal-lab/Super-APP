@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 
@@ -74,3 +75,15 @@ def probe(path: str) -> VideoInfo:
         fps=fps,
         has_audio=has_audio,
     )
+
+
+def video_ok(path: str, min_bytes: int = 20_000) -> bool:
+    """¿El mp4 de salida sirve para entregarse? Verifica que exista, pese lo mínimo y que
+    ffprobe le lea un stream de video con duración > 0.1s (detecta mp4 truncado/corrupto).
+    Nunca lanza: cualquier fallo devuelve False."""
+    try:
+        if not path or not os.path.exists(path) or os.path.getsize(path) < min_bytes:
+            return False
+        return probe(path).duration > 0.1   # probe lanza si no hay stream de video
+    except Exception:  # noqa: BLE001
+        return False

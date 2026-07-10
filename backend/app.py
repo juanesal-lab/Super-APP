@@ -264,6 +264,31 @@ def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress,
         list(ex.map(_banner_one, versions))
 
 
+def _agregar_end_card(versions: list[dict], work_dir: str, progress,
+                      line1: str = "PAGAS AL RECIBIR",
+                      line2: str = "ENVÍO GRATIS A TODA COLOMBIA",
+                      cta: str = "PIDE EL TUYO AQUÍ 👇") -> None:
+    """🏁 END-CARD de CTA: cierre de 1.5s al final de cada versión con la oferta clara
+    ('PAGAS AL RECIBIR' + envío gratis + pill de CTA) — patrón ganador en ads COD para
+    rematar la conversión. SIN precios. En paralelo, igual que _agregar_banner_oferta."""
+    from pipeline.end_card import append_end_card
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
+    progress("🏁 Poniendo el cierre final (pagas al recibir)...", 98)
+
+    # EN PARALELO: cada versión es un concat independiente (PNG/clip con nombre único, no se pisan)
+    def _ec_one(v):
+        try:
+            out = v["path"][:-4] + "_ec.mp4"
+            v["path"] = append_end_card(v["path"], out, work_dir,
+                                        line1=line1, line2=line2, cta=cta)
+        except Exception:  # noqa: BLE001
+            pass
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_ec_one, versions))
+
+
 def _agregar_hooks_por_version(result: dict, work_dir: str, product_desc: str, progress) -> None:
     """🎯 Un HOOK de texto (pastilla blanca arriba, 0-3s) por versión, COHERENTE con lo que dice
     cada ángulo (referencia de Jack: 'MIRA LA SOLUCIÓN'). La IA lo escribe; Jack lo edita/re-aplica
@@ -440,6 +465,8 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
                                    start=settings.get("banner_start", 0.0),
                                    dur=settings.get("banner_dur", 0.0),
                                    line2=settings.get("banner_line2", "OFERTA 2X1"))
+        if result.get("ok") and result.get("versions") and settings.get("end_card"):
+            _agregar_end_card(result["versions"], os.path.join(WORK_DIR, job_id), progress)
         if result.get("ok") and result.get("versions") and settings.get("hooks_por_version"):
             _agregar_hooks_por_version(result, os.path.join(WORK_DIR, job_id),
                                        settings.get("product_desc", ""), progress)
@@ -616,6 +643,7 @@ def process(
     banner_start: float = Form(0.0),
     banner_dur: float = Form(0.0),
     oferta_texto: str = Form("OFERTA 2X1"),   # 2ª línea del banner (tu oferta; vacío = solo envío gratis)
+    end_card: bool = Form(False),             # 🏁 cierre final 1.5s "PAGAS AL RECIBIR" al final
     hooks_por_version: bool = Form(False),    # 🎯 hook de texto (pastilla) por versión, 0-3s, editable
     hook_seconds: float = Form(0.0),
     destino: str = Form("tiktok"),
@@ -660,6 +688,7 @@ def process(
         "banner_start": max(0.0, float(banner_start)),
         "banner_dur": max(0.0, float(banner_dur)),
         "banner_line2": oferta_texto.strip(),          # tu oferta (o '' = solo envío gratis)
+        "end_card": bool(end_card),                    # 🏁 cierre final 1.5s al final de cada versión
         "hooks_por_version": bool(hooks_por_version),   # 🎯 hook por versión (pastilla 0-3s, editable)
         "hook_seconds": max(0.0, float(hook_seconds)),
         "text_mode": text_mode if text_mode in ("tapar", "traducir") else "tapar",
@@ -764,6 +793,8 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
             _agregar_banner_oferta(result["versions"], wd, progress,
                                    start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
                                    line2=s.get("banner_line2", "OFERTA 2X1"))
+        if result.get("ok") and result.get("versions") and s.get("end_card"):
+            _agregar_end_card(result["versions"], wd, progress)
         if result.get("ok") and result.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(result, wd, s.get("product_desc", ""), progress)
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
@@ -1433,6 +1464,7 @@ def scripts(
     banner_start: float = Form(0.0),
     banner_dur: float = Form(0.0),
     oferta_texto: str = Form("OFERTA 2X1"),   # 2ª línea del banner (tu oferta; vacío = solo envío gratis)
+    end_card: bool = Form(False),             # 🏁 cierre final 1.5s "PAGAS AL RECIBIR" al final
     hooks_por_version: bool = Form(False),    # 🎯 hook de texto (pastilla) por versión, 0-3s, editable
     hook_seconds: float = Form(0.0),
     blur_strength: str = Form("medio"),
@@ -1477,6 +1509,7 @@ def scripts(
         "banner_start": max(0.0, float(banner_start)),   # "aparece al seg N" (fix: antes se ignoraba)
         "banner_dur": max(0.0, float(banner_dur)),       # "dura M s" (0 = hasta el final)
         "banner_line2": oferta_texto.strip(),            # tu oferta (o '' = solo envío gratis)
+        "end_card": bool(end_card),                      # 🏁 cierre final 1.5s al final de cada versión
         "hooks_por_version": bool(hooks_por_version),    # 🎯 hook por versión (pastilla 0-3s, editable)
         "hook_seconds": max(0.0, float(hook_seconds)),
         "blur_strength": blur_strength if blur_strength in ("suave", "medio", "fuerte") else "medio",
@@ -1607,6 +1640,8 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             _agregar_banner_oferta(manifest["versions"], wd, progress,
                                    start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
                                    line2=s.get("banner_line2", "OFERTA 2X1"))
+        if manifest.get("ok") and manifest.get("versions") and s.get("end_card"):
+            _agregar_end_card(manifest["versions"], wd, progress)
         if manifest.get("ok") and manifest.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(manifest, wd, s.get("product_desc", ""), progress)
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión

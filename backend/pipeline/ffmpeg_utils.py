@@ -74,3 +74,23 @@ def probe(path: str) -> VideoInfo:
         fps=fps,
         has_audio=has_audio,
     )
+
+
+def normalize_loudness(in_path: str, out_path: str, target_lufs: float = -14.0) -> str:
+    """Normaliza el loudness del audio a `target_lufs` (por defecto -14 LUFS, estándar
+    TikTok/Reels/Meta). Solo re-encodea el AUDIO (video -c:v copy → barato y sin pérdida);
+    single-pass loudnorm es suficiente para ads cortos. Si el video no tiene audio o algo
+    falla, devuelve `in_path` sin tocar (best-effort, nunca rompe el job)."""
+    try:
+        if not probe(in_path).has_audio:
+            return in_path
+        run([
+            "ffmpeg", "-y", "-i", in_path,
+            "-c:v", "copy",
+            "-af", f"loudnorm=I={target_lufs:g}:TP=-1.5:LRA=11",
+            "-c:a", "aac", "-b:a", "192k",
+            out_path,
+        ])
+        return out_path
+    except Exception:  # noqa: BLE001
+        return in_path

@@ -363,6 +363,35 @@ def _agregar_musica_sfx(versions: list[dict], work_dir: str, product_desc: str, 
         list(ex.map(_mx_one, versions))
 
 
+def _normalizar_audio(versions: list[dict], work_dir: str, progress) -> None:
+    """ÚLTIMO paso del post-proceso: normaliza el loudness del audio FINAL de cada versión a
+    -14 LUFS (estándar TikTok/Reels) — antes los ads salían con volúmenes dispares (unos bajitos,
+    otros reventados) y eso mata retención. Siempre activo (corrección técnica, no creativa) y
+    best-effort: si falla una versión se queda como estaba, nunca rompe el job. También normaliza
+    v['path_45'] (cut 4:5 para Meta) si existe. Solo re-encodea audio (-c:v copy → barato)."""
+    from pipeline.ffmpeg_utils import normalize_loudness
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
+    if not versions:
+        return
+    progress("🔊 Normalizando el volumen de todas las versiones (-14 LUFS)...", 99)
+
+    # EN PARALELO (mismo patrón que _agregar_musica_sfx): cada versión es independiente.
+    def _norm_one(v):
+        try:
+            for key in ("path", "path_45"):
+                p = v.get(key)
+                if not p:
+                    continue
+                out = p[:-4] + "_ln.mp4"
+                v[key] = normalize_loudness(p, out)   # si falla/sin audio devuelve p (queda igual)
+        except Exception:  # noqa: BLE001
+            pass
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_norm_one, versions))
+
+
 def _run_job(job_id: str, paths: list[str], settings: dict):
     job = JOBS[job_id]
 
@@ -414,6 +443,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         if result.get("ok") and result.get("versions") and settings.get("hooks_por_version"):
             _agregar_hooks_por_version(result, os.path.join(WORK_DIR, job_id),
                                        settings.get("product_desc", ""), progress)
+        # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
+        if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+            _normalizar_audio(result["versions"], os.path.join(WORK_DIR, job_id), progress)
         _stash_regen(job, result, job_id)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -734,6 +766,9 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
                                    line2=s.get("banner_line2", "OFERTA 2X1"))
         if result.get("ok") and result.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(result, wd, s.get("product_desc", ""), progress)
+        # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
+        if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+            _normalizar_audio(result["versions"], wd, progress)
         _stash_regen(job, result, rid)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -1570,6 +1605,9 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
                                    line2=s.get("banner_line2", "OFERTA 2X1"))
         if manifest.get("ok") and manifest.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(manifest, wd, s.get("product_desc", ""), progress)
+        # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
+        if isinstance(manifest, dict) and manifest.get("ok") and manifest.get("versions"):
+            _normalizar_audio(manifest["versions"], wd, progress)
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
         _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})

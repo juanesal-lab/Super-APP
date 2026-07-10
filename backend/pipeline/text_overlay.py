@@ -84,25 +84,34 @@ def _wrap(text: str, font: ImageFont.FreeTypeFont, max_w: int) -> list[str]:
 
 
 def _render_png(text: str, vw: int, vh: int, font_path: str, png_path: str,
-                max_frac: float = 0.20) -> int:
+                max_frac: float = 0.20, min_px: int | None = None) -> int:
     """Renderiza el texto centrado a un PNG del ancho del video. Devuelve alto del bloque.
 
     El bloque NUNCA ocupa más de `max_frac` del alto (default 1/5): arranca en un tamaño MEDIANO
-    y encoge la letra hasta que quepa (antes salía gigante — hasta 1/3 de pantalla — y se veía feo)."""
+    y encoge la letra hasta que quepa. ZONAS SEGURAS: la caja (texto + padding) queda dentro del
+    ancho útil (márgenes ≥64px escalados); el piso legible es `min_px` (default 48px escalados),
+    pero si una palabra sola no entra en el ancho útil se sigue achicando — JAMÁS texto cortado."""
     meas = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
-    font_size = max(24, int(vh * 0.040))          # medio (antes 0.052 = gigante)
+    floor = safe_px(vh, SAFE_MIN_SUB_PX) if min_px is None else int(min_px)
+    font_size = max(floor, int(vh * 0.040))       # medio (antes 0.052 = gigante)
     max_h = int(vh * max_frac)
-    for _ in range(14):                            # encoge hasta caber en 1/5 de pantalla
+    margin = safe_margin_x(vw)
+    for _ in range(40):                            # encoge hasta caber (alto Y ancho)
         font = ImageFont.truetype(font_path, font_size)
-        lines = _wrap(text.upper(), font, int(vw * 0.84))
+        pad = int(font_size * 0.5)
+        max_w = min(int(vw * 0.84), vw - 2 * margin - 2 * pad)   # caja completa dentro del margen
+        lines = _wrap(text.upper(), font, max_w)
         ascent, descent = font.getmetrics()
         line_h = ascent + descent
         gap = int(line_h * 0.18)
-        pad = int(font_size * 0.5)
         block_h = line_h * len(lines) + gap * (len(lines) - 1) + pad * 2
-        if block_h <= max_h or font_size <= 26:
+        widest = max(meas.textlength(l, font=font) for l in lines)
+        # ancho SIEMPRE tiene que caber (aunque haya que bajar del piso); alto cede en el piso
+        if widest <= max_w and (block_h <= max_h or font_size <= floor):
             break
-        font_size = int(font_size * 0.9)
+        if font_size <= 14:
+            break
+        font_size = max(14, int(font_size * 0.9))
     text_w = max(meas.textlength(l, font=font) for l in lines)
     block_w = int(text_w) + pad * 2
 

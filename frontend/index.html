@@ -1489,6 +1489,7 @@
         <input type="number" id="bannerStart" value="5" min="0" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">
         · dura <input type="number" id="bannerDur" value="0" min="0" step="1" title="0 = hasta el final" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s
         · 🎁 tu oferta <input type="text" id="bannerTexto" value="OFERTA 2X1" placeholder="ej: 3X2 · 50% OFF · vacío = solo envío gratis" title="La 2ª línea del banner. Déjalo VACÍO para mostrar solo 'ENVÍO GRATIS · PAGAS AL RECIBIR'." style="width:230px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px 9px;border-radius:8px;font-size:12.5px"></span>
+      <label class="toggle" style="white-space:nowrap" title="Agrega una tarjeta final de 1.5s con la oferta clara (PAGAS AL RECIBIR + envío gratis + CTA). Patrón ganador en ads COD."><input type="checkbox" id="chkEndCard"> 🏁 Cierre final: "PAGAS AL RECIBIR" (1.5s)</label>
       <span style="align-items:center;gap:6px;font-size:12.5px;color:var(--muted);display:inline-flex">🪝 gancho dura
         <input type="number" id="hookSecs" value="4" min="0" step="1" title="0 = todo el video" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px">s</span>
       <span id="textModeWrap" style="display:none;align-items:center;gap:8px">
@@ -3061,6 +3062,7 @@ function buildForm(){
   fd.append("banner_start", document.getElementById("bannerStart").value||"0");
   fd.append("banner_dur", document.getElementById("bannerDur").value||"0");
   fd.append("oferta_texto", (document.getElementById("bannerTexto")||{}).value ?? "OFERTA 2X1");
+  fd.append("end_card", document.getElementById("chkEndCard").checked);   // 🏁 cierre final 1.5s
   fd.append("hooks_por_version", document.getElementById("chkHookVer").checked);
   fd.append("hook_seconds", document.getElementById("hookSecs").value||"0");
   fd.append("text_mode", document.getElementById("textMode").value);

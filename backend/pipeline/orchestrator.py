@@ -57,6 +57,13 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
     chosen_sigs: list = []
     per_source: dict[int, int] = {}
 
+    # B-ROLL FORZADO (bug real: los b-roll descargados no aparecían en el video). Los b-roll son
+    # escenas de APOYO que casi nunca muestran el producto → Gemini les da score bajo → nunca
+    # entraban al pool. Se reserva cupo aquí y se FUERZA su inclusión abajo (tras precalcular firmas).
+    n_broll_src = len({s.source_index for s in segments if getattr(s, "is_broll", False)})
+    if n_broll_src:
+        pool_size = min(120, pool_size + n_broll_src * 3)
+
     # Firmas perceptuales PRE-CALCULADAS EN PARALELO (cv2 abre/lee video: suelta el GIL).
     # Antes se calculaban una a una dentro del loop de dedup (~1-2s por corte, en serie).
     sig_cache: dict[int, list] = {}
@@ -93,6 +100,24 @@ def _select_for_target(segments: list[Segment], target_seconds: float,
 
     if text_cov:                       # re-ordena por score EFECTIVO (texto penalizado)
         ranked = sorted(ranked, key=_eff_score, reverse=True)
+
+    # B-ROLL: entran SÍ O SÍ (saltan el corte por score y el dedup), con tope por fuente para no
+    # inundar. Va DESPUÉS de la penalización por texto: los b-roll se fuerzan igual (no dependen del
+    # score). El resto del pool se llena normal debajo (nunca re-agrega: `seg in chosen`).
+    if n_broll_src:
+        broll_cap = max(2, min(4, cap_per_source))
+        for seg in ranked:
+            if not getattr(seg, "is_broll", False) or seg in chosen:
+                continue
+            if per_source.get(seg.source_index, 0) >= broll_cap:
+                continue
+            sigs = sig_cache.get(id(seg))
+            if sigs is None:
+                sigs = segment_signatures(seg)
+                sig_cache[id(seg)] = sigs
+            chosen.append(seg)
+            chosen_sigs.extend(sigs)
+            per_source[seg.source_index] = per_source.get(seg.source_index, 0) + 1
 
     def is_duplicate(sigs) -> bool:
         # Duplicado REAL solo si: (a) algún frame es casi IDÉNTICO (<4 bits), o (b) COINCIDEN ≥2 de las
@@ -146,6 +171,7 @@ def analyze_select(
     use_gemini: bool = True,
     product_desc: str = "",
     gemini_key: str | None = None,
+    broll_paths: set[str] | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Analiza los videos, rankea con Gemini y selecciona los mejores cortes.
@@ -187,6 +213,13 @@ def analyze_select(
     if not all_segments:
         detail = (" Videos omitidos: " + "; ".join(skipped)) if skipped else ""
         return {"ok": False, "error": "No se encontraron segmentos utilizables en los videos." + detail}
+
+    # marcar los segmentos que vienen de fuentes B-ROLL → _select_for_target los FUERZA a entrar
+    if broll_paths:
+        _bset = {os.path.abspath(p) for p in broll_paths}
+        for s in all_segments:
+            if os.path.abspath(getattr(s, "video", "") or "") in _bset:
+                s.is_broll = True
 
     used_gemini = False
     if use_gemini:
@@ -238,12 +271,16 @@ def render_versions(
     target_seconds: float = 15.0,
     max_clip_seconds: float = 3.0,
     broll_fases: dict | None = None,   # {ruta fuente B-roll: fase forzada (problema/resultado/...)}
-    n_versions: int = 8,          # cuántas versiones RENDERIZAR (flujo "1 de prueba → N más")
+    n_versions: int | None = None,     # embudo: nº de versiones = nº de guiones (None → 8 clásico)
+    stages: list | None = None,        # embudo: etapa por versión ["TOFU","MOFU","BOFU",...]
     start_version: int = 0,       # desde cuál (0='A'; la prueba=1 desde 0, luego "N más"=N desde 1)
     blur_strength: str = "medio", # fuerza del desenfoque de textos: suave/medio/fuerte (ajuste de Jack)
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
-    """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos."""
+    """Construye clips sueltos, las 3 versiones, el gancho, voz en off y efectos.
+
+    `n_versions`/`stages`: embudo TOFU/MOFU/BOFU. Si vienen, se generan n_versions versiones y
+    cada una queda etiquetada con su etapa (stages[i]); el gancho automático se genera por etapa."""
     def report(msg, pct):
         if progress:
             progress(msg, pct)
@@ -307,16 +344,30 @@ def render_versions(
     # B-ROLL con intención: los clips que vienen de fuentes marcadas como B-roll usan la fase que
     # el usuario/Claude les dio (dolor/resultado/uso) en vez de la clasificación visual — así la
     # escena de DOLOR cae en el momento del dolor del guion, no donde sea (idea de Jack).
+    # FIX (2026-07-08): antes solo recorría pool_idx (top-60) → un b-roll de score bajo NO recibía
+    # su fase forzada. Ahora TODOS los seleccionados; y se junta broll_idx para forzarlos al montaje.
+    broll_idx: set[int] = set()
     if broll_fases:
         _bmap = {os.path.abspath(p): f for p, f in broll_fases.items()}
-        for _i in pool_idx:
+        for _i in range(len(selected)):
             _f = _bmap.get(os.path.abspath(getattr(selected[_i], "video", "") or ""))
             if _f in phase_classify.FASES:
                 fases_por_idx[_i] = _f
+                broll_idx.add(_i)
         fases_pool = [fases_por_idx[i] for i in pool_idx]
+    # respaldo: cualquier segmento marcado is_broll (aunque su ruta no calzara) también se fuerza
+    for _i in range(len(selected)):
+        if getattr(selected[_i], "is_broll", False):
+            broll_idx.add(_i)
 
     version_orders = plan_variations(selected, target_seconds=plan_seconds,
                                       n_versions=n_versions, start_version=start_version)
+    # Embudo: etapa por índice de versión (mismo orden que version_orders / version_vos).
+    stage_by_name: dict[str, str] = {}
+    if stages:
+        for _vi, (nm, _o) in enumerate(version_orders):
+            if _vi < len(stages):
+                stage_by_name[nm] = stages[_vi]
 
     # ── MONTAJE GUIADO POR EL GUION (flujo de Juan: primero el guion, después la edición) ──
     # Si la voz de cada versión ya existe con tiempos por palabra, el plan ciego se REEMPLAZA:
@@ -354,6 +405,10 @@ def render_versions(
                 for _i, _f in _ex.map(_firma_uno, list(fases_por_idx)):
                     if _f is not None:
                         firmas[_i] = _f
+            # AFINIDAD guion↔clip (Angelo): qué clip ilustra mejor CADA frase por su contenido
+            # visual. 1 llamada Gemini; si no hay key/tags o falla → None (montaje idéntico al viejo).
+            afinidad_pv = guion_match.afinidad_guion_clips(
+                [f for f in frases_pv], selected, fases_por_idx, gemini_key, product_desc)
             usage: dict[int, int] = {}
             hook_srcs: set[int] = set()           # cada versión abre con una FUENTE distinta
             # TOPE DURO de reuso entre versiones: un clip solo puede salir en ~su cuota justa
@@ -373,7 +428,9 @@ def render_versions(
                                                    version_i=v_i,
                                                    n_versiones=len(version_orders),
                                                    hook_srcs=hook_srcs, max_usos=max_usos,
-                                                   firmas=firmas)
+                                                   firmas=firmas,
+                                                   afinidad=(afinidad_pv[v_i] if afinidad_pv else None),
+                                                   broll_idx=broll_idx)
                           if frases else None)
                 if frases:
                     frases_por_nombre[name] = frases
@@ -572,21 +629,43 @@ def render_versions(
 
     # Gancho: el del usuario o uno generado con IA
     final_hook = hook_text.strip()
+    hooks_by_stage: dict[str, str] = {}   # embudo: UN gancho por etapa (curiosidad/prueba/oferta)
     if not final_hook and auto_hook:
         report("Generando gancho impactante con IA...", 80)
         page_text = fetch_page_text(page_url)
         sample = max(selected, key=lambda s: (s.shows_use, s.score)) if selected else None
-        final_hook = generate_hook(gemini_key, product_desc, page_text, sample)
+        if stages:
+            # UN gancho por ETAPA presente (su intención cambia: TOFU curiosidad, MOFU prueba,
+            # BOFU oferta) — así cada creativo lleva el overlay que le toca a su temperatura.
+            for st in dict.fromkeys(stage_by_name.values()):
+                hk = generate_hook(gemini_key, product_desc, page_text, sample, stage=st)
+                if hk.strip():
+                    hooks_by_stage[st] = hk.strip()
+            final_hook = next(iter(hooks_by_stage.values()), "")   # respaldo para versiones sin etapa
+        else:
+            final_hook = generate_hook(gemini_key, product_desc, page_text, sample)
         if not final_hook.strip():
             # pediste gancho automático y la IA no lo generó: avisar, no entregar en silencio
             avisos.append("El gancho automático NO se pudo generar (la IA no respondió) — "
                           "las versiones van sin texto de gancho.")
-    if final_hook.strip():
+    if final_hook.strip() or hooks_by_stage:
+        _fallo_burn = 0
         for v in versions:
+            # gancho del usuario (igual para todas) o el de la etapa de esta versión
+            v_hook = hook_text.strip() or hooks_by_stage.get(
+                stage_by_name.get(v.get("name") or ""), final_hook)
+            if not v_hook.strip():
+                continue
             hook_out = v["path"].replace(".mp4", "_hook.mp4")
-            new_path, burned = burn_hook(v["path"], hook_out, work_dir, final_hook, hook_pos,
+            new_path, burned = burn_hook(v["path"], hook_out, work_dir, v_hook, hook_pos,
                                          seconds=hook_seconds)
             v["path"] = new_path
+            if not burned:
+                _fallo_burn += 1
+        if _fallo_burn:
+            # el gancho existía pero NO se pudo quemar en el video (fuente/ffmpeg): avisar, no callar
+            avisos.append(f"El texto del gancho no se pudo poner en {_fallo_burn} versión(es) "
+                          "(fallo al quemar el texto) — revisa la fuente/ffmpeg.")
 
     # Voz en off: una sola para todas, o UNA DISTINTA por version (version_vos)
     def _cut_times(v):
@@ -784,6 +863,7 @@ def render_versions(
                 "sfx_events": v.get("sfx_events"),
                 "path_45": v.get("path_45"),      # cut 4:5 para Meta (§10.2)
                 "qa_aviso": v.get("qa_aviso"),     # ⚠️ producto no visible ≤3s (§11.1)
+                "stage": stage_by_name.get(v["name"]),   # embudo: TOFU/MOFU/BOFU (None = clásico)
             }
             for v in versions
         ],
@@ -863,7 +943,8 @@ def process_job(
     destino: str = "tiktok",
     gemini_key: str | None = None,
     broll_fases: dict | None = None,
-    n_versions: int = 8,          # cuántas versiones renderizar (flujo "1 de prueba → N más")
+    n_versions: int | None = None,     # embudo TOFU/MOFU/BOFU (None → 8 versiones clásico)
+    stages: list | None = None,        # embudo: etapa por versión
     start_version: int = 0,       # desde cuál version arranca (para el lote de "N más")
     blur_strength: str = "medio", # fuerza del desenfoque de textos (suave/medio/fuerte)
     progress: Callable[[str, int], None] | None = None,
@@ -873,7 +954,8 @@ def process_job(
     subtítulos + mezcla pro se queman adentro del render (flujo de Mi producto)."""
     a = analyze_select(
         video_paths, target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
-        use_gemini=use_gemini, product_desc=product_desc, gemini_key=gemini_key, progress=progress)
+        use_gemini=use_gemini, product_desc=product_desc, gemini_key=gemini_key,
+        broll_paths=set(broll_fases or {}), progress=progress)
     if not a["ok"]:
         return a
     return render_versions(
@@ -888,5 +970,5 @@ def process_job(
         blur_captions=blur_captions, text_mode=text_mode, caption_pos=caption_pos,
         used_gemini=a["used_gemini"], n_sources=a["n_sources"],
         target_seconds=target_seconds, max_clip_seconds=max_clip_seconds,
-        broll_fases=broll_fases, n_versions=n_versions, start_version=start_version,
-        blur_strength=blur_strength, progress=progress)
+        broll_fases=broll_fases, n_versions=n_versions, stages=stages,
+        start_version=start_version, blur_strength=blur_strength, progress=progress)

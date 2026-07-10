@@ -38,12 +38,13 @@ def analizar_foto(image_path: str, nombre: str, api_key: str,
                   landing_text: str = "") -> dict:
     """Gemini: descripción precisa (producto + FORMA) + VARIAS búsquedas (amplía) + desc. Fallback: nombre.
 
-    `image_paths` (opcional): hasta 4 imágenes del MISMO producto (fotos frente/lado/empaque y/o
-    FRAMES sacados de un video suyo) → UNA sola llamada a Gemini con todas = ficha más completa.
+    `image_paths` (opcional): hasta 6 imágenes del MISMO producto (fotos frente/lado/empaque y/o
+    FRAMES sacados de un video suyo — p.ej. los 5 mejores frames de mejores_frames) → UNA sola
+    llamada a Gemini con todas = ficha más completa.
     `landing_text` (opcional): texto de la página de venta del producto → contexto para el nombre
     EXACTO, beneficios y sinónimos (mejores términos de búsqueda). Firma vieja intacta."""
     paths = [p for p in (image_paths or [image_path])
-             if p and os.path.exists(p)][:4]
+             if p and os.path.exists(p)][:6]
     if not (api_key and paths):
         return {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
     try:
@@ -117,7 +118,94 @@ def _expandir(kw: str, variants: list[str]) -> list[str]:
         q = (q or "").strip()
         if q and q.lower() not in {x.lower() for x in out}:
             out.append(q)
-    return out[:10]
+    return out[:16]
+
+
+def mejores_frames(video_path: str, n: int = 5, muestreo: int = 24,
+                   out_dir: str | None = None) -> list[str]:
+    """Del VIDEO del producto saca los N MEJORES frames como JPG para usarlos de referencia MULTI-FRAME.
+
+    Muestrea ~`muestreo` frames repartidos por todo el video (evitando intro/outro), puntúa cada uno
+    por NITIDEZ (varianza del Laplaciano de cv2), DESCARTA los casi-negros (brillo medio muy bajo) y
+    los borrosos, y devuelve las rutas de los N frames más nítidos y DISTINTOS entre sí (nada de 5
+    fotogramas casi idénticos). Más frames de referencia = MUCHO mejor match del MISMO producto.
+    Devuelve [] si no se pudo abrir el video o no hubo frames buenos."""
+    if not (video_path and os.path.exists(video_path)):
+        return []
+    try:
+        import cv2
+    except ImportError:
+        return []
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    out_dir = out_dir or os.path.dirname(video_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    base = os.path.splitext(os.path.basename(video_path))[0]
+    cand: list[tuple[float, "object", "object"]] = []   # (nitidez, mini_gris_32x32, frame_bgr)
+    try:
+        muestreo = max(6, muestreo)
+        if total > 1:
+            # posiciones repartidas evitando el primer/último 5% (intro/outro suelen ser malas)
+            idxs = [int(total * (0.05 + 0.90 * i / (muestreo - 1))) for i in range(muestreo)]
+        else:
+            idxs = None                                  # sin metadata de frames: leer secuencial
+        if idxs is not None:
+            for idx in idxs:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ok, fr = cap.read()
+                if not ok or fr is None:
+                    continue
+                _puntuar_frame(cv2, fr, cand)
+        else:
+            leidos = 0
+            while len(cand) < muestreo * 3 and leidos < 4000:
+                ok, fr = cap.read()
+                if not ok or fr is None:
+                    break
+                leidos += 1
+                if leidos % 5:                           # 1 de cada 5 fotogramas
+                    continue
+                _puntuar_frame(cv2, fr, cand)
+    finally:
+        cap.release()
+    if not cand:
+        return []
+    cand.sort(key=lambda x: x[0], reverse=True)          # más NÍTIDOS primero
+    # elige DISTINTOS: descarta el que sea casi igual (mini-gris) a uno ya elegido
+    elegidos: list[tuple[float, object, object]] = []
+    for tup in cand:
+        if any(float(cv2.absdiff(tup[1], e[1]).mean()) < 8 for e in elegidos):
+            continue
+        elegidos.append(tup)
+        if len(elegidos) >= n:
+            break
+    if len(elegidos) < n:                                # si el filtro dejó menos, completa con los mejores
+        ya = {id(e[2]) for e in elegidos}
+        for tup in cand:
+            if id(tup[2]) not in ya:
+                elegidos.append(tup)
+            if len(elegidos) >= n:
+                break
+    out: list[str] = []
+    for k, (_, _, fr) in enumerate(elegidos[:n]):
+        h, w = fr.shape[:2]
+        if w > 1024:
+            fr = cv2.resize(fr, (1024, int(h * 1024 / w)))
+        p = os.path.join(out_dir, f"{base}_best{k}.jpg")
+        if cv2.imwrite(p, fr, [cv2.IMWRITE_JPEG_QUALITY, 90]):
+            out.append(p)
+    return out
+
+
+def _puntuar_frame(cv2, fr, cand: list) -> None:
+    """Añade (nitidez, mini_gris_32x32, frame) a `cand` si el frame NO es casi-negro ni borroso."""
+    gray = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+    if float(gray.mean()) < 25:                          # casi negro → fuera
+        return
+    nit = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    if nit < 40:                                         # muy borroso → fuera
+        return
+    cand.append((nit, cv2.resize(gray, (32, 32)), fr))
 
 
 # Regiones donde el contenido suele estar en español (para priorizar sin gastar visión)
@@ -285,47 +373,68 @@ def _verificar(cand: dict, ref_bytes, ref_desc: str, api_key: str) -> dict | Non
         return None
 
 
-def _broll_brief_claude(nombre: str, angulo: str, ref_desc: str, anthropic_key: str) -> dict | None:
-    """CEREBRO (Claude): piensa el PUNTO DE DOLOR del ángulo de venta y las búsquedas de B-ROLL.
-    Devuelve {"punto_dolor": str, "queries": [str]} o None si no pudo (→ fallback Gemini/estático)."""
+def _broll_brief_claude(nombre: str, angulo: str, ref_desc: str, anthropic_key: str,
+                        landing_text: str = "") -> dict | None:
+    """CEREBRO (Claude): saca de la LANDING (fuente de verdad) el ángulo de venta + punto de dolor
+    y de ahí las búsquedas de B-ROLL. La landing manda: si viene, el ángulo/dolor se DERIVAN de ella
+    (no del texto suelto). Devuelve {"punto_dolor","angulo_resumen","publico","queries"[str]} o None."""
     if not anthropic_key:
         return None
     try:
         from anthropic import Anthropic
         tool = {
             "name": "brief_broll",
-            "description": "Brief de B-roll para un anuncio de dropshipping.",
+            "description": "Brief de B-roll para un anuncio de dropshipping, derivado de la landing.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "punto_dolor": {"type": "string",
-                                    "description": "El punto de dolor del ángulo, en 1 frase VISUAL (qué escena lo muestra)"},
+                                    "description": "El dolor #1 del comprador según la landing, en 1 frase VISUAL (qué escena lo muestra)"},
+                    "angulo_resumen": {"type": "string",
+                                       "description": "El ángulo de venta que usa la landing, en 1 frase"},
+                    "publico": {"type": "string",
+                                "description": "A quién le habla (edad/género/situación) según la landing"},
                     "queries": {"type": "array", "items": {"type": "string"},
                                 "description": "6-8 búsquedas cortas (2-4 palabras) para TikTok: ~5 del DOLOR en acción, ~2 del resultado/alivio, ~1 de la situación de uso. Español o inglés, lo que dé más resultados."},
                 },
                 "required": ["punto_dolor", "queries"],
             },
         }
-        prompt = (
-            f"Producto: \"{nombre}\". Ficha: \"{(ref_desc or '')[:400]}\". "
-            + (f"Ángulo de venta / punto de dolor que quiere el vendedor: \"{angulo}\". " if angulo.strip() else "")
-            + "Necesito B-ROLL para un anuncio de dropshipping: escenas que NO muestran el producto pero "
-            "APOYAN su ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la "
-            "necesidad, la emoción cruda), y un poco del después/alivio. "
-            "Ej. almohadillas para incontinencia → dolor: 'mujer desesperada corriendo al baño', "
-            "'sábanas mojadas vergüenza', 'mujer llorando frustrada baño'; resultado: 'mujer durmiendo "
-            "tranquila', 'abuela feliz nietos'. Piensa QUÉ ESCENA le duele al comprador de ESTE producto "
-            "con ESTE ángulo y dame las búsquedas.")
+        if landing_text.strip():
+            prompt = (
+                f"Esta es la LANDING (página de venta) de un producto de dropshipping llamado "
+                f"\"{nombre}\". LÉELA — es la fuente de verdad del ángulo y del dolor:\n\n"
+                f"=== LANDING ===\n{landing_text[:2500]}\n=== FIN LANDING ===\n\n"
+                + (f"El vendedor además quiere reforzar este ángulo: \"{angulo}\". " if angulo.strip() else "")
+                + "De la landing SACA: el ángulo de venta real, a quién le habla y el DOLOR #1 del "
+                "comprador. Necesito B-ROLL: escenas que NO muestran el producto pero APOYAN ese "
+                "ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la necesidad, "
+                "la emoción cruda), y algo del después/alivio. Dame las búsquedas para hallar ese "
+                "b-roll en TikTok, amarradas a lo que DICE la landing (no genéricas).")
+        else:
+            prompt = (
+                f"Producto: \"{nombre}\". Ficha: \"{(ref_desc or '')[:400]}\". "
+                + (f"Ángulo de venta / punto de dolor que quiere el vendedor: \"{angulo}\". " if angulo.strip() else "")
+                + "Necesito B-ROLL para un anuncio de dropshipping: escenas que NO muestran el producto pero "
+                "APOYAN su ángulo — sobre todo el PUNTO DE DOLOR en acción (la persona SUFRIENDO la "
+                "necesidad, la emoción cruda), y un poco del después/alivio. "
+                "Ej. almohadillas para incontinencia → dolor: 'mujer desesperada corriendo al baño', "
+                "'sábanas mojadas vergüenza', 'mujer llorando frustrada baño'; resultado: 'mujer durmiendo "
+                "tranquila', 'abuela feliz nietos'. Piensa QUÉ ESCENA le duele al comprador de ESTE producto "
+                "con ESTE ángulo y dame las búsquedas.")
         client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
         resp = client.messages.create(
-            model=_CLAUDE, max_tokens=600,
+            model=_CLAUDE, max_tokens=700,
             tools=[tool], tool_choice={"type": "tool", "name": "brief_broll"},
             messages=[{"role": "user", "content": prompt}])
         for b in resp.content:
             if getattr(b, "type", None) == "tool_use" and b.name == "brief_broll":
                 qs = [str(q).strip() for q in (b.input.get("queries") or []) if str(q).strip()]
                 if qs:
-                    return {"punto_dolor": str(b.input.get("punto_dolor") or ""), "queries": qs[:8]}
+                    return {"punto_dolor": str(b.input.get("punto_dolor") or ""),
+                            "angulo_resumen": str(b.input.get("angulo_resumen") or ""),
+                            "publico": str(b.input.get("publico") or ""),
+                            "queries": qs[:8]}
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -403,19 +512,30 @@ def _juzgar_broll_claude(cands: list[dict], nombre: str, punto_dolor: str,
         return None
 
 
-def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
+def _queries_broll(ref_desc: str, nombre: str, api_key: str, landing_text: str = "") -> list[str]:
     """Gemini inventa búsquedas de B-ROLL (escenas de APOYO, no del producto) adaptadas al ÁNGULO del
     producto: para skincare → 'antes y después rostro', 'piel lisa primer plano'; para un gadget →
-    'manos usando', 'problema que resuelve'... Devuelve 4-6 consultas cortas."""
+    'manos usando', 'problema que resuelve'... Devuelve 4-6 consultas cortas.
+
+    Si viene `landing_text`, esa es la fuente de verdad del ángulo (fallback cuando no hay Claude)."""
     try:
-        prompt = (
-            f"Producto: \"{nombre}\". Ficha: \"{ref_desc[:400]}\". Para armar un anuncio DOPAMÍNICO de este "
-            "producto necesito B-ROLL de apoyo (escenas que NO muestran el producto, pero apoyan su ángulo "
-            "de venta): el DOLOR en acción, la transformación/resultado, la situación de uso, reacciones. "
-            "Dame 6 búsquedas CORTAS para TikTok (2-4 palabras, español o inglés según qué dé más resultados) "
-            "de ese b-roll. Ej. crema facial → ['antes despues rostro','piel lisa primer plano','mujer "
-            "aplicando crema','skin transformation']. Ej. gadget de limpieza → ['limpieza satisfactoria', "
-            "'cleaning asmr','mugre antes despues']. Responde SOLO JSON: {\"broll\":[\"...\"]}")
+        if landing_text.strip():
+            prompt = (
+                f"Esta es la LANDING de venta del producto \"{nombre}\":\n\"{landing_text[:2000]}\"\n"
+                "De la landing saca el DOLOR #1 del comprador y el ángulo de venta. Necesito B-ROLL de "
+                "apoyo (escenas que NO muestran el producto, pero apoyan ESE ángulo): el DOLOR en acción, "
+                "el resultado/alivio, la situación de uso. Dame 6 búsquedas CORTAS para TikTok (2-4 "
+                "palabras, español o inglés) amarradas a lo que dice la landing. "
+                "Responde SOLO JSON: {\"broll\":[\"...\"]}")
+        else:
+            prompt = (
+                f"Producto: \"{nombre}\". Ficha: \"{ref_desc[:400]}\". Para armar un anuncio DOPAMÍNICO de este "
+                "producto necesito B-ROLL de apoyo (escenas que NO muestran el producto, pero apoyan su ángulo "
+                "de venta): el DOLOR en acción, la transformación/resultado, la situación de uso, reacciones. "
+                "Dame 6 búsquedas CORTAS para TikTok (2-4 palabras, español o inglés según qué dé más resultados) "
+                "de ese b-roll. Ej. crema facial → ['antes despues rostro','piel lisa primer plano','mujer "
+                "aplicando crema','skin transformation']. Ej. gadget de limpieza → ['limpieza satisfactoria', "
+                "'cleaning asmr','mugre antes despues']. Responde SOLO JSON: {\"broll\":[\"...\"]}")
         resp = _client(api_key).models.generate_content(model=_MODEL, contents=[prompt])
         m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
         if m:
@@ -426,47 +546,207 @@ def _queries_broll(ref_desc: str, nombre: str, api_key: str) -> list[str]:
     return []
 
 
+_FASE_BROLL = {"dolor": "problema", "resultado": "resultado", "uso": "funcionamiento"}
+
+
+def _verificar_broll_video(cand: dict, punto_dolor: str, angulo: str, api_key: str) -> dict | None:
+    """VERIFICACIÓN PROFUNDA de B-roll: baja el video y mira 3 frames de ADENTRO para confirmar que
+    el CONTENIDO (no solo la portada) ILUSTRA el punto de dolor / la escena de apoyo del ángulo.
+
+    El juez de portada engaña (una miniatura que 'parece' dolor pero el video es un baile). Aquí se
+    mira lo de adentro. Devuelve {"sirve":bool,"fase":str,"confianza":str} o None si no se pudo bajar.
+    """
+    import tempfile
+    play = cand.get("play") or cand.get("video")
+    if not (play and api_key):
+        return None
+    tmp = None
+    try:
+        import cv2
+        from google.genai import types
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        with requests.get(play, headers=_UA, timeout=40, stream=True) as r:
+            if r.status_code != 200:
+                return None
+            escrito = 0
+            for chunk in r.iter_content(1 << 16):
+                escrito += len(chunk)
+                if escrito > 25 * 1024 * 1024:
+                    break
+                tmp.write(chunk)
+        tmp.close()
+        cap = cv2.VideoCapture(tmp.name)
+        total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        frames = []
+        for f in (0.2, 0.5, 0.8):
+            if total > 1:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int(total * f))
+            ok, fr = cap.read()
+            if ok and fr is not None:
+                h, w = fr.shape[:2]
+                if w > 480:
+                    fr = cv2.resize(fr, (480, int(h * 480 / w)))
+                ok2, buf = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 82])
+                if ok2:
+                    frames.append(buf.tobytes())
+        cap.release()
+        if not frames:
+            return None
+        titulo = (cand.get("title") or "")[:120]
+        prompt = (
+            f"Necesito B-ROLL de apoyo para un anuncio. El punto de dolor / ángulo es: "
+            f"\"{punto_dolor or angulo or 'la necesidad que resuelve el producto'}\". "
+            f"Te paso FRAMES DE ADENTRO de un video de TikTok (título: \"{titulo}\"). "
+            "Eres un JUEZ ESTRICTO: di si el CONTENIDO de este video sirve como b-roll para ESE ángulo.\n"
+            "- sirve=true SOLO si en los frames se VE de verdad una escena que apoya el ángulo: el "
+            "DOLOR en acción (persona sufriendo/frustrada/la situación molesta), el RESULTADO/alivio, "
+            "o la SITUACIÓN DE USO. Debe TENER QUE VER con el dolor del producto.\n"
+            "- sirve=false si es otra cosa (baile sin relación, meme random, texto gigante en pantalla, "
+            "producto DISTINTO protagonizando, gente hablando a cámara sin mostrar la escena, o no se "
+            "entiende). Ante la duda o si el video no muestra CLARO la escena del ángulo → false.\n"
+            "- fase: 'dolor' (se ve el sufrimiento/problema), 'resultado' (el después/alivio) o 'uso' "
+            "(la situación de uso). Si sirve=false, fase='no'.\n"
+            "- confianza: 'alta' si lo viste claro, 'media' si probable, 'baja' si dudoso.\n"
+            "- texto_overlay: cuánto TEXTO SOBREPUESTO tiene (subtítulos/carteles grandes que puso el "
+            "creador): 'nada', 'poco' o 'mucho'. (Preferimos b-roll LIMPIO, sin texto encima.)\n"
+            'Responde SOLO JSON: {"sirve":true/false,"fase":"dolor"/"resultado"/"uso"/"no",'
+            '"confianza":"alta"/"media"/"baja","texto_overlay":"nada"/"poco"/"mucho"}')
+        contents: list = [prompt]
+        for fb in frames:
+            contents.append(types.Part.from_bytes(data=fb, mime_type="image/jpeg"))
+        resp = _client(api_key).models.generate_content(model=_MODEL, contents=contents)
+        m = re.search(r"\{.*\}", resp.text or "", re.DOTALL)
+        if not m:
+            return None
+        d = json.loads(m.group(0))
+        fase = _FASE_BROLL.get(str(d.get("fase", "")).strip().lower())
+        return {"sirve": bool(d.get("sirve")) and fase is not None,
+                "fase": fase or "problema",
+                "confianza": str(d.get("confianza", "media")).strip().lower(),
+                "texto_overlay": str(d.get("texto_overlay", "poco")).strip().lower()}
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        if tmp is not None:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+
+
 def buscar_broll(ref_desc: str, nombre: str, api_key: str, n: int = 10,
-                 angulo: str = "", anthropic_key: str | None = None) -> list[dict]:
-    """Busca N escenas de B-ROLL en TikTok amarradas al ÁNGULO/PUNTO DE DOLOR del producto.
-    Con `anthropic_key`: Claude piensa las búsquedas desde el punto de dolor Y juzga las portadas
-    (descarta lo que no cuadra; etiqueta cada una con `fase`: problema/resultado/funcionamiento).
-    Sin ella: comportamiento viejo (Gemini/estático, sin juez)."""
-    brief = _broll_brief_claude(nombre, angulo, ref_desc, anthropic_key) if anthropic_key else None
+                 angulo: str = "", anthropic_key: str | None = None,
+                 landing_text: str = "", verificar_contenido: bool = True,
+                 pexels_key: str | None = None, pixabay_key: str | None = None) -> list[dict]:
+    """Busca N escenas de B-ROLL amarradas al ÁNGULO/PUNTO DE DOLOR del producto.
+
+    - FUENTE PRINCIPAL: BANCOS DE STOCK (Pexels/Pixabay) si hay key → b-roll LIMPIO de verdad
+      (escenas reales etiquetadas, sin memes ni texto encima). TikTok (tikwm) es solo FALLBACK:
+      para b-roll devuelve mayormente memes/comedia/anuncios, por eso solía salir cualquier cosa.
+    - `landing_text`: la LANDING manda. Si viene, el ángulo/dolor y las búsquedas se DERIVAN de ella.
+    - `anthropic_key`: Claude piensa las búsquedas Y hace el pre-filtro por portada (barato).
+    - `verificar_contenido`: mira el CONTENIDO de cada candidato (frames de adentro, Gemini) para
+      confirmar que ilustra la escena y asignar su fase.
+    """
+    brief = _broll_brief_claude(nombre, angulo, ref_desc, anthropic_key, landing_text) if anthropic_key else None
+    punto_dolor = (brief or {}).get("punto_dolor", angulo)
     queries = ((brief or {}).get("queries")
-               or _queries_broll(ref_desc, nombre, api_key)
+               or _queries_broll(ref_desc, nombre, api_key, landing_text)
                or [f"{nombre} antes y después", "satisfying asmr"])
-    cands: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
-        for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
-            for c in res:
-                cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url)
-    lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
-    # más views primero (b-roll viral = más dopamínico) y variedad de autores
-    lst.sort(key=lambda c: c.get("plays", 0), reverse=True)
+
+    # 🎬 FUENTE PRINCIPAL: bancos de STOCK (limpio, relevante, vertical, descargable).
+    stock: list[dict] = []
+    try:
+        from .stock_broll import buscar_stock
+        stock = buscar_stock(queries, pexels_key=pexels_key, pixabay_key=pixabay_key, n=n)
+    except Exception:  # noqa: BLE001
+        stock = []
+
+    hay_filtro = bool(anthropic_key) or verificar_contenido
+    pool_obj = 28 if hay_filtro else n
+
+    # TikTok SOLO si el stock no alcanza (o no hay keys de stock): rellena el pool como fallback.
+    lst: list[dict] = []
+    if len(stock) < pool_obj:
+        cands: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=min(6, len(queries))) as ex:
+            for res in ex.map(lambda q: buscar_tiktok(q, count=25, pages=1), queries):
+                for c in res:
+                    cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url)
+        lst = [c for c in cands.values() if 3 <= c.get("dur", 0) <= 90 and c.get("region") != "CO"]
+        lst.sort(key=lambda c: c.get("plays", 0), reverse=True)   # más views primero
+
+    # POOL: el STOCK va PRIMERO (es la fuente buena); TikTok solo rellena. Variedad por autor/fuente.
     pre, autores = [], set()
-    for c in lst:
+    for c in stock + lst:
         autor = c["url"].split("@")[1].split("/")[0] if "@" in c["url"] else c["url"]
         if autor in autores:
             continue
         autores.add(autor)
         pre.append(c)
-        if len(pre) >= (24 if anthropic_key else n):   # con juez: pool más grande para que filtre
+        if len(pre) >= pool_obj:
             break
-    fases = _juzgar_broll_claude(pre, nombre, (brief or {}).get("punto_dolor", angulo),
-                                 anthropic_key) if anthropic_key else None
+    def _es_stock(c) -> bool:
+        return c.get("source") in ("pexels", "pixabay")
+
+    # 1) Pre-filtro barato por PORTADA (Claude visión, 1 llamada): descarta lo obvio y da una fase tentativa.
+    #    El STOCK NUNCA se descarta aquí (es limpio y ya relevante a la query) — el juez es solo para TikTok.
+    fases_cover = _juzgar_broll_claude(pre, nombre, punto_dolor, anthropic_key) if anthropic_key else None
+    tras_cover = [(i, c) for i, c in enumerate(pre)
+                  if fases_cover is None or i in fases_cover or _es_stock(c)]
+
+    # 2) Verificación PROFUNDA por CONTENIDO (Gemini mira frames de adentro): confirma que el video
+    #    de verdad ilustra la escena del ángulo. Es lo que pidió Angelo: "que los b-roll realmente
+    #    tengan que ver con el video". Si Gemini está caído (None), NO se descarta por eso (se
+    #    conserva lo que aprobó la portada) — pero el que el contenido rechaza SÍ se saca.
     out = []
-    for i, c in enumerate(pre):
-        if fases is not None and i not in fases:      # el juez lo descartó
-            continue
-        out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
-                    "plays": c.get("plays", 0), "tipo": "broll",
-                    "fase": (fases or {}).get(i, "problema")})
-        if len(out) >= n:
-            break
-    # el DOLOR primero (es lo que pidió el ángulo); dentro de cada fase ya vienen por views
-    out.sort(key=lambda x: 0 if x["fase"] == "problema" else 1)
-    return out
+    if verificar_contenido and api_key and tras_cover:
+        # solo verificamos los que tienen mp4 descargable; el resto pasa con su fase de portada.
+        # TOPE DE COSTO: la verificación profunda baja el mp4 + 1 llamada Gemini por video → se acota
+        # a los más virales (pre ya viene ordenado por views) con margen sobre lo que se pedirá (n).
+        tope_ver = max(12, min(20, n * 2))
+        con_video = [(i, c) for i, c in tras_cover if (c.get("play") or c.get("video"))]
+        verificables = con_video[:tope_ver]
+        resultados: dict[int, dict | None] = {}
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            futs = {ex.submit(_verificar_broll_video, c, punto_dolor, angulo, api_key): i
+                    for i, c in verificables}
+            for f in as_completed(futs):
+                try:
+                    resultados[futs[f]] = f.result()
+                except Exception:  # noqa: BLE001
+                    resultados[futs[f]] = None
+        for i, c in tras_cover:                            # NO cortar en n: junta todos, luego ordena
+            r = resultados.get(i)
+            # el CONTENIDO rechaza → fuera; PERO el stock NO se bota (es limpio y ya relevante:
+            # el verificador está afinado para la basura de TikTok, no para descartar stock bueno).
+            if r is not None and not r["sirve"] and not _es_stock(c):
+                continue
+            fase = (r or {}).get("fase") or (fases_cover or {}).get(i, "problema")
+            # el stock no trae texto encima → cuenta como "nada" (va primero en el orden final)
+            overlay = "nada" if _es_stock(c) else (r or {}).get("texto_overlay", "poco")
+            out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
+                        "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
+                        "fase": fase, "source": c.get("source", "tiktok"),
+                        "verificado": (r is not None and r["sirve"]) or _es_stock(c),
+                        "texto_overlay": overlay})
+    else:
+        for i, c in tras_cover:
+            out.append({"url": c["url"], "title": c.get("title", ""), "cover": c.get("cover", ""),
+                        "play": c.get("play", ""), "plays": c.get("plays", 0), "tipo": "broll",
+                        "fase": (fases_cover or {}).get(i, "problema"),
+                        "source": c.get("source", "tiktok"),
+                        "verificado": _es_stock(c),
+                        "texto_overlay": "nada" if _es_stock(c) else "poco"})
+    # ORDEN (pedido de Angelo): (1) SIN texto encima primero (nada<poco<mucho), (2) el DOLOR primero,
+    # (3) verificados por contenido antes, (4) más views. Así los b-roll limpios y del dolor van arriba
+    # y los con mucho texto solo se usan para rellenar si hace falta.
+    _txt = {"nada": 0, "poco": 1, "mucho": 2}
+    out.sort(key=lambda x: (_txt.get(x.get("texto_overlay", "poco"), 1),
+                            0 if x["fase"] == "problema" else 1,
+                            0 if x.get("verificado") else 1,
+                            -int(x.get("plays", 0))))
+    return out[:n]
 
 
 def _foreplay_candidatos(queries: list[str], foreplay_key: str | None, max_q: int = 3) -> list[dict]:
@@ -674,7 +954,8 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
            count: int = 20, anthropic_key: str | None = None,
            analisis: dict | None = None, foreplay_key: str | None = None,
            image_paths: list[str] | None = None, explorar_cuentas: bool = True,
-           landing_text: str = "", solo_confirmados: bool = True) -> dict:
+           landing_text: str = "", solo_confirmados: bool = True,
+           rellenar_n: bool = False) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -689,12 +970,18 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     confirmados (máx 3, tikwm user/posts) — los vendedores suben el mismo producto muchas veces —
     y suma los que el juez de portada confirme (solo portada: tope de costo).
     `landing_text` (opcional): texto de la página de venta → mejor ficha y términos (cero llamadas
-    extra: va dentro de la misma llamada de analizar_foto)."""
+    extra: va dentro de la misma llamada de analizar_foto).
+    `rellenar_n` (flujo "buscar creativos"): rellena hasta `count` usando SOLO matches CONFIRMADOS
+    de confianza ALTA o MEDIA (tier 1 y 2) — NUNCA confianza baja ni "solo por título". El juez NO
+    se afloja: para llegar al count se agranda el POOL de candidatos (más términos multilingües, más
+    páginas), no se bajan los estándares. Si hay menos de `count` matches verdaderos, devuelve MENOS
+    honestamente. Cada link lleva `tier`/`confianza` y `verificado_producto=True`. Default False =
+    comportamiento estricto de siempre para otros llamadores."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
     queries = _expandir(nombre, [])
-    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:4]
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
     if paths:
         info = analisis or analizar_foto(paths[0], nombre, api_key, image_paths=paths,
                                          landing_text=landing_text)
@@ -708,14 +995,14 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
             except Exception:  # noqa: BLE001
                 pass
         ref_bytes = refs or None       # lista: _verificar/_verificar_claude la aceptan tal cual
-    queries = [q for q in queries if q][:10] or [(nombre or "").strip()]
+    queries = [q for q in queries if q][:16] or [(nombre or "").strip()]
     kw = queries[0]
 
     # AMPLIAR: MUCHAS consultas (producto + beneficios/compra) × varias páginas → muchísimos candidatos.
     # En PARALELO para que buscar en 10 términos × 3 páginas no se demore.
     cands: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=6) as ex:
-        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=3), queries):
+        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=4), queries):
             for c in res:
                 cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url: el @ engaña)
     # + FOREPLAY: ads GANADORES ya probados (video descargable) al MISMO pool y con la MISMA verificación
@@ -749,7 +1036,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                                       c.get("plays", 0)), reverse=True)
         # Verifica MUCHOS más (escalado a lo que pide el usuario): como el filtro estricto de "mismo
         # producto" descarta hartos, hay que revisar un pool grande para LLEGAR al count pedido.
-        pool_n = min(len(cand_list), max(60, count * 4))
+        pool_n = min(len(cand_list), max(150, count * 8))
         pool = cand_list[:pool_n]             # los más RELEVANTES primero (título > hispano > views)
         # ── VERIFICACIÓN EXACTA: por CONTENIDO del video, no por portada ─────────────────────
         # 1) PORTADA = pre-filtro BARATO. NO confirma sola (engaña: antes/después, cara, pie): solo
@@ -769,7 +1056,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     _title_score(c), c.get("plays", 0))
 
         def _confirmar_contenido(cands):
-            """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja."""
+            """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja.
+            SIEMPRE (también con `rellenar_n`) se DESCARTA la confianza baja: el flujo "buscar
+            creativos" solo devuelve el MISMO producto confirmado (alta/media), nunca match=false ni
+            baja. Cada match queda etiquetado con `_conf` (alta/media) para el tier."""
             out = []
             cands = [c for c in cands if (c.get("play") or c.get("video"))]
             with ThreadPoolExecutor(max_workers=4) as ex:
@@ -778,6 +1068,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                     v = fut.result()
                     if v and v.get("match") and v.get("confianza") != "baja":
                         c = futs[fut]
+                        c["_conf"] = v.get("confianza")
                         c["_rank"] = (_CONF.get(v.get("confianza"), 0), v.get("muestra", False),
                                       v.get("overlay", 1), v.get("es", False), c.get("plays", 0))
                         out.append(c)
@@ -787,7 +1078,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         a_deep = [c for c in pool if (c.get("play") or c.get("video")) and
                   ((cover_res.get(id(c)) or {}).get("match") or _title_score(c) >= 2)]
         a_deep.sort(key=_prio, reverse=True)
-        a_deep = a_deep[:min(len(a_deep), max(28, count * 2))]   # presupuesto de descargas
+        a_deep = a_deep[:min(len(a_deep), max(60, count * 4))]   # presupuesto de descargas (pool amplio)
         matches = _confirmar_contenido(a_deep)
         matches.sort(key=lambda c: c.get("_rank", ()), reverse=True)
 
@@ -828,15 +1119,33 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
             de_cuentas.sort(key=lambda c: c.get("_rank", ()), reverse=True)
             matches.extend(de_cuentas)
 
-        for c in matches:
-            c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)
-        links = matches[:count]
-        # SIN relleno en modo exacto: NO se completa con no-verificados (los "nada que ver"). El llamador
-        # puede pedir el relleno viejo con solo_confirmados=False (siempre etiquetado como no verificado).
-        if not solo_confirmados and len(links) < count:
-            vistos = {l["url"] for l in links}
-            extra = [dict(c, verificado_producto=False) for c in cand_list if c["url"] not in vistos]
-            links = (links + extra)[:count]
+        if rellenar_n:
+            # TIERED (flujo "buscar creativos"): SOLO matches confirmados de confianza ALTA (tier 1)
+            # o MEDIA (tier 2). Se DESCARTA tier 3 (confianza baja / solo-título): el usuario exige
+            # literalmente el MISMO producto. Ordena tier 1 antes que 2 y baja a tier 2 solo para
+            # llegar al count. Si no hay suficientes, devuelve MENOS (honesto). Jamás match=false.
+            confirmados_t = []
+            for c in matches:
+                conf = c.get("_conf") or "media"
+                tier = 1 if conf == "alta" else (2 if conf == "media" else 3)
+                if tier > 2:                           # baja/solo-título: FUERA (no es seguro que sea igual)
+                    continue
+                c["tier"] = tier
+                c["confianza"] = conf
+                c["verificado_producto"] = True        # tier 1/2 = MISMO producto confirmado
+                confirmados_t.append(c)
+            confirmados_t.sort(key=lambda c: (c.get("tier", 2),) + tuple(-v for v in c.get("_rank", ())))
+            links = confirmados_t[:count]
+        else:
+            for c in matches:
+                c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)
+            links = matches[:count]
+            # SIN relleno en modo exacto: NO se completa con no-verificados (los "nada que ver"). El llamador
+            # puede pedir el relleno viejo con solo_confirmados=False (siempre etiquetado como no verificado).
+            if not solo_confirmados and len(links) < count:
+                vistos = {l["url"] for l in links}
+                extra = [dict(c, verificado_producto=False) for c in cand_list if c["url"] not in vistos]
+                links = (links + extra)[:count]
     else:
         links = cand_list[:count]
 
@@ -845,6 +1154,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         c.pop("_rank", None)
         c.pop("_deep", None)
         c.pop("_cuenta", None)
+        c.pop("_conf", None)          # interno (tier ya calculado)
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
 

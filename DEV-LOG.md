@@ -3334,6 +3334,98 @@ AVISO Jack: NO toqué tus archivos (disruptive_images, dub_colombia, tiktok_sear
 image_variator intactos). `generate_scripts` ahora lanza excepción en vez de [] — si algún flujo tuyo
 nuevo la llama directo, envuélvela en try/except.
 
+### 2026-07-08 · Claude (juanesal-lab) · 🎯 B-ROLL mucho mejor: landing OBLIGATORIA + verificación por CONTENIDO + afinidad guion↔clip (pedido de Angelo)
+Angelo pidió 3 cosas para la búsqueda de B-roll. Las 3 implementadas (aditivas, degradan solas si la
+IA está caída, respetan la robustez de hoy):
+- **① LANDING como fuente de verdad (obligatoria)**: `/api/broll-dolor` ahora acepta `landing_url` →
+  `fetch_page_text` la lee → Claude (o Gemini de respaldo) DERIVA de ella el ángulo de venta + dolor #1
+  + público y de ahí las búsquedas de TikTok (antes el ángulo era texto suelto opcional). Es OBLIGATORIO
+  dar la landing O un ángulo con sustancia (≥3 palabras) — si no, 400 con mensaje claro. `_broll_brief_claude`
+  y `_queries_broll` ahora reciben `landing_text` y lo priorizan. Front: nuevo input de landing en el
+  cajón de B-roll + validación antes de llamar.
+- **② Verificación PROFUNDA por CONTENIDO (no solo portada)**: nuevo `_verificar_broll_video` — baja el
+  mp4 y mira 3 frames de ADENTRO; Gemini confirma que el video DE VERDAD ilustra la escena del ángulo
+  (dolor/resultado/uso), no que la miniatura "parezca". El flujo de `buscar_broll` quedó: landing→queries
+  → pre-filtro barato por portada (Claude, 1 llamada) → verificación de contenido en paralelo (Gemini) →
+  descarta lo que el contenido no cuadra y usa la FASE confirmada por el contenido. Si Gemini cae (None)
+  NO descarta por eso: conserva el veredicto de portada (marca `verificado:false`). Tope de costo: se
+  verifican máx ~2×n los más virales. Front: badge "✓ contenido" en los verificados.
+- **③ AFINIDAD guion↔clip por frase ("qué frame de todos los videos es mejor para esa parte")**: nuevo
+  `guion_match.afinidad_guion_clips` — 1 llamada Gemini que, con el `tag` de escena de cada clip, puntúa
+  qué clips ilustran mejor CADA frase del guion (de TODAS las versiones a la vez). `plan_montaje` acepta
+  `afinidad` (por frase) como DESEMPATE FUERTE, DESPUÉS de las reglas anti-congelado (mismo_look/hook) —
+  así, empatando en fase, gana el clip cuyo contenido calza con lo que se dice. Sin key/tags o si Gemini
+  falla → None → montaje IDÉNTICO al de siempre. Cableado en orchestrator (render normal) y regen (la
+  versión regenerada también se beneficia).
+- **VERIFICADO SIN GASTAR** ($0): py_compile 5/5; JS 15/15; app importa con 51 rutas; tests offline —
+  plan_montaje con/sin afinidad (respeta la preferencia sin romper el orden), afinidad degrada a None sin
+  key/tags; endpoint exige landing o ángulo con sustancia y deriva el landing_text; orquestación de
+  buscar_broll (rechaza engaños de portada por contenido, conserva si el juez de contenido cae, usa la
+  fase del contenido, respeta el tope). NO corrí búsqueda real (toca TikTok/IA). REINICIAR :8420 para
+  probar en vivo (endpoint y pipeline nuevos).
+AVISO Jack: toqué `guion_match.py` (core del montaje por guion) — solo AÑADÍ el param `afinidad`
+opcional (default None = comportamiento viejo exacto) + el nuevo helper; nada existente cambia de
+firma de forma incompatible. `buscar_broll` ganó params `landing_text`/`verificar_contenido` (defaults
+retrocompatibles, único caller es /api/broll-dolor). orchestrator/regen: 1 línea cada uno para pasar la
+afinidad.
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎬 Tanda GRANDE (video real de Angelo): B-roll dentro, hook+riser, blur, sync, forzar N, hooks 4 mercados, UI 3 secciones
+Angelo mandó ~13 pedidos + el video que soltó la app (toallas reutilizables, 18s). Lo analicé frame a
+frame (hook sin texto, blur gris arriba, cero b-roll, dolor narrado sobre producto). Lancé 5 agentes
+(blur, inserción b-roll, hook+sync, forzar-N, research hooks) y apliqué los fixes. Todo verificado
+OFFLINE ($0, sin correr renders ni búsquedas reales). REINICIAR :8420 para probar en vivo.
+- **✅ B-roll AHORA entra al video**: `is_broll` en Segment; analyze_select marca las fuentes b-roll y
+  _select_for_target las FUERZA al pool (saltan corte por score/dedup); forzado de fase para TODOS los
+  seleccionados (no solo top-60); plan_montaje gana su fase + exento del tope de reuso. Antes puntuaban
+  bajo (no muestran producto) → nunca entraban. Test: b-roll de score 5 entra en la frase de dolor.
+- **✅ HOOK de texto**: el flujo producto NUNCA cableaba el gancho → salía sin texto. Ahora auto_hook ON
+  por defecto + pasa hook_text; se avisa si el quemado falla (antes silencioso). + generate_hook mucho
+  mejor (abajo).
+- **✅ SYNC audio/video**: se quitó el setpts uniforme que corría TODOS los cortes interiores (desincronía
+  progresiva) → ahora clavados a la voz, el sobrante lo cubre el último frame. + voz a 1.0 (Angelo:
+  "no aceleres nada"; antes 1.12×).
+- **✅ RISER de TikTok en el hook**: `_hook_riser_evento` inyectado en la mezcla con y sin voz; su subida
+  aterriza al final de los primeros ~3s.
+- **✅ BLUR**: (1) `_detect` recibe inw/inh/min_h por parámetro → mask_captions_smart deja de mutar los
+  globales dentro de hilos (race que perdía captions y colaba el texto ajeno); (2) _BOX_PAD_W 0.05→0.13
+  + feather mínimo (el filo de la 1ª/última letra se veía al escalar); (3) FAIL-SAFE: si EAST vio texto
+  persistente pero Gemini lo descartó todo, se tapa igual lo de la zona de captions (antes devolvía el
+  clip con el texto del proveedor visible).
+- **✅ B-roll landing + preview + sin texto** (sesión previa + esta): landing en el campo de ángulo (sin
+  producto), mínimo 5, verificación por CONTENIDO (no portada), preferir SIN texto encima, preview inline
+  (devuelve `play` → el botón Ver reproduce ahí mismo, ya no redirige a TikTok).
+- **✅ FORZAR N** (pediste 30 → daba 1): relleno por niveles (1 alta / 2 media / 3 baja-título) que llena
+  hasta N sin aceptar producto distinto (todo tier exige juez match=true) + pool más grande. Endpoints
+  creativos activan `rellenar_n=True`; B-roll y modo estricto intactos. (implementado por agente, verificado)
+- **✅ HOOKS 4 mercados**: agente investigó US/UK/DE/FR (+30 días activos). generate_hook ahora elige la
+  MECÁNICA que calza (dolor exacto/curiosidad/contrario/error/antes-después/dato/para-el-scroll) y la
+  llena con el dolor EXACTO del producto; lista negra de clichés de IA. `assets/research-hooks-2026-4mercados.md`
+  con 20 plantillas LATAM + buenas prácticas de texto en pantalla.
+- **✅ UI en 3 secciones**: nav agrupada — 🔎 Buscar creativos (Buscar/Foreplay/Radar) · 🎬 Crear videos
+  (el resto) · 🛍️ Crear landing · ⚙️ Ajustes. Solo reorden + encabezados; cada botón intacto.
+AVISO Jack: toqué guion_match (params afinidad/broll_idx opcionales, retrocompat), orchestrator/regen/
+producto_clips/assemble/text_detect/smart_caption_mask/tiktok_search/creative_search/hook_gen/analyze +
+app.py + index.html. Nada existente cambió de firma incompatible; todo con defaults. PENDIENTE: probar en
+vivo con :8420 (los fixes de render no se pudieron correr E2E por la regla de $0).
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎯 Búsqueda MISMO producto (foto/video→5 frames) + TOFU/MOFU/BOFU seleccionable (video FORMATOS de Meta)
+Angelo: (1) la búsqueda daba OTRO producto; (2) quiere creativos por embudo TOFU/MOFU/BOFU. Mandó 2 videos
+de referencia (FORMATOS = diversificación creativa de Meta; PROMPT = lead-magnet anti-hackeo, sin contenido
+accionable). Un agente por acción, verificado offline ($0). REINICIAR :8420 para probar en vivo.
+- **✅ Búsqueda MISMO producto (arregla regresión)**: el relleno por niveles que metí antes colaba
+  confianza BAJA/solo-título → OTRO producto. Ahora `confianza!=baja` incondicional + tier-3 descartado:
+  solo confirmados alta+media. Se llega a N con pool multi-idioma más grande (150/count*8, deep count*4,
+  Foreplay 32×4), no aflojando; si hay menos matches reales, devuelve menos honesto. Colombia excluida.
+- **✅ Buscar por VIDEO**: `mejores_frames()` saca los 5 mejores frames del video (nitidez Laplaciano,
+  descarta negros/borrosos, distintos) como referencia multi-frame; analizar_foto acepta 6; endpoints
+  aceptan video y muestran los frames usados.
+- **✅ TOFU/MOFU/BOFU seleccionable**: al pedir creativos, elegís cuántos de cada etapa (default 2+2+2,
+  o presets). generate_scripts(mix) etiqueta cada guion con su etapa e inyecta su arco/hooks/CTA/largo;
+  CTA dura (contraentrega) SOLO en BOFU, TOFU suave, MOFU media; hook_gen(stage) hace el overlay acorde;
+  1 versión por guion en modo embudo, cada creativo con su badge. Research en assets/funnel-tofu-mofu-bofu-2026.md.
+AVISO Jack: toqué scripts.py (CTA por etapa — additivo, sin mix = idéntico), hook_gen, assemble
+(plan_variations n_versions), orchestrator/producto_clips (n_versions+stages), tiktok_search/creative_search
+(strict + video frames), app.py, index.html. Todo con defaults retrocompatibles.
 ### 2026-07-08 · Claude (jackingshop1-cell) · 📖 PROMPT-ONBOARDING.md (onboarding de Jack: usar + reglas de oro)
 - Agregué **`PROMPT-ONBOARDING.md`**: el "super-prompt" de Jack con quién es, qué es la app y cómo
   se prende, qué hace cada pestaña, su flujo ganador, y sus REGLAS DE ORO (lo que le gusta y lo que
@@ -3546,3 +3638,22 @@ que se use el dubbing". Antes Doblar era 1 paso con 2 caminos escondidos (sin 2x
 - AVISO Juan: NUEVOS endpoints /api/dub-preview y /api/dub-generar (+ jobs). `generar_dub` gana kwarg
   OPCIONAL `segments_override` (default None = comportamiento idéntico). El viejo /api/dub sigue vivo
   (retrocompat, ya no lo usa la UI). Nada de scripts/voz tuyo tocado; dub_colombia solo ganó el kwarg.
+
+### 2026-07-08 · Claude (juanesal-lab) · 🎬 B-ROLL DE VERDAD: fuente = bancos de stock (Pexels/Pixabay), NO TikTok
+Angelo con toda la razón: el b-roll salía basura. CORRÍ la búsqueda de verdad y vi el problema REAL: no
+era la verificación, era la FUENTE. TikTok (tikwm) para b-roll devuelve memes/comedia/anuncios completos
+("mujer frustrada baño" → videos de comedia; "cleaning asmr" → lavado de autos de 4 min). Toda la
+verificación estaba puliendo basura.
+- **NUEVO `pipeline/stock_broll.py`**: busca en Pexels + Pixabay (video APIs GRATIS). Clips LIMPIOS,
+  etiquetados, verticales y descargables de la escena real. Elige el mp4 vertical, filtra duración,
+  dedup. Probado con las formas reales de ambas APIs (parseo, elige vertical, filtra 90s, sin key → []).
+- **`buscar_broll`**: STOCK = fuente PRINCIPAL (params pexels_key/pixabay_key). TikTok pasa a FALLBACK
+  (solo si no hay key de stock o no alcanza). El stock NUNCA lo bota el juez de portada ni el verificador
+  (es limpio y ya relevante); cuenta como texto_overlay="nada" → va primero. Preview inline + descarga
+  ya funcionan (trae mp4 directo). Probado: con stock, 8/8 de Pexels y TikTok ni se llama; sin key, cae a TikTok.
+- **Keys**: PEXELS_API_KEY / PIXABAY_API_KEY en _KEY_ENV + _load_pexels_key/_load_pixabay_key; /api/config
+  expone has_pexels_key/has_pixabay_key; tarjeta nueva en 🔑 Claves con instrucciones (key gratis 2 min).
+- Endpoint /api/broll-dolor pasa las keys; si no hay, el error dice claramente que conecten Pexels/Pixabay.
+- **PENDIENTE probar EN VIVO**: necesita una key gratis de Pexels (2 min, sin tarjeta) — apenas la peguen
+  en Claves, el b-roll sale de stock. Verificado el código con las respuestas reales de las APIs (mock),
+  py_compile + import + JS 15/15. AVISO Jack: nuevo stock_broll.py; buscar_broll ganó 2 params opcionales.

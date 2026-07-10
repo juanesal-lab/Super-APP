@@ -47,8 +47,10 @@ _BLOCK_GAP = 0.6      # une líneas del mismo BLOQUE si el hueco vertical < esto
 _BLOCK_XOVER = 0.3    # ...y se solapan horizontalmente al menos esta fracción de la línea más angosta
 _TRACK_GAP = 24       # tracking: una caja re-detectada hasta N frames después sigue siendo el MISMO texto (rellena huecos)
 _PAD_FRAMES = 6       # colchón: extiende el tapado N frames antes/después del tramo detectado (sin parpadeo en bordes)
-_BOX_PAD_W = 0.05     # margen de seguridad horizontal del bloque final (fracción del ancho)
-_BOX_PAD_H = 0.12     # margen de seguridad vertical del bloque final (fracción del alto)
+_BOX_PAD_W = 0.13     # margen horizontal (fracción): EAST recorta la 1ª/última letra; con poco
+                      # margen el borde de esas letras quedaba fuera de la caja y, al escalar a
+                      # 1080×1920, se veía el filo del texto del proveedor. Más ancho = cobertura real.
+_BOX_PAD_H = 0.14     # margen de seguridad vertical del bloque final (fracción del alto)
 
 
 def ensure_model() -> bool:
@@ -114,11 +116,19 @@ def _on_face(box, faces) -> bool:
     return False
 
 
-def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH) -> list[tuple]:
-    """Devuelve cajas de texto (x,y,w,h) en pixeles del frame, sin caras ni texto chico."""
+def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH,
+            inw=None, inh=None, min_h=None) -> list[tuple]:
+    """Devuelve cajas de texto (x,y,w,h) en pixeles del frame, sin caras ni texto chico.
+
+    `inw/inh/min_h` (opcionales) sobreescriben la resolución de entrada / alto mínimo SOLO para esta
+    llamada. Antes se mutaban los globales `_INW/_INH/_MIN_H` desde mask_captions_smart, que corre en
+    varios hilos → un hilo leía un par medio-actualizado y detectaba con aspecto errado (captions
+    perdidas = texto del proveedor que se colaba). Pasarlos por parámetro elimina el race."""
     H, W = frame.shape[:2]
-    rW, rH = W / float(_INW), H / float(_INH)
-    blob = cv2.dnn.blobFromImage(frame, 1.0, (_INW, _INH),
+    inw = int(inw or _INW); inh = int(inh or _INH)
+    mh = _MIN_H if min_h is None else float(min_h)
+    rW, rH = W / float(inw), H / float(inh)
+    blob = cv2.dnn.blobFromImage(frame, 1.0, (inw, inh),
                                  (123.68, 116.78, 103.94), swapRB=True, crop=False)
     # net es POR-THREAD (threading.local) → setInput+forward sin lock, corren en paralelo real.
     net.setInput(blob)
@@ -141,7 +151,7 @@ def _detect(net, frame, conf=_CONF, min_wh=_MIN_WH) -> list[tuple]:
             confs.append(float(sc[x]))
     idx = cv2.dnn.NMSBoxes(rects, confs, conf, 0.4)
     cands = [rects[i] for i in (idx.flatten() if len(idx) else [])
-             if rects[i][3] >= _MIN_H * H]   # texto muy chico (envase/ruido) -> ignorar
+             if rects[i][3] >= mh * H]   # texto muy chico (envase/ruido) -> ignorar
     faces = _faces(frame) if cands else []   # Haar es caro: solo si hay candidatos
     boxes = []
     for (x, y, w, h) in cands:

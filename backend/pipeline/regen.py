@@ -32,7 +32,8 @@ def _seg_from_dict(d: dict) -> Segment:
         start=float(d["start"]), end=float(d["end"]), score=float(d.get("score", 0.0)),
         local_score=float(d.get("local_score", 0.0)),
         product_visible=bool(d.get("product_visible", False)),
-        shows_use=bool(d.get("shows_use", False)), tag=str(d.get("tag", "")))
+        shows_use=bool(d.get("shows_use", False)), tag=str(d.get("tag", "")),
+        is_broll=bool(d.get("is_broll", False)))
 
 
 def regenerar_version(estado: dict, name: str, motivo: str, *,
@@ -122,10 +123,15 @@ def regenerar_version(estado: dict, name: str, motivo: str, *,
     caps = vers.get("caps") or []
     if motivo in ("clips", "guion", "otra") and frases:
         evitar = set(vers.get("order") or []) if motivo == "clips" else set()
+        # afinidad guion↔clip por contenido (mismo extra del render normal); None si no hay key/tags
+        af = guion_match.afinidad_guion_clips([frases], selected, fases, gemini_key,
+                                              s.get("product_desc", ""))
+        broll_idx = {i for i in fases if getattr(selected[i], "is_broll", False)}
         plan = guion_match.plan_montaje(
             selected, fases, frases, usage,
             version_i=int(vers.get("version_i", 0)), n_versiones=int(estado.get("n_versiones", 8)),
-            hook_srcs=set(), max_usos=99, firmas=firmas, evitar=evitar)
+            hook_srcs=set(), max_usos=99, firmas=firmas, evitar=evitar,
+            afinidad=(af[0] if af else None), broll_idx=broll_idx)
         if plan:
             order, caps = plan
             vers["order"], vers["caps"] = order, caps

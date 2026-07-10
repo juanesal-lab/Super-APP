@@ -189,6 +189,14 @@ def _load_foreplay_key() -> str | None:
     return _load_key("FOREPLAY_API_KEY")
 
 
+def _load_pexels_key() -> str | None:
+    return _load_key("PEXELS_API_KEY")
+
+
+def _load_pixabay_key() -> str | None:
+    return _load_key("PIXABAY_API_KEY")
+
+
 def _load_shopify() -> tuple[str | None, str | None, str | None]:
     """(dominio, admin_token, theme_id opcional) para el módulo Crear Landings."""
     return (_load_key("SHOPIFY_STORE_DOMAIN"), _load_key("SHOPIFY_ADMIN_API_TOKEN"),
@@ -414,6 +422,8 @@ def get_config():
         "has_eleven_key": bool(_load_eleven_key()),
         "has_anthropic_key": bool(_load_anthropic_key()),
         "has_foreplay_key": bool(_load_foreplay_key()),
+        "has_pexels_key": bool(_load_pexels_key()),
+        "has_pixabay_key": bool(_load_pixabay_key()),
         "has_shopify": bool(_load_shopify()[0] and _load_shopify()[1]),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
@@ -443,6 +453,7 @@ def caption_preview(style: str = "hormozi", size: str = "mediano"):
 
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY",
+            "pexels": "PEXELS_API_KEY", "pixabay": "PIXABAY_API_KEY",   # bancos de video para B-ROLL
             "shopify_domain": "SHOPIFY_STORE_DOMAIN", "shopify_token": "SHOPIFY_ADMIN_API_TOKEN",
             "shopify_theme": "SHOPIFY_THEME_ID"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
@@ -741,19 +752,50 @@ def fetch_links(links: str = Form("")):
 
 
 @app.post("/api/broll-dolor")
-def broll_dolor(producto: str = Form(...), angulo: str = Form(""), n: int = Form(8)):
-    """🎭 Busca B-ROLL amarrado al ÁNGULO/PUNTO DE DOLOR: Claude piensa las escenas que duelen
-    (ej. incontinencia → 'mujer desesperada baño'), busca en TikTok (sin Colombia) y Claude juzga
-    las portadas. Devuelve links etiquetados por fase para pegar en el cajón de B-roll."""
-    if not producto.strip():
-        raise HTTPException(400, "Describe el producto")
+def broll_dolor(producto: str = Form(""), angulo: str = Form(""),
+                landing_url: str = Form(""), n: int = Form(8)):
+    """🎭 Busca B-ROLL amarrado al ÁNGULO/PUNTO DE DOLOR sacado de la LANDING (fuente de verdad):
+    lee la página de venta → deriva el ángulo/dolor (y hasta el producto) → busca en TikTok (sin
+    Colombia) → juzga la portada Y verifica el CONTENIDO de cada video (frames de adentro) para que
+    de verdad ilustre la escena, PREFIERE b-roll SIN texto encima. Devuelve links por fase.
+
+    Con la LANDING NO hace falta escribir el producto (pedido de Angelo): se puede pegar el link en
+    el campo de ángulo también. Mínimo 5 escenas. Hace falta landing O un ángulo con sustancia."""
+    producto, angulo, landing_url = producto.strip(), angulo.strip(), landing_url.strip()
+    # Se puede pegar la landing en el campo de ÁNGULO: si el ángulo es un link, se usa como landing.
+    if not landing_url and angulo.startswith(("http://", "https://")):
+        landing_url, angulo = angulo, ""
+    landing_text = ""
+    if landing_url:
+        if not landing_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "La landing debe ser un link http(s) válido")
+        landing_text = fetch_page_text(landing_url)
+        if not landing_text:
+            raise HTTPException(400, "No pude leer esa landing (¿link correcto y público?). "
+                                     "Pégala bien o escribe el ángulo a mano.")
+    # Hace falta de dónde sacar el ángulo: landing, o un ángulo con sustancia, o el producto escrito.
+    if not landing_text and len(angulo.split()) < 3 and not producto:
+        raise HTTPException(400, "Pega la LANDING del producto (recomendado, aquí mismo en el campo) "
+                                 "o escribe el ángulo / punto de dolor con detalle — de ahí saco los "
+                                 "B-roll acordes.")
+    # nombre para las búsquedas: el producto escrito, o algo derivable del ángulo/landing (buscar_broll
+    # arma las queries desde el landing_text de todos modos, así que el nombre es secundario).
+    nombre = producto or (angulo[:60] if angulo else "producto")
     from pipeline.tiktok_search import buscar_broll
-    res = buscar_broll(producto.strip(), producto.strip(), _load_env_key(),
-                       n=max(2, min(16, n)), angulo=angulo.strip(),
-                       anthropic_key=_load_anthropic_key())
+    px, pb = _load_pexels_key(), _load_pixabay_key()
+    res = buscar_broll(nombre, nombre, _load_env_key(),
+                       n=max(5, min(16, n)), angulo=angulo,     # MÍNIMO 5 (pedido de Angelo)
+                       anthropic_key=_load_anthropic_key(), landing_text=landing_text,
+                       pexels_key=px, pixabay_key=pb)            # 🎬 STOCK = fuente principal de b-roll
     if not res:
-        return {"links": [], "error": "No encontré escenas para ese ángulo — afina el punto de dolor"}
-    return {"links": res}
+        err = ("No encontré escenas que cuadren — afina la landing o el punto de dolor."
+               if (px or pb) else
+               "No encontré b-roll bueno. TikTok da mayormente memes para b-roll: conecta una "
+               "API GRATIS de banco de video en 🔑 Claves (Pexels o Pixabay, 2 min) y te traigo "
+               "clips limpios y reales del ángulo.")
+        return {"links": [], "error": err}
+    return {"links": res, "con_landing": bool(landing_text),
+            "fuente": "stock" if (px or pb) else "tiktok"}
 
 
 def _gc_jobs(keep: int = 80):
@@ -956,17 +998,21 @@ def _guardar_fotos_busqueda(foto, fotos, fotos_url: str = "") -> list[str]:
     return paths
 
 
-def _frames_de_videos(videos_ref) -> list[str]:
-    """Guarda los VIDEOS de referencia del producto (máx 2, tope 100MB c/u) y saca 2 frames nítidos
-    de cada uno con ffmpeg (al 25% y 60% de la duración, escala máx 1024) → rutas de jpgs que entran
-    como FOTOS de referencia adicionales. Cero llamadas de IA extra (los frames van dentro de la
-    misma llamada de analizar_foto). Cualquier video que falle se ignora sin romper."""
+def _frames_de_videos(videos_ref, total: int = 5) -> list[str]:
+    """Guarda los VIDEOS del producto (máx 2, tope 100MB c/u) y saca sus MEJORES frames como fotos de
+    referencia MULTI-FRAME: los más NÍTIDOS, sin negros ni borrosos (mejores_frames = varianza del
+    Laplaciano de cv2). Hasta ~`total` frames en total (repartidos si hay 2 videos). Más frames de
+    referencia = MUCHO mejor match del MISMO producto. Cero llamadas de IA extra (los frames van
+    dentro de la misma llamada de analizar_foto). Cualquier video que falle se ignora sin romper."""
+    from pipeline.tiktok_search import mejores_frames
+    vids = [up for up in list(videos_ref or []) if up is not None and up.filename][:2]
+    if not vids:
+        return []
     d = os.path.join(UPLOAD_DIR, "tksearch")
+    os.makedirs(d, exist_ok=True)
+    por_video = max(2, -(-total // len(vids)))            # ceil(total / n_videos), mínimo 2
     out: list[str] = []
-    for up in list(videos_ref or [])[:2]:
-        if up is None or not up.filename:
-            continue
-        os.makedirs(d, exist_ok=True)
+    for up in vids:
         vp = os.path.join(d, os.path.basename(up.filename))
         try:
             with open(vp, "wb") as o:
@@ -979,27 +1025,38 @@ def _frames_de_videos(videos_ref) -> list[str]:
                     if escrito > 100 * 1024 * 1024:      # tope 100MB por video
                         break
                     o.write(chunk)
-            dur = float(subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", vp],
-                capture_output=True, text=True, timeout=30).stdout.strip() or 0)
         except Exception:  # noqa: BLE001
             continue
-        if dur <= 0:
+        try:
+            out += mejores_frames(vp, n=por_video, out_dir=d)
+        except Exception:  # noqa: BLE001
             continue
-        base = os.path.splitext(os.path.basename(vp))[0]
-        for pct in (0.25, 0.60):                          # 2 frames: producto en uso + otro ángulo
-            fp_img = os.path.join(d, f"{base}_f{int(pct * 100)}.jpg")
-            try:
-                subprocess.run(
-                    ["ffmpeg", "-y", "-ss", f"{dur * pct:.2f}", "-i", vp, "-frames:v", "1",
-                     "-vf", "scale='min(1024,iw)':'min(1024,ih)':force_original_aspect_ratio=decrease",
-                     "-q:v", "2", fp_img],
-                    capture_output=True, timeout=60)
-                if os.path.exists(fp_img) and os.path.getsize(fp_img) > 0:
-                    out.append(fp_img)
-            except Exception:  # noqa: BLE001
-                pass
+    return out[:total + 1]                                # tope 6 (5 + margen)
+
+
+def _thumbs_b64(paths: list[str], w: int = 160) -> list[str]:
+    """Miniaturas (data-URI base64) de los frames elegidos → el frontend las muestra para que el
+    usuario VEA qué fotogramas se usaron. Solo previsualización (no viajan los archivos)."""
+    out: list[str] = []
+    try:
+        import base64
+
+        import cv2
+    except ImportError:
+        return out
+    for p in paths:
+        try:
+            img = cv2.imread(p)
+            if img is None:
+                continue
+            h, ww = img.shape[:2]
+            if ww > w:
+                img = cv2.resize(img, (w, int(h * w / ww)))
+            ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            if ok:
+                out.append("data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode())
+        except Exception:  # noqa: BLE001
+            continue
     return out
 
 
@@ -1040,16 +1097,20 @@ def tiktok_search(nombre: str = Form(""), count: int = Form(20),
     → 2 frames c/u entran como fotos de referencia extra (tope total 4 imágenes, fotos primero).
     `landing`: link de la página de venta → contexto para la ficha y los términos. Todo opcional."""
     from pipeline.tiktok_search import buscar
-    img_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
-    img_paths = (img_paths + _frames_de_videos(videos_ref))[:4]
+    fotos_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
+    frames_video = _frames_de_videos(videos_ref)         # 5 mejores frames del video del producto
+    img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
     if not (nombre.strip() or img_paths):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
-    return buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
-                  api_key=_load_env_key(), count=int(count),
-                  anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
-                  foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
-                  image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
-                  landing_text=_texto_landing(landing))  # página de venta → mejores términos
+    r = buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
+               api_key=_load_env_key(), count=int(count),
+               anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
+               foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
+               image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
+               landing_text=_texto_landing(landing),  # página de venta → mejores términos
+               rellenar_n=True)                       # devolver los N pedidos (por tiers, mismo producto)
+    r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
+    return r
 
 
 # ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
@@ -1068,8 +1129,9 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     `videos_ref` (máx 2): videos del producto → 2 frames c/u como fotos de referencia extra (tope
     total 4, fotos primero). `landing`: link de la página de venta → contexto para la ficha."""
     from pipeline.creative_search import buscar_creativos
-    img_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
-    img_paths = (img_paths + _frames_de_videos(videos_ref))[:4]
+    fotos_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
+    frames_video = _frames_de_videos(videos_ref)         # 5 mejores frames del video del producto
+    img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
     img_path = img_paths[0] if img_paths else None
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
@@ -1078,9 +1140,11 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
                          anthropic_key=_load_anthropic_key(),
                          count=int(count), fp_count=int(fp_count),
                          image_paths=img_paths or None,
-                         landing_text=_texto_landing(landing))
+                         landing_text=_texto_landing(landing),
+                         rellenar_n=True)   # devolver los N pedidos (por tiers, mismo producto)
     # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
     r["foto"] = os.path.basename(img_path) if img_path else ""
+    r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
     return r
 
 
@@ -1233,10 +1297,13 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
             except Exception:  # noqa: BLE001
                 blueprint = None
 
-        progress("Generando 10 guiones de voz en off...", 70)
+        mix = settings.get("mix")
+        n_guiones = sum(mix.values()) if mix else 10
+        progress(f"Generando {n_guiones} guiones de voz en off"
+                 + (" (embudo TOFU/MOFU/BOFU)..." if mix else "..."), 70)
         scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
                                    settings["target_seconds"], sample, blueprint=blueprint,
-                                   oferta_2x1=settings.get("oferta_2x1", False))
+                                   oferta_2x1=settings.get("oferta_2x1", False), mix=mix)
         if not scripts:
             # Nunca terminar "Guiones listos" con 0 guiones (auditoría 2026-07-06)
             raise RuntimeError("La IA corrió pero no entregó ningún guion — reintenta.")
@@ -1284,6 +1351,9 @@ def scripts(
     caption_style: str = Form("hormozi"),
     caption_size: str = Form("mediano"),
     destino: str = Form("tiktok"),
+    tofu: int = Form(0),   # embudo TOFU/MOFU/BOFU: nº de guiones de cada etapa (0/0/0 = clásico)
+    mofu: int = Form(0),
+    bofu: int = Form(0),
     reference_ad: UploadFile | None = File(None),
 ):
     job_id, paths = _save_uploads(files or [])
@@ -1326,6 +1396,11 @@ def scripts(
         "reference_ad": ref_path,
         "broll_fases": broll_fases,
     }
+    # Embudo TOFU/MOFU/BOFU (seleccionable): si el usuario pidió alguna etapa, se generan guiones
+    # etiquetados por etapa (arco + hook + CTA por temperatura). Si 0/0/0 → guiones clásicos.
+    _mix = {"TOFU": max(0, int(tofu)), "MOFU": max(0, int(mofu)), "BOFU": max(0, int(bofu))}
+    if sum(_mix.values()) > 0:
+        settings["mix"] = _mix
     if settings["hooks_por_version"]:      # el hook por versión reemplaza al global (no doble pastilla)
         settings["hook_text"] = ""
         settings["auto_hook"] = False
@@ -1338,7 +1413,7 @@ N_VERSIONS = 8   # DEBE ir igual a orchestrator._N_VERSIONS: con 6, las versione
 
 
 def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
-                    voces: list[str] | None = None,
+                    voces: list[str] | None = None, stages: list[str] | None = None,
                     n_versions: int = N_VERSIONS, start_version: int = 0):
     job = JOBS[job_id]
 
@@ -1351,19 +1426,26 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         wd = job["work_dir"]
         os.makedirs(wd, exist_ok=True)
         key = _load_eleven_key()
-        # "1 de prueba → N más": se renderiza solo la tajada de versiones [sv : sv+nv]. Con los
-        # defaults (nv=8, sv=0) = las 8 de siempre. El pool YA enmascarado (job["selected"]) del
-        # paso /scripts se reusa → el "N más" NO re-analiza ni re-enmascara (barato).
-        nv = max(1, min(N_VERSIONS - int(start_version), int(n_versions)))
-        sv = max(0, min(N_VERSIONS - 1, int(start_version)))
-        # Una voz/guion DISTINTO por version (si hay menos guiones, se ciclan). Se usa el índice
-        # ABSOLUTO (sv+i) para que 'B' reciba SIEMPRE el mismo guion/voz salga en la prueba o en "N más".
-        _cyc = scripts * (N_VERSIONS // max(1, len(scripts)) + 1)
-        chosen = [_cyc[sv + i] for i in range(nv)]
+        # Dos modos (fusión):
+        #  • EMBUDO (hay etapas, una por guion) → UNA versión por guion (1:1), cada una etiquetada
+        #    con su etapa TOFU/MOFU/BOFU. nv = nº de guiones, desde 0.
+        #  • "1 de prueba → N más" (sin etapas) → tajada [sv : sv+nv] de las 8 (defaults = las 8).
+        #    Índice ABSOLUTO (sv+i) para que 'B' reciba SIEMPRE el mismo guion/voz salga en la
+        #    prueba o en "N más". El pool YA enmascarado (job["selected"]) se reusa (barato).
+        stage_mode = bool(stages) and len(stages) == len(scripts)
+        if stage_mode:
+            nv, sv = len(scripts), 0
+            chosen = [scripts[i] for i in range(nv)]
+            _voz = lambda i: voces[i % len(voces)] if voces else voice_key   # noqa: E731
+        else:
+            nv = max(1, min(N_VERSIONS - int(start_version), int(n_versions)))
+            sv = max(0, min(N_VERSIONS - 1, int(start_version)))
+            _cyc = scripts * (N_VERSIONS // max(1, len(scripts)) + 1)
+            chosen = [_cyc[sv + i] for i in range(nv)]
+            _voz = lambda i: voces[(sv + i) % len(voces)] if voces else voice_key   # noqa: E731
         from pipeline.voiceover import acelerar as _acelerar_vo
         from concurrent.futures import ThreadPoolExecutor
-        pares = [(chosen[i], voces[(sv + i) % len(voces)] if voces else voice_key)
-                 for i in range(nv)]
+        pares = [(chosen[i], _voz(i)) for i in range(nv)]
         unicos = sorted(set(pares))
         progress(f"Generando {len(unicos)} voces con ElevenLabs (en paralelo)...", 14)
         hechas_ct = [0]
@@ -1427,6 +1509,7 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             used_gemini=job["used_gemini"], n_sources=job["n_sources"],
             target_seconds=s["target_seconds"], max_clip_seconds=s["max_clip_seconds"],
             broll_fases=s.get("broll_fases"), n_versions=nv, start_version=sv,
+            stages=(stages if stage_mode else None),
             blur_strength=s.get("blur_strength", "medio"), progress=progress)
         # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
         # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1").
@@ -1476,6 +1559,7 @@ def preview_voice(text: str = Form(...), voice: str = Form("kate")):
 def render(job_id: str = Form(...), voice: str = Form("kate"),
            voz_jc: int = Form(0), voz_kate: int = Form(0),
            scripts_json: str = Form(""), script_text: str = Form(""),
+           stages_json: str = Form(""),
            n_versions: int = Form(8), start_version: int = Form(0)):
     job = JOBS.get(job_id)
     if not job or "selected" not in job:
@@ -1491,13 +1575,25 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
         scripts = [script_text.strip()]
     if not scripts:
         raise HTTPException(400, "No hay guiones seleccionados")
+    # Embudo: etapa por guion seleccionado (paralelo a scripts_json). Si viene y calza, cada
+    # versión = un guion etiquetado con su etapa; si no, comportamiento clásico (8 versiones).
+    stages: list[str] | None = None
+    if stages_json.strip():
+        try:
+            _s = [str(x).strip().upper() for x in _json.loads(stages_json)]
+            _s = [x if x in ("TOFU", "MOFU", "BOFU") else "" for x in _s]
+            if len(_s) == len(scripts) and any(_s):
+                stages = _s
+        except Exception:
+            stages = None
     job["status"] = "running"; job["progress"] = 0; job["message"] = "Iniciando..."; job["result"] = None
     # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
     voces = (["juan_carlos"] * max(0, min(8, int(voz_jc)))
              + ["kate"] * max(0, min(8, int(voz_kate)))) or None
     nv = max(1, min(8, int(n_versions)))
     sv = max(0, min(7, int(start_version)))
-    threading.Thread(target=_run_render_job, args=(job_id, scripts, voice, voces, nv, sv),
+    threading.Thread(target=_run_render_job,
+                     args=(job_id, scripts, voice, voces, stages, nv, sv),
                      daemon=True).start()
     return {"job_id": job_id}
 
@@ -1973,6 +2069,9 @@ def producto_clips(
     caption_size: str = Form("mediano"),
     subtitulos: bool = Form(True),
     vo_guiones: int = Form(0),
+    tofu: int = Form(0),   # embudo TOFU/MOFU/BOFU (0/0/0 = clásico 8 versiones)
+    mofu: int = Form(0),
+    bofu: int = Form(0),
     destino: str = Form("tiktok"),
     winner_files: list[UploadFile] = File([]),
 ):
@@ -2028,6 +2127,10 @@ def producto_clips(
         "vo_guiones": vo_guiones if vo_guiones in (2, 4) else 0,
         "archivos_locales": locales,
     }
+    # Embudo TOFU/MOFU/BOFU (voz en off): una versión por guion, cada una etiquetada por etapa.
+    _mix = {"TOFU": max(0, int(tofu)), "MOFU": max(0, int(mofu)), "BOFU": max(0, int(bofu))}
+    if sum(_mix.values()) > 0:
+        settings["mix"] = _mix
     JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_producto_job,

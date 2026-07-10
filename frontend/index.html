@@ -56,6 +56,11 @@
   .tabs button:hover{background:var(--card2);color:var(--txt)}
   .tabs button.active{background:var(--gold);color:var(--ink);font-weight:700;
     box-shadow:0 4px 16px rgba(212,175,55,.42)}
+  /* Encabezado de grupo en la navegación (3 secciones: buscar / crear videos / landing) */
+  .navgroup{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);opacity:.75;padding:12px 10px 4px;margin-top:4px;
+    border-top:1px solid var(--line)}
+  .navgroup:first-child{border-top:0;margin-top:0}
   /* Móvil / pantalla angosta: la navegación vuelve arriba en fila */
   @media(max-width:820px){
     .wrap{grid-template-columns:1fr;gap:0}
@@ -64,6 +69,7 @@
     .side .sub{display:none}
     .tabs{flex-direction:row;flex-wrap:wrap;overflow:visible;width:100%}
     .tabs button{width:auto;flex:1;min-width:118px;text-align:center}
+    .navgroup{flex-basis:100%;width:100%;border-top:0;padding:6px 4px 2px;margin-top:6px}
   }
   .panel{animation:fade .32s ease}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -126,6 +132,9 @@
   .bar > div{height:100%;width:0;background:var(--gold);transition:width .4s;
     box-shadow:0 0 12px rgba(212,175,55,.5)}
   .pmsg{font-size:13px;color:var(--muted)}
+  .funPreset{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;
+    padding:7px 12px;font-size:12.5px;cursor:pointer;font-weight:600}
+  .funPreset:hover{border-color:var(--accent2);color:var(--accent2)}
   .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
   .vcard{background:var(--card2);border:1px solid var(--line);border-radius:14px;
     overflow:hidden;display:flex;flex-direction:column;animation:fadeUp .5s ease both;
@@ -441,21 +450,28 @@
   <p class="sub">Tu estudio de creativos con IA para dropshipping — clips, versiones, doblaje, GIFs y más, en un solo lugar.</p>
 
   <nav class="tabs" id="tabs">
+    <div class="navgroup">🔎 Buscar creativos</div>
+    <button data-p="p-buscar">🔍 Buscar creativos</button>
+    <button data-p="p-foreplay">🔥 Foreplay</button>
+    <button data-p="p-radar">📡 Radar</button>
+
+    <div class="navgroup">🎬 Crear videos</div>
     <button data-p="p-crear" class="active">✂️ Cortar clips</button>
     <button data-p="p-producto">📦 Mi producto</button>
-    <button data-p="p-editor">🎬 Editor</button>
-    <button data-p="p-disruptivo">🎨 Ads imagen</button>
-    <button data-p="p-varimg">📸 Variar imagen</button>
-    <button data-p="p-descargar">📥 Descargar</button>
-    <button data-p="p-foreplay">🔥 Foreplay</button>
-    <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-auto">✨ Crear creativo</button>
-    <button data-p="p-landings">🛍️ Crear Landings</button>
     <button data-p="p-clone">🎯 Clon con mi producto</button>
     <button data-p="p-varhook">🔁 Variar hook</button>
     <button data-p="p-swap">🔄 Reemplazar producto</button>
     <button data-p="p-dub">🎙️ Doblar</button>
-    <button data-p="p-radar">📡 Radar</button>
+    <button data-p="p-editor">🎬 Editor</button>
+    <button data-p="p-disruptivo">🎨 Ads imagen</button>
+    <button data-p="p-varimg">📸 Variar imagen</button>
+    <button data-p="p-descargar">📥 Descargar</button>
+
+    <div class="navgroup">🛍️ Crear landing</div>
+    <button data-p="p-landings">🛍️ Crear Landings</button>
+
+    <div class="navgroup">⚙️ Ajustes</div>
     <button data-p="p-config">🔑 Claves</button>
     <button data-p="p-guia">📚 Guía</button>
   </nav>
@@ -666,8 +682,8 @@
         placeholder="🔗 …o pega el LINK de la foto (o de la página del producto) y presiona Enter">
       <div id="tkUrlChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
       <input type="file" id="tkVids" accept="video/*" multiple class="hidden">
-      <label class="autoDrop" for="tkVids" style="margin-top:8px"><b id="tkVidsName">🎥 Videos de tu producto (opcional)</b>
-        <div class="s">hasta 2 — saco fotos del video y la búsqueda sale más exacta</div></label>
+      <label class="autoDrop" for="tkVids" style="margin-top:8px"><b id="tkVidsName">🎥 Video de tu producto (opcional — alternativa a la foto)</b>
+        <div class="s">saco los 5 mejores frames (los más nítidos) del video → búsqueda mucho más exacta del MISMO producto</div></label>
       <div class="autoOpts">
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
         <input type="text" id="tkLanding" class="full" placeholder="🔗 Link de tu landing (opcional — mejora los términos de búsqueda)">
@@ -748,6 +764,7 @@
         const links=(tk.links||[]), ads=(fp.ads||[]);
         // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
+                     framesVideo:(j.frames_video||[]),   // miniaturas de los frames sacados del video
                      desc:j.desc||'', variants:(j.variants||[]), links:links, ads:ads,
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
                      fpOk:!!fp.ok, fpErr:fp.error||'', broll:(tk.broll||[]),
@@ -775,6 +792,14 @@
         const clTk=new Set(mas.filter(m=>m.fuente==='tiktok').flatMap(m=>m.idxs));
         const clFp=new Set(mas.filter(m=>m.fuente==='foreplay').flatMap(m=>m.idxs));
         let h='';
+        // ── frames del VIDEO usados como referencia (para que veas qué se usó) ──
+        if((S.framesVideo||[]).length){
+          h+='<div style="margin:14px 0 4px"><b>🎥 Frames de tu video usados de referencia ('+S.framesVideo.length+')</b>'+
+             '<div class="s" style="margin-bottom:6px">los más nítidos del video — con estos busqué el MISMO producto</div>'+
+             '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+             S.framesVideo.map(src=>'<img src="'+tkEsc(src)+'" style="width:78px;height:78px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">').join('')+
+             '</div></div>';
+        }
         // ── grupo 1: TikTok ──────────────────────────────────────────────
         const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1]));
         const conf=mainTk.map(p=>p[0]).filter(l=>l.verificado_producto);
@@ -1318,6 +1343,20 @@
     <p class="pmsg" style="margin:10px 0 0">Opcional. Con key, la pestaña <b>🔎 Foreplay</b> busca en su biblioteca de +100M ads ganadores (con video descargable) para cortarlos en clips. La sacas en app.foreplay.co → API. Cada búsqueda gasta créditos de tu plan.</p>
   </div>
 
+  <!-- B-roll de verdad · bancos de video (Pexels / Pixabay) -->
+  <div class="card" id="brollCard">
+    <h2>🎬 B-roll de verdad · Pexels/Pixabay <span id="brollPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow" style="margin-bottom:8px">
+      <input type="password" id="pexelsInput" placeholder="API key de Pexels (gratis, 2 min)">
+      <button class="btn sec" id="pexelsSave" style="width:auto">Guardar</button>
+    </div>
+    <div class="keyrow">
+      <input type="password" id="pixabayInput" placeholder="API key de Pixabay (gratis) — opcional, se suma">
+      <button class="btn sec" id="pixabaySave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Con esto el <b>B-roll</b> deja de salir de TikTok (que da memes) y sale de <b>bancos de video reales</b>: clips limpios, verticales y descargables del punto de dolor / la escena que pides. Saca la key GRATIS en <b>pexels.com/api</b> (y opcional <b>pixabay.com/api/docs</b>) — 2 minutos, sin tarjeta. Sin esto, el b-roll cae al modo viejo (TikTok).</p>
+  </div>
+
   <!-- Shopify (módulo Crear Landings) -->
   <div class="card" id="shopifyCard">
     <h2>🛍️ Shopify · Crear Landings <span id="shopifyPill" class="pill off">sin configurar</span></h2>
@@ -1361,8 +1400,10 @@
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
       <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
 
-      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL (opcional): tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. Pega links o deja que la IA las busque.</label>
-      <input id="tkBrollAngulo" placeholder="🎯 Ángulo / punto de dolor (ej. mujer desesperada porque se orinó dormida) — opcional, ayuda MUCHO"
+      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> y la IA saca el ángulo y trae b-roll <b>de bancos de video reales</b> (Pexels/Pixabay) — clips limpios, verticales y descargables. Conecta la key GRATIS en 🔑 Claves (si no, cae a TikTok, que da memes).</label>
+      <input id="tkBrollLanding" type="url" placeholder="🔗 Landing del producto (recomendado) — de aquí saco el ángulo de venta y el dolor"
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
+      <input id="tkBrollAngulo" placeholder="🎯 …o pega aquí el link de la landing / escribe el ángulo de dolor (ej. mujer desesperada porque se orinó dormida) — sin producto"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
       <textarea id="tkBrollLinks" rows="2" placeholder="https://www.tiktok.com/@usuario/video/789..."
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
@@ -1491,6 +1532,23 @@
         <label class="toggle" style="white-space:nowrap;cursor:pointer" title="Sube un anuncio GANADOR y la IA copia su estructura (hook→dolor→solución→deseo→CTA) y su ritmo para escribir el guion">📐 <span id="refName" style="text-decoration:underline">Clonar estructura de un ad ganador</span><input type="file" id="refInput" accept="video/*" style="display:none"></label>
       </span>
     </div>
+    <div id="funnelWrap" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+      <label class="lbl" style="margin:0 0 8px">🎯 Embudo (temperatura del público): elige cuántos guiones de cada etapa. Cada uno cambia el <b>gancho, el arco y el CTA</b>. <span style="color:var(--muted)">2/2/2 = full embudo. 0/0/0 = clásico (8 versiones, 1 solo tipo).</span></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button type="button" class="funPreset" data-mix="2,2,2">Full embudo 2·2·2</button>
+        <button type="button" class="funPreset" data-mix="6,0,0">Solo frío 🧊</button>
+        <button type="button" class="funPreset" data-mix="3,0,3">Frío + cierre</button>
+        <button type="button" class="funPreset" data-mix="0,3,3">Tibio + cierre</button>
+        <button type="button" class="funPreset" data-mix="1,1,1">Prueba 1·1·1</button>
+        <button type="button" class="funPreset" data-mix="0,0,0">Clásico (sin embudo)</button>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+        <label class="toggle" style="white-space:nowrap">🧊 TOFU (frío) <input type="number" id="funTofu" value="2" min="0" max="12" step="1" style="width:56px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px;border-radius:8px;margin-left:6px"></label>
+        <label class="toggle" style="white-space:nowrap">🌤️ MOFU (tibio) <input type="number" id="funMofu" value="2" min="0" max="12" step="1" style="width:56px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px;border-radius:8px;margin-left:6px"></label>
+        <label class="toggle" style="white-space:nowrap">🔥 BOFU (caliente) <input type="number" id="funBofu" value="2" min="0" max="12" step="1" style="width:56px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:8px;border-radius:8px;margin-left:6px"></label>
+        <span class="pmsg" id="funTotal" style="margin:0;color:var(--accent2)"></span>
+      </div>
+    </div>
   </div>
 
   <button class="btn" id="go" disabled>✂️  Generar clips</button>
@@ -1582,6 +1640,17 @@
         <option value="2">Guiones: 2 (el más barato)</option>
       </select>
       <img id="prodCapPrev" src="/api/caption-preview?style=hormozi" alt="preview" title="Así se ven los subtítulos" style="height:60px;border-radius:8px;border:1px solid var(--line);background:#222">
+      <div style="flex-basis:100%;height:0"></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;width:100%">
+        <span class="pmsg" style="margin:0">🎯 Embudo (opcional):</span>
+        <button type="button" class="funPreset" data-prodmix="2,2,2">2·2·2</button>
+        <button type="button" class="funPreset" data-prodmix="6,0,0">Solo frío</button>
+        <button type="button" class="funPreset" data-prodmix="0,0,0">Clásico</button>
+        <label class="toggle" style="white-space:nowrap">🧊 <input type="number" id="prodTofu" value="0" min="0" max="12" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px;margin-left:4px"></label>
+        <label class="toggle" style="white-space:nowrap">🌤️ <input type="number" id="prodMofu" value="0" min="0" max="12" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px;margin-left:4px"></label>
+        <label class="toggle" style="white-space:nowrap">🔥 <input type="number" id="prodBofu" value="0" min="0" max="12" step="1" style="width:52px;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:7px;border-radius:8px;margin-left:4px"></label>
+        <span class="pmsg" style="margin:0;color:var(--muted)">0/0/0 = clásico (8 videos)</span>
+      </div>
     </div>
 
     <details class="prodAdv">
@@ -1687,6 +1756,10 @@
         fd.append('caption_style',document.getElementById('prodCapStyle').value);
         fd.append('caption_size',document.getElementById('prodCapSize').value);
         fd.append('vo_guiones',document.getElementById('prodVoGuiones').value);
+        // 🎯 Embudo TOFU/MOFU/BOFU (solo con voz en off). 0/0/0 → clásico.
+        fd.append('tofu',document.getElementById('prodTofu').value||'0');
+        fd.append('mofu',document.getElementById('prodMofu').value||'0');
+        fd.append('bofu',document.getElementById('prodBofu').value||'0');
         const mez=(document.getElementById('prodMezcla').value||'').split(',');
         fd.append('voz_jc',mez[0]||'0'); fd.append('voz_kate',mez[1]||'0');
         fd.append('oferta_2x1',document.getElementById('prod2x1').checked);
@@ -2787,6 +2860,7 @@ async function refreshConfig(){
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);
+  setPill("brollPill", j.has_pexels_key || j.has_pixabay_key);
   setPill("shopifyPill", j.has_shopify);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
@@ -2809,6 +2883,8 @@ document.getElementById("keySave").onclick = ()=>saveKey("gemini","keyInput");
 document.getElementById("elevenSave").onclick = ()=>saveKey("eleven","elevenInput");
 document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anthropicInput");
 document.getElementById("foreplaySave").onclick = ()=>saveKey("foreplay","foreplayInput");
+document.getElementById("pexelsSave").onclick = ()=>saveKey("pexels","pexelsInput");
+document.getElementById("pixabaySave").onclick = ()=>saveKey("pixabay","pixabayInput");
 document.getElementById("shopDomainSave").onclick = ()=>saveKey("shopify_domain","shopDomainInput");
 document.getElementById("shopTokenSave").onclick = ()=>saveKey("shopify_token","shopTokenInput");
 document.getElementById("shopThemeSave").onclick = ()=>saveKey("shopify_theme","shopThemeInput");
@@ -2821,9 +2897,42 @@ blurCaptions.onchange = ()=>{
 };
 
 // --- Voz en off toggle ---
+// 🎯 Embudo TOFU/MOFU/BOFU: badge, presets y total.
+const _stageBase='display:inline-block;color:#fff;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px;letter-spacing:.3px';
+const STAGE_BADGE = {
+  TOFU:`<span style="${_stageBase};background:#2563eb">🧊 TOFU · frío</span>`,
+  MOFU:`<span style="${_stageBase};background:#d97706">🌤️ MOFU · tibio</span>`,
+  BOFU:`<span style="${_stageBase};background:#dc2626">🔥 BOFU · caliente</span>`};
+function stageBadge(st){ return st && STAGE_BADGE[st] ? STAGE_BADGE[st] : ''; }
+function funnelMix(){
+  return {TOFU:+(document.getElementById('funTofu').value||0),
+          MOFU:+(document.getElementById('funMofu').value||0),
+          BOFU:+(document.getElementById('funBofu').value||0)};
+}
+function funnelTotalUpdate(){
+  const m=funnelMix(), t=m.TOFU+m.MOFU+m.BOFU;
+  const el=document.getElementById('funTotal');
+  if(el) el.textContent = t>0 ? `→ ${t} guion(es) = ${t} video(s)` : 'Clásico: 8 versiones de un solo tipo';
+}
+['funTofu','funMofu','funBofu'].forEach(id=>{
+  const e=document.getElementById(id); if(e) e.oninput=funnelTotalUpdate;
+});
+document.querySelectorAll('.funPreset').forEach(b=>{
+  b.onclick=()=>{
+    if(b.dataset.mix!==undefined){ const [a,c,d]=b.dataset.mix.split(',');
+      document.getElementById('funTofu').value=a; document.getElementById('funMofu').value=c;
+      document.getElementById('funBofu').value=d; funnelTotalUpdate(); }
+    if(b.dataset.prodmix!==undefined){ const [a,c,d]=b.dataset.prodmix.split(',');
+      document.getElementById('prodTofu').value=a; document.getElementById('prodMofu').value=c;
+      document.getElementById('prodBofu').value=d; }
+  };
+});
+funnelTotalUpdate();
+
 const useVO = document.getElementById("useVO");
 useVO.onchange = ()=>{
   document.getElementById("voiceWrap").style.display = useVO.checked ? "flex" : "none";
+  document.getElementById("funnelWrap").style.display = useVO.checked ? "block" : "none";
   document.getElementById("go").textContent = useVO.checked ? "📝  Generar guiones de voz" : "✂️  Generar clips";
 };
 
@@ -2962,7 +3071,12 @@ function buildForm(){
   fd.append("caption_size", document.getElementById("capSize").value);
   fd.append("oferta_2x1", document.getElementById("clip2x1").checked);
   fd.append("destino", document.getElementById("destino").value);
-  fd.append("n_versions", "1");   // "1 de prueba → N más": el 1er render es solo 1 versión
+  // 🎯 Embudo: solo aplica al flujo de guiones (voz en off). 0/0/0 → clásico.
+  if(useVO.checked){
+    const m=funnelMix();
+    fd.append("tofu", m.TOFU); fd.append("mofu", m.MOFU); fd.append("bofu", m.BOFU);
+  }
+  fd.append("n_versions", "1");   // "1 de prueba → N más": el 1er render (sin voz) es solo 1 versión
   return fd;
 }
 
@@ -2986,18 +3100,28 @@ document.getElementById("go").onclick = async ()=>{
 let brollFaseMap = {};   // url → fase (problema/resultado/funcionamiento), del juez de Claude
 async function buscarBrollIA(){
   const producto = document.getElementById("productDesc").value.trim();
-  if(!producto){ alert("Primero escribe qué es tu producto (en Ajustes, abajo)"); return; }
+  let landing = document.getElementById("tkBrollLanding").value.trim();
+  let angulo = document.getElementById("tkBrollAngulo").value.trim();
+  // Se puede pegar la landing en el campo de ÁNGULO: si el ángulo es un link, se usa como landing.
+  if(!landing && /^https?:\/\//i.test(angulo)){ landing = angulo; angulo = ""; }
+  // Con landing NO hace falta el producto. Sin landing, hace falta ángulo con sustancia o el producto.
+  if(!landing && angulo.split(/\s+/).filter(Boolean).length < 3 && !producto){
+    alert("Pega la LANDING del producto (puedes pegarla aquí mismo en el campo de ángulo) o escribe el ángulo / punto de dolor con detalle — de ahí saco los B-roll que cuadran."); return;
+  }
   const btn = document.getElementById("goBrollIA");
-  const orig = btn.textContent; btn.disabled = true; btn.textContent = "🧠 Claude buscando escenas de dolor…";
+  const orig = btn.textContent; btn.disabled = true;
+  btn.textContent = landing ? "🧠 Leyendo la landing y buscando escenas…" : "🧠 Buscando escenas del ángulo…";
   try{
     const fd = new FormData();
     fd.append("producto", producto);
-    fd.append("angulo", document.getElementById("tkBrollAngulo").value.trim());
+    fd.append("angulo", angulo);
+    fd.append("landing_url", landing);
     fd.append("n", "8");
     const r = await fetch("/api/broll-dolor",{method:"POST",body:fd});
+    if(!r.ok){ alert((await r.text())||"No pude buscar el b-roll"); btn.textContent = orig; btn.disabled=false; return; }
     const j = await r.json();
     const links = j.links || [];
-    if(!links.length){ alert(j.error || "No encontré escenas — afina el ángulo/punto de dolor"); btn.textContent = orig; return; }
+    if(!links.length){ alert(j.error || "No encontré escenas — afina la landing/el punto de dolor"); btn.textContent = orig; btn.disabled=false; return; }
     links.forEach(l=>{ brollFaseMap[l.url] = l.fase || "problema"; });
     const ta = document.getElementById("tkBrollLinks");
     ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + links.map(l=>l.url).join("\n");
@@ -3016,7 +3140,7 @@ function brollPrevPaint(){
   d.innerHTML=arr.map((b,i)=>`<div class="fpCard" style="cursor:default">
     <div class="fpThumbWrap">
       <img class="fpThumb" src="${tkEsc(b.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
-      <span class="fpBadge">${F[b.fase]||'🔴 dolor'}</span></div>
+      <span class="fpBadge">${F[b.fase]||'🔴 dolor'}${b.verificado?' · ✓ contenido':''}</span></div>
     <div class="fpBody"><div class="fpName">${tkEsc(b.title||'')||'—'}</div>
       <div class="fpBtns">
         <button class="fpBtn" onclick="brollPrevPlay(${i},this)" title="Reproducir aquí mismo">▶️ Ver</button>
@@ -3130,16 +3254,21 @@ function renderScripts(jobId, scripts){
     root.innerHTML = `<div class="card"><p class="err">No se pudieron generar guiones — mira el mensaje de error del trabajo (puede ser cuota/key de la IA) y reintenta.</p></div>`;
     return;
   }
+  const hasStages = scripts.some(s=>s.stage);
+  const maxSel = hasStages ? scripts.length : 8;
+  const introTxt = hasStages
+    ? `Embudo <b>TOFU/MOFU/BOFU</b>: se genera <b>un video por guion</b> (${scripts.length} en total), cada uno con su gancho, arco y CTA según su etapa. Marca los que quieras. Puedes escuchar cada uno antes.`
+    : `Primero se genera <b>1 video de PRUEBA</b> con el orden de guiones que marques. Si te gusta, abajo eliges <b>cuántos más</b> (1 a 7). Marca los guiones y escúchalos antes.`;
   let html = `<div class="card"><h2>📝 Guiones de voz en off</h2>
-    <p class="pmsg" style="margin:-6px 0 14px">Primero se genera <b>1 video de PRUEBA</b> con el orden de guiones que marques. Si te gusta, abajo eliges <b>cuántos más</b> (1 a 7). Marca los guiones y escúchalos antes.</p>
+    <p class="pmsg" style="margin:-6px 0 14px">${introTxt}</p>
     <div style="display:flex;flex-direction:column;gap:8px" id="scriptList">`;
   scripts.forEach((s,i)=>{
-    const chk = i < 8 ? "checked" : "";
+    const chk = i < maxSel ? "checked" : "";
     html += `<div class="scriptOpt" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
       <label style="display:flex;gap:10px;cursor:pointer;align-items:flex-start">
         <input type="checkbox" class="scriptChk" data-i="${i}" ${chk} style="width:18px;height:18px;accent-color:var(--accent);margin-top:2px">
         <span>
-          <div style="font-size:12px;color:var(--accent2);text-transform:uppercase;margin-bottom:4px">${s.angulo||('Opción '+(i+1))}</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">${stageBadge(s.stage)}<span style="font-size:12px;color:var(--accent2);text-transform:uppercase">${s.angulo||('Opción '+(i+1))}</span></div>
           <div style="font-size:14px">${s.texto}</div>
         </span>
       </label>
@@ -3148,8 +3277,9 @@ function renderScripts(jobId, scripts){
         <span class="audioSlot" id="audio${i}"></span>
       </div></div>`;
   });
+  const btnTxt = hasStages ? `🔊  Generar los videos (uno por guion)` : `🔊  Generar 1 de prueba`;
   html += `</div>
-    <button class="btn" id="renderVO" style="margin-top:16px">🔊  Generar 1 de prueba</button>
+    <button class="btn" id="renderVO" style="margin-top:16px">${btnTxt}</button>
     </div>`;
   root.innerHTML = html;
 
@@ -3159,7 +3289,10 @@ function renderScripts(jobId, scripts){
   });
 
   document.getElementById("renderVO").onclick = async ()=>{
-    const chosen = chks.filter(c=>c.checked).map(c=>scripts[+c.dataset.i].texto).slice(0,8);
+    const picked = chks.filter(c=>c.checked).map(c=>scripts[+c.dataset.i]);
+    // sin embudo se conserva el tope clásico de 8; con embudo se hace uno por guion elegido
+    const sel = hasStages ? picked : picked.slice(0,8);
+    const chosen = sel.map(s=>s.texto);
     if(!chosen.length){ alert("Marca al menos un guion"); return; }
     document.getElementById("renderVO").disabled = true;
     root.innerHTML = "";
@@ -3168,6 +3301,9 @@ function renderScripts(jobId, scripts){
     const fd = new FormData();
     fd.append("job_id", jobId);
     fd.append("scripts_json", scriptsJson);
+    // Embudo: manda las etapas → el backend hace UNA versión por guion (stage_mode ignora n_versions).
+    if(hasStages && sel.every(s=>s.stage))
+      fd.append("stages_json", JSON.stringify(sel.map(s=>s.stage)));
     fd.append("voice", document.getElementById("voice").value);
     const vm=(document.getElementById("voiceMezcla").value||'').split(',');
     fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
@@ -3204,7 +3340,7 @@ function renderResults(res, rootId){
     html += `<div class="vcard">
       <video src="${file}" controls muted loop preload="metadata" style="aspect-ratio:${ar}"></video>
       <div class="body">
-        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
+        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''} ${stageBadge(v.stage)}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
         ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
         ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}

@@ -133,11 +133,16 @@ def _render_png(text: str, vw: int, vh: int, font_path: str, png_path: str,
 
 
 def _y_pos(position: str, vh: int, block_h: int) -> int:
+    """y del bloque, SIEMPRE dentro de las zonas seguras: 'abajo' apoya la base en el límite
+    seguro (nunca en los últimos ~420px que tapa la UI); 'arriba' arranca a ≥90px escalados."""
+    limit = safe_bottom_limit(vh)                # borde inferior máximo para texto clave
     if position == "centro":
-        return max(0, (vh - block_h) // 2)
-    if position == "abajo":
-        return max(0, vh - block_h - int(vh * 0.08))
-    return int(vh * 0.06)  # arriba
+        y = max(0, (vh - block_h) // 2)
+    elif position == "abajo":
+        y = limit - block_h                      # antes: vh−block−8% → caía en la zona muerta
+    else:
+        y = max(int(vh * 0.06), safe_top_min(vh))  # arriba
+    return max(0, min(y, limit - block_h))
 
 
 def _render_pill_png(text: str, vw: int, vh: int, font_path: str, png_path: str,

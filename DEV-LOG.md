@@ -3519,3 +3519,30 @@ NO llegaban hasta que Jack cerraba y volvía a correr ./run.sh a mano.
 - Junto con el Stop hook (autosave.sh) que YA sube el trabajo de cada quien a main, esto cierra el círculo:
   cualquiera sube → main; la app de Jack baja lo de Juan sola. AVISO Juan: solo /api/busy nuevo (aditivo) +
   run.sh reescrito (tu forma de trabajar no cambia; si NO quieres el auto-pull, corre uvicorn a mano).
+
+### 2026-07-09 · Claude (jackingshop1-cell) · 🎙️ Doblar rediseñado en 2 pasos: traducir/revisar → escoger voz (o doblaje exacto) + 2x1
+Pedido de Jack: "en Doblar que pueda escoger la voz con la que sale el video O que sea el doblaje exacto;
+que PRIMERO me dé el original a traducir y DESPUÉS yo escoja cómo agregar la oferta 2x1; para las voces
+que se use el dubbing". Antes Doblar era 1 paso con 2 caminos escondidos (sin 2x1 = dubbing exacto; con
+2x1 = voz colombiana Juan Carlos fija). Ahora es un flujo de 2 pasos claro:
+- **① Traducir (barato, NO gasta voz):** endpoint `/api/dub-preview` → `adaptar_guion` (narrativa +
+  reescritura colombiana por fase, solo Gemini). Devuelve por cada frase: **original + traducción**, en
+  cajitas EDITABLES para que Jack la revise/ajuste antes de gastar voz. Cachea video+segments en el job.
+- **② Voz + oferta:** endpoint `/api/dub-generar` (recibe el job del paso ① + los textos editados + voz
+  + 2x1). Tres voces: **Juan Carlos**, **Kate**, o **🎯 Doblaje exacto** (ElevenLabs Dubbing = conserva la
+  voz ORIGINAL del video, su propia traducción). Con voz elegida usa el guion REVISADO de Jack tal cual
+  (`generar_dub(segments_override=...)` NUEVO → NO vuelve a llamar a Gemini, respeta sus ediciones). Si
+  activa 2x1, la VOZ lo menciona: se antepone a la última frase la oferta (por defecto "2x1: pides uno y
+  llega otro gratis", o el TEXTO que Jack escriba). El doblaje exacto no menciona 2x1 (conserva la voz
+  original) → esa casilla se desactiva y se avisa.
+- **Frontend p-dub** reescrito: subir video (+ botón Doblar de Foreplay sigue funcionando, ahora habilita
+  "① Traducir") → producto opcional → Traducir → tarjeta con las frases editables + selector de voz +
+  toggle 2x1 con texto + "② Generar video doblado". Idiomas destino (para el exacto) cacheados de /api/config.
+- **VERIFICADO ($0, sin gastar IA):** py_compile OK; JS 15/15; `generar_dub(segments_override)` NO llama a
+  Gemini y respeta el guion; `_dub_2x1_line` (default + custom); el merge de ediciones + 2x1 antepuesto
+  probado (frase 1 editada + "Llévate 2 y paga 1" antepuesto a la CTA); ruteo "exacto"→dub_video con el
+  idioma correcto; errores limpios sin key / sin paso ①; rutas /api/dub-preview y /api/dub-generar
+  registradas. NO corrí un doblaje real (gasta ElevenLabs). Reiniciar :8420 para probar en la app.
+- AVISO Juan: NUEVOS endpoints /api/dub-preview y /api/dub-generar (+ jobs). `generar_dub` gana kwarg
+  OPCIONAL `segments_override` (default None = comportamiento idéntico). El viejo /api/dub sigue vivo
+  (retrocompat, ya no lo usa la UI). Nada de scripts/voz tuyo tocado; dub_colombia solo ganó el kwarg.

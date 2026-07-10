@@ -226,13 +226,17 @@ def generar_dub(
     generar_video: bool = True,
     work_dir: str | None = None,
     blueprint: dict | None = None,
+    segments_override: list[dict] | None = None,
     progress: Callable[[str, int], None] | None = None,
 ) -> dict:
     """Dub colombiano COMPLETO: guion + voz elegible + calce exacto a cada fase + video doblado.
 
     Devuelve {"ok":True,"voz":..,"segments":[..],"audio":ruta_mp3,"video":ruta_mp4|None}.
     Si falta la key de ElevenLabs, devuelve solo el guion (segments) sin audio.
-    """
+
+    `segments_override`: si viene (lista de {etiqueta,inicio,fin,es_colombia,...}), se usa TAL CUAL
+    para la voz — NO se vuelve a llamar a Gemini. Sirve al flujo de 2 pasos: Jack revisa/edita la
+    traducción (paso 1) y aquí solo se genera la voz con ESE guion (respeta sus ediciones)."""
     def report(m, p):
         if progress:
             progress(m, p)
@@ -241,12 +245,15 @@ def generar_dub(
     work_dir = work_dir or tempfile.mkdtemp(prefix="dubco_")
     os.makedirs(work_dir, exist_ok=True)
 
-    # 1-2) Guion colombiano por fase
-    g = adaptar_guion(video_path, blueprint=blueprint, api_key=api_key,
-                      product_desc=product_desc, oferta_2x1=oferta_2x1, progress=progress)
-    if not g.get("ok"):
-        return g
-    segments = g["segments"]
+    # 1-2) Guion colombiano por fase — o el que Jack ya revisó/editó (segments_override)
+    if segments_override:
+        segments = segments_override
+    else:
+        g = adaptar_guion(video_path, blueprint=blueprint, api_key=api_key,
+                          product_desc=product_desc, oferta_2x1=oferta_2x1, progress=progress)
+        if not g.get("ok"):
+            return g
+        segments = g["segments"]
 
     if not eleven_key:
         return {"ok": True, "voz": voz, "segments": segments, "audio": None, "video": None,

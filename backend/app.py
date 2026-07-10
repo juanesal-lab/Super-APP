@@ -1653,6 +1653,172 @@ def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
     return {"job_id": job_id}
 
 
+# ══════════════ DOBLAR EN 2 PASOS: ① traducir (revisar/editar) → ② voz + oferta ══════════════
+def _save_dub_upload(video, video_url: str) -> tuple[str, str]:
+    """Guarda el video subido (o baja el de Foreplay) y devuelve (job_id, ruta). Reusa la misma
+    validación que /api/dub."""
+    job_id = uuid.uuid4().hex[:12]
+    up = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(up, exist_ok=True)
+    vpath = os.path.join(up, "dub_video.mp4")
+    if (video_url or "").strip():
+        from urllib.parse import urlparse
+        host = (urlparse(video_url).hostname or "").lower()
+        if not (host == "foreplay.co" or host.endswith(".foreplay.co")):
+            raise HTTPException(400, "URL de video no permitida")
+        if not fp.descargar_video(video_url.strip(), vpath):
+            raise HTTPException(502, "No se pudo bajar el creativo de Foreplay")
+    elif video is not None and video.filename:
+        vpath = os.path.join(up, "dub_" + os.path.basename(video.filename))
+        with open(vpath, "wb") as f:
+            shutil.copyfileobj(video.file, f)
+    else:
+        raise HTTPException(400, "Sube un video o pasa un creativo de Foreplay")
+    return job_id, vpath
+
+
+def _run_dub_preview_job(job_id: str, video_path: str, product_desc: str):
+    """Paso ①: transcribe + traduce a español colombiano por fase (SIN gastar voz de ElevenLabs).
+    Deja el original y la traducción de cada frase para que Jack la revise/edite antes del paso ②."""
+    job = JOBS[job_id]
+
+    def progress(msg, pct=None):
+        job["message"] = msg
+        if pct is not None:
+            job["progress"] = pct
+
+    try:
+        from pipeline.dub_colombia import adaptar_guion
+        g = adaptar_guion(video_path, api_key=_load_env_key(), product_desc=product_desc,
+                          oferta_2x1=False, progress=progress)   # 2x1 se decide en el paso ②
+        if not g.get("ok"):
+            job["status"] = "error"; job["message"] = g.get("error", "No se pudo traducir")
+            return
+        segs = g["segments"]
+        job["_dub_video"] = video_path            # se reusa en el paso ②
+        job["_dub_segments"] = segs
+        job["_dub_product"] = product_desc
+        job["result"] = {"ok": True, "duration": g.get("duration", 0),
+                         "segments": [{"i": i, "etiqueta": s.get("etiqueta", ""),
+                                       "inicio": s.get("inicio", ""), "fin": s.get("fin", ""),
+                                       "original": s.get("original", ""),
+                                       "es_colombia": s.get("es_colombia", "")}
+                                      for i, s in enumerate(segs)]}
+        job["status"] = "done"; job["progress"] = 100; job["message"] = "Traducción lista"
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"; job["message"] = f"Error traduciendo: {e}"
+
+
+@app.post("/api/dub-preview")
+def dub_preview(video: UploadFile = File(None), video_url: str = Form(""),
+                product_desc: str = Form("")):
+    """Paso ①: sube el video → devuelve la traducción por frase (original + español) para revisar."""
+    job_id, vpath = _save_dub_upload(video, video_url)
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Analizando el video...",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_dub_preview_job, args=(job_id, vpath, product_desc.strip()),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
+def _dub_2x1_line(oferta_texto: str) -> str:
+    """Frase de oferta que la VOZ dirá (2x1 por defecto, o la que Jack escriba). Sin precios."""
+    t = (oferta_texto or "").strip()
+    if t:
+        return t if t.endswith((".", "!", "?", "…")) else t + "."
+    return "Y hoy están de dos por uno: pides uno y te llega otro completamente gratis."
+
+
+def _run_dub_generar_job(job_id: str, prev_job_id: str, voz: str, textos: list[str],
+                         oferta_2x1: bool, oferta_texto: str, target_lang: str):
+    """Paso ②: genera el video doblado con la voz elegida (o doblaje exacto), usando el guion que
+    Jack revisó/editó en el paso ①, y menciona el 2x1 en la voz si lo pidió."""
+    job = JOBS[job_id]
+
+    def progress(msg, pct=None):
+        job["message"] = msg
+        if pct is not None:
+            job["progress"] = pct
+
+    try:
+        prev = JOBS.get(prev_job_id) or {}
+        video_path = prev.get("_dub_video")
+        segs = prev.get("_dub_segments")
+        if not video_path or not os.path.exists(video_path):
+            job["status"] = "error"; job["message"] = ("El paso de traducir ya no está disponible "
+                                                        "(vuelve a subir el video y tradúcelo).")
+            return
+        wd = os.path.join(WORK_DIR, job_id)
+        os.makedirs(wd, exist_ok=True)
+
+        # ── Doblaje EXACTO: conserva la voz original (ElevenLabs Dubbing), su propia traducción ──
+        if voz == "exacto":
+            progress("Doblaje exacto (conservando la voz original)...", 15)
+            out = os.path.join(wd, f"dubbed_{target_lang}.mp4")
+            dub_video(_load_eleven_key(), video_path, target_lang, out,
+                      source_lang="auto", progress=lambda m: progress(m))
+            job["result"] = {"ok": True, "path": out, "target_lang": target_lang, "voz": "exacto"}
+            job["status"] = "done"; job["progress"] = 100
+            job["message"] = "Listo (doblaje exacto · voz original)"
+            return
+
+        # ── Voz elegida (Kate / Juan Carlos): guion REVISADO por Jack + 2x1 opcional en la voz ──
+        from pipeline.dub_colombia import generar_dub
+        # aplicar las ediciones de Jack sobre las frases (textos[i] reemplaza es_colombia)
+        merged = []
+        for i, s in enumerate(segs or []):
+            t = textos[i] if (textos and i < len(textos)) else s.get("es_colombia", "")
+            s2 = dict(s); s2["es_colombia"] = (t or "").strip()
+            merged.append(s2)
+        if oferta_2x1:   # la voz menciona el 2x1: se antepone la frase de oferta a la ÚLTIMA fase con texto
+            for s in reversed(merged):
+                if s.get("es_colombia"):
+                    s["es_colombia"] = _dub_2x1_line(oferta_texto) + " " + s["es_colombia"]
+                    break
+        progress("Generando la voz del doblaje...", 20)
+        d = generar_dub(video_path, api_key=_load_env_key(), eleven_key=_load_eleven_key(),
+                        product_desc=prev.get("_dub_product", ""), voz=voz,
+                        segments_override=merged, generar_video=True, work_dir=wd,
+                        progress=lambda m, p=None: progress(m, p if p is not None else 55))
+        if d.get("ok") and d.get("video"):
+            etq = "es-CO · 2x1" if oferta_2x1 else "es-CO"
+            job["result"] = {"ok": True, "path": d["video"], "target_lang": etq,
+                             "voz": d.get("voz", voz)}
+            job["status"] = "done"; job["progress"] = 100; job["message"] = "Video doblado listo"
+        else:
+            job["status"] = "error"; job["message"] = d.get("error", "No se pudo generar el doblaje")
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if "dubbing_write" in msg:
+            msg = ("Tu API key de ElevenLabs no tiene el permiso 'Dubbing'. "
+                   "Actívalo en elevenlabs.io → API Keys (Dubbing → Write).")
+        job["status"] = "error"; job["message"] = msg
+
+
+@app.post("/api/dub-generar")
+def dub_generar(prev_job_id: str = Form(...), voz: str = Form("juan_carlos"),
+                textos: str = Form("[]"), oferta_2x1: bool = Form(False),
+                oferta_texto: str = Form(""), target_lang: str = Form("es")):
+    """Paso ②: genera el video doblado con la voz elegida (kate/juan_carlos/exacto) usando el guion
+    revisado del paso ①. `textos` = JSON array con las frases editadas (una por fase)."""
+    import json as _json
+    try:
+        lst = _json.loads(textos) if textos else []
+        lst = [str(x) for x in lst] if isinstance(lst, list) else []
+    except Exception:  # noqa: BLE001
+        lst = []
+    if voz not in ("kate", "juan_carlos", "exacto"):
+        voz = "juan_carlos"
+    job_id = uuid.uuid4().hex[:12]
+    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_dub_generar_job,
+                     args=(job_id, prev_job_id.strip(), voz, lst, bool(oferta_2x1),
+                           oferta_texto.strip(), target_lang.strip() or "es"),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
 def _run_download_job(job_id: str, urls: list[str]):
     """Baja videos con yt-dlp a WORK_DIR/job_id (servibles via /api/file)."""
     job = JOBS[job_id]

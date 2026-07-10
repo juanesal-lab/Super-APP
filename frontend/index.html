@@ -2695,36 +2695,26 @@
   </div><!-- /p-swap -->
 
   <div class="panel" id="p-dub" style="display:none">
-  <div class="qhace"><b>¿Qué hace?</b> Traduce la voz de un video a otro idioma manteniendo el tono. Perfecto para llevar un ad ganador a otro mercado (ej. un ad en inglés → español, o al revés para USA).</div>
+  <div class="qhace"><b>¿Qué hace?</b> Dobla un video en 2 pasos: <b>①</b> traduce y te deja <b>revisar/editar</b> la traducción; <b>②</b> eliges la <b>voz</b> (o el <b>doblaje exacto</b> que conserva la voz original) y si la voz menciona la <b>oferta 2x1</b>.</div>
 
   <div class="card" style="border-color:var(--accent2)">
-    <h2>🎙️ Doblaje (dubbing) — traducir a otro idioma</h2>
-    <p class="pmsg" style="margin:-6px 0 16px">Traduce la voz del video a otro idioma manteniendo el tono. Ideal para llevar un ad ganador a otro mercado (ej. inglés para USA).</p>
+    <h2>🎙️ Doblar video</h2>
+    <p class="pmsg" style="margin:-6px 0 16px">Primero traduce (para revisar), luego eliges voz y oferta.</p>
     <div class="drop" id="dropDub" style="padding:22px"><div class="small" id="dubName">Clic para elegir el video a doblar</div><input type="file" id="dubInput" accept="video/*" class="hidden"></div>
-    <div class="row" style="margin-top:16px">
-      <div class="opt">
-        <label class="lbl">Idioma del video (origen)</label>
-        <select id="dubSrc" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px"><option value="auto">Detectar automático</option></select>
-      </div>
-      <div class="opt">
-        <label class="lbl">Traducir a</label>
-        <select id="dubTgt" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px"></select>
-      </div>
-    </div>
-    <label class="toggle" style="margin-top:14px;display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="dub2x1" onchange="document.getElementById('dubDescWrap').style.display=this.checked?'block':'none'">
-      🎁 Es oferta 2x1 — usa voz colombiana y lo menciona en el audio
-    </label>
-    <div id="dubDescWrap" style="display:none;margin-top:10px">
-      <input type="text" id="dubDesc" placeholder="¿Qué producto es? (opcional, ayuda al guion del 2x1)"
+    <div style="margin-top:14px">
+      <label class="lbl">¿Qué producto es? <span style="color:var(--muted)">(opcional, mejora la traducción)</span></label>
+      <input type="text" id="dubDesc" placeholder="Ej: almohadillas de tela reutilizables"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
     </div>
-    <button class="btn" id="dubGo" style="margin-top:16px" disabled>🎙️  Doblar video</button>
-    <p class="pmsg" style="margin-top:8px">⏱️ El doblaje tarda unos minutos (lo procesa la IA).</p>
+    <button class="btn" id="dubTradBtn" style="margin-top:16px" disabled>① 🌎 Traducir (para revisar)</button>
+    <p class="pmsg" style="margin-top:8px">⏱️ Traducir tarda unos segundos — todavía NO gasta voz.</p>
+
     <div class="card hidden" id="dubProg" style="margin-top:14px">
       <div class="bar"><div id="dubBar"></div></div>
       <div class="pmsg" id="dubMsg">Procesando…</div>
     </div>
+
+    <div id="dubPreview" style="margin-top:16px"></div>
     <div id="dubResult"></div>
   </div>
   </div><!-- /p-dub -->
@@ -2804,15 +2794,8 @@ async function refreshConfig(){
     j.voices.forEach(v=>{const o=document.createElement("option");o.value=v.key;o.textContent=v.label;vs.appendChild(o);});
     vs.dataset.loaded="1";
   }
-  // poblar idiomas de doblaje (una sola vez)
-  const dt=document.getElementById("dubTgt"), ds=document.getElementById("dubSrc");
-  if(dt && !dt.dataset.loaded && j.dub_langs){
-    j.dub_langs.forEach(l=>{
-      const o=document.createElement("option");o.value=l.code;o.textContent=l.label;
-      dt.appendChild(o.cloneNode(true)); ds.appendChild(o);
-    });
-    dt.value="en"; dt.dataset.loaded="1";
-  }
+  // idiomas de doblaje: se cachean para armar el select "Traducir a" del paso ② (doblaje exacto)
+  if(j.dub_langs){ window._dubLangs = j.dub_langs; window._dubTgtDefault = "es"; }
 }
 async function saveKey(provider, inputId){
   const k = document.getElementById(inputId).value.trim();
@@ -3574,46 +3557,139 @@ async function swapPoll(id){
     </div>`;
 }
 
-// --- Doblaje (dubbing) ---
+// --- Doblar (2 pasos: ① traducir/revisar → ② voz + oferta) ---
+function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 let dubFile = null;
 const dropDub = document.getElementById("dropDub"), dubInput = document.getElementById("dubInput");
 dropDub.onclick = ()=>dubInput.click();
-dubInput.onchange = e=>{ dubFile = e.target.files[0]||null; window._dubForeplayUrl=null; document.getElementById("dubName").textContent = dubFile?("🎬 "+dubFile.name):"Clic para elegir el video a doblar"; document.getElementById("dubGo").disabled = !dubFile; };
+function dubSetFile(f){ dubFile=f||null; window._dubForeplayUrl=null;
+  document.getElementById("dubName").textContent = dubFile?("🎬 "+dubFile.name):"Clic para elegir el video a doblar";
+  document.getElementById("dubTradBtn").disabled = !dubFile; }
+dubInput.onchange = e=>dubSetFile(e.target.files[0]);
 ["dragover","dragenter"].forEach(ev=>dropDub.addEventListener(ev,e=>{e.preventDefault();dropDub.classList.add("over")}));
 ["dragleave","drop"].forEach(ev=>dropDub.addEventListener(ev,e=>{e.preventDefault();dropDub.classList.remove("over")}));
-dropDub.addEventListener("drop",e=>{ dubFile=e.dataTransfer.files[0]; dubInput.onchange({target:{files:[dubFile]}}); });
+dropDub.addEventListener("drop",e=>{ dubSetFile(e.dataTransfer.files[0]); });
 
-document.getElementById("dubGo").onclick = async ()=>{
+// ① TRADUCIR — muestra la traducción por frase para revisar/editar (no gasta voz)
+document.getElementById("dubTradBtn").onclick = async ()=>{
   if(!dubFile && !window._dubForeplayUrl) return;
-  document.getElementById("dubGo").disabled = true;
+  document.getElementById("dubTradBtn").disabled = true;
+  document.getElementById("dubPreview").innerHTML = "";
   document.getElementById("dubResult").innerHTML = "";
   document.getElementById("dubProg").classList.remove("hidden");
   const fd = new FormData();
-  if(window._dubForeplayUrl) fd.append("video_url", window._dubForeplayUrl);   // creativo de Foreplay
+  if(window._dubForeplayUrl) fd.append("video_url", window._dubForeplayUrl);
   else fd.append("video", dubFile);
-  fd.append("target_lang", document.getElementById("dubTgt").value);
-  fd.append("source_lang", document.getElementById("dubSrc").value);
-  fd.append("oferta_2x1", document.getElementById("dub2x1").checked);
   fd.append("product_desc", document.getElementById("dubDesc").value);
-  const r = await fetch("/api/dub",{method:"POST",body:fd});
-  const j = await r.json();
-  dubPoll(j.job_id);
+  try{
+    const r = await fetch("/api/dub-preview",{method:"POST",body:fd});
+    const j = await r.json();
+    if(!r.ok){ throw new Error(j.detail||"no se pudo"); }
+    window._dubPrevJob = j.job_id;
+    dubPrevPoll(j.job_id);
+  }catch(e){ document.getElementById("dubProg").classList.add("hidden"); document.getElementById("dubTradBtn").disabled=false; alert("No se pudo traducir: "+(e.message||e)); }
 };
 
-async function dubPoll(id){
+async function dubPrevPoll(id){
   const r = await fetch("/api/status/"+id); const j = await r.json();
   document.getElementById("dubBar").style.width = j.progress+"%";
   document.getElementById("dubMsg").textContent = j.message;
-  if(j.status==="running"){ setTimeout(()=>dubPoll(id),3000); return; }
-  document.getElementById("dubGo").disabled = false;
+  if(j.status==="running"){ setTimeout(()=>dubPrevPoll(id),2500); return; }
+  document.getElementById("dubProg").classList.add("hidden");
+  document.getElementById("dubTradBtn").disabled = false;
+  if(j.status==="error"){ document.getElementById("dubPreview").innerHTML = `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn)">⚠️ ${j.message}</p></div>`; return; }
+  renderDubPreview(j.result);
+}
+
+function renderDubPreview(res){
+  const segs = (res&&res.segments)||[];
+  const langs = window._dubLangs || [{code:"es",label:"Español"},{code:"en",label:"Inglés"}];
+  const filas = segs.map(s=>`
+    <div style="padding:10px 0;border-top:1px solid var(--line)">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${escHtml(s.etiqueta||'')} ${s.inicio?('· '+escHtml(s.inicio)+'–'+escHtml(s.fin)):''}</div>
+      ${s.original?`<div style="font-size:12px;color:var(--muted);margin-bottom:5px">🗣️ <i>${escHtml(s.original)}</i></div>`:''}
+      <textarea class="dubFrase" data-i="${s.i}" rows="2" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical">${escHtml(s.es_colombia||'')}</textarea>
+    </div>`).join("");
+  const opts = langs.map(l=>`<option value="${l.code}">${escHtml(l.label)}</option>`).join("");
+  document.getElementById("dubPreview").innerHTML = `
+    <div class="card" style="background:var(--card2)">
+      <h3 style="margin:0 0 4px">① Revisa la traducción</h3>
+      <p class="pmsg" style="margin:0 0 6px">Edita lo que quieras antes de generar la voz. (Cada bloque es una parte del video.)</p>
+      ${filas || '<p class="pmsg" style="margin:6px 0">No se detectaron frases habladas en el video.</p>'}
+    </div>
+    <div class="card" style="background:var(--card2);margin-top:12px">
+      <h3 style="margin:0 0 10px">② Voz y oferta</h3>
+      <label class="lbl">Voz del doblaje</label>
+      <select id="dubVoz" onchange="dubVozChange()" style="width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">
+        <option value="juan_carlos">Juan Carlos (voz hombre)</option>
+        <option value="kate">Kate (voz mujer)</option>
+        <option value="exacto">🎯 Doblaje exacto (conserva la voz original)</option>
+      </select>
+      <div id="dubExactoWrap" style="display:none;margin-top:10px">
+        <label class="lbl">Traducir a</label>
+        <select id="dubTgt" style="width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:14px">${opts}</select>
+        <p class="pmsg" style="margin:6px 0 0">El doblaje exacto conserva la voz original y usa su propia traducción (ignora la de arriba y no menciona el 2x1).</p>
+      </div>
+      <label id="dub2x1Box" class="toggle" style="margin-top:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="dub2x1" onchange="document.getElementById('dubOfWrap').style.display=this.checked?'block':'none'"> 🎁 Que la voz mencione la oferta 2x1
+      </label>
+      <div id="dubOfWrap" style="display:none;margin-top:8px">
+        <input type="text" id="dubOfTexto" placeholder="Frase de la oferta (opcional; vacío = '2x1: pides uno y te llega otro gratis')"
+          style="width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:10px;font-size:13px">
+      </div>
+      <button class="btn" id="dubGenBtn" onclick="dubGenerar()" style="margin-top:14px">② 🎙️ Generar video doblado</button>
+      <p class="pmsg" style="margin-top:8px">⏱️ Generar la voz sí tarda unos minutos.</p>
+    </div>`;
+  if(window._dubTgtDefault){ const t=document.getElementById("dubTgt"); if(t) t.value=window._dubTgtDefault; }
+}
+
+function dubVozChange(){
+  const exacto = document.getElementById("dubVoz").value==="exacto";
+  document.getElementById("dubExactoWrap").style.display = exacto?"block":"none";
+  const box=document.getElementById("dub2x1Box"); if(box) box.style.opacity = exacto?"0.4":"1";
+  const c=document.getElementById("dub2x1");
+  if(c){ c.disabled=exacto; if(exacto){ c.checked=false; document.getElementById("dubOfWrap").style.display="none"; } }
+}
+
+// ② GENERAR — voz elegida (o exacto) con el guion revisado del paso ①
+async function dubGenerar(){
+  const prev = window._dubPrevJob;
+  if(!prev){ alert("Primero traduce el video (paso ①)."); return; }
+  const voz = document.getElementById("dubVoz").value;
+  const textos = Array.from(document.querySelectorAll("#dubPreview .dubFrase"))
+    .sort((a,b)=>(+a.dataset.i)-(+b.dataset.i)).map(t=>t.value);
+  const fd = new FormData();
+  fd.append("prev_job_id", prev);
+  fd.append("voz", voz);
+  fd.append("textos", JSON.stringify(textos));
+  fd.append("oferta_2x1", document.getElementById("dub2x1").checked);
+  fd.append("oferta_texto", (document.getElementById("dubOfTexto")||{}).value||"");
+  fd.append("target_lang", (document.getElementById("dubTgt")||{}).value||"es");
+  document.getElementById("dubGenBtn").disabled = true;
+  document.getElementById("dubResult").innerHTML = "";
+  document.getElementById("dubProg").classList.remove("hidden");
+  try{
+    const r = await fetch("/api/dub-generar",{method:"POST",body:fd});
+    const j = await r.json();
+    if(!r.ok){ throw new Error(j.detail||"no se pudo"); }
+    dubGenPoll(j.job_id);
+  }catch(e){ document.getElementById("dubProg").classList.add("hidden"); document.getElementById("dubGenBtn").disabled=false; alert("No se pudo generar: "+(e.message||e)); }
+}
+
+async function dubGenPoll(id){
+  const r = await fetch("/api/status/"+id); const j = await r.json();
+  document.getElementById("dubBar").style.width = j.progress+"%";
+  document.getElementById("dubMsg").textContent = j.message;
+  if(j.status==="running"){ setTimeout(()=>dubGenPoll(id),3000); return; }
+  const gb=document.getElementById("dubGenBtn"); if(gb) gb.disabled=false;
   if(j.status==="error"){ document.getElementById("dubMsg").innerHTML = `<span class="err">${j.message}</span>`; return; }
   document.getElementById("dubProg").classList.add("hidden");
   const res = j.result;
   document.getElementById("dubResult").innerHTML = `
-    <div style="margin-top:14px">
-      <div class="pmsg" style="margin-bottom:8px">✅ Video doblado a <b style="color:var(--txt)">${res.target_lang.toUpperCase()}</b></div>
+    <div class="card" style="margin-top:14px">
+      <div class="pmsg" style="margin-bottom:8px">✅ Video doblado <b style="color:var(--txt)">${escHtml((res.target_lang||'').toUpperCase())}</b></div>
       <video src="/api/file?path=${enc(res.path)}" controls preload="metadata" style="width:100%;max-width:340px;border-radius:12px;background:#000"></video>
-      <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=doblado_'+res.target_lang">Descargar</button></div>
+      <div style="margin-top:10px"><button class="dl" style="padding:10px 18px" onclick="window.location='/api/download?path=${enc(res.path)}&res=1080&name=doblado'">Descargar</button></div>
     </div>`;
 }
 </script>
@@ -3668,7 +3744,7 @@ async function dubPoll(id){
   }
 
   // Trabajos en curso: recordar el job de cada poll para re-engancharlo tras un reload
-  for(const nombre of ['fpProductoPoll','fpPoll','vhPoll','clonePoll','autoPoll','prodPoll','swapPoll','dubPoll']){
+  for(const nombre of ['fpProductoPoll','fpPoll','vhPoll','clonePoll','autoPoll','prodPoll','swapPoll','dubGenPoll']){
     const orig=window[nombre];
     if(typeof orig!=='function') continue;
     window[nombre]=function(id){ if(id) g('cm_job_'+nombre, id); return orig.apply(this, arguments); };
@@ -3687,7 +3763,7 @@ async function dubPoll(id){
         if(typeof window.homeEnter==='function') window.homeEnter('p-dub', true);
         else { const b=document.querySelector('#tabs button[data-p="p-dub"]'); if(b) b.click(); }
         const nm=document.getElementById('dubName'); if(nm) nm.textContent='🎬 Foreplay: '+window._dubForeplayName;
-        const go=document.getElementById('dubGo'); if(go) go.disabled=false;
+        const go=document.getElementById('dubTradBtn'); if(go) go.disabled=false;   // habilita "Traducir" (paso ①)
         history.replaceState(null,'',location.pathname);   // limpia el ?doblar de la barra
         return;                                            // no restaurar estado viejo en esta pestaña nueva
       }
@@ -3700,7 +3776,7 @@ async function dubPoll(id){
         const q=document.getElementById('fpQuery'); if(q && fp.q) q.value=fp.q;
         fpRender();
       }
-      for(const nombre of ['fpProductoPoll','fpPoll','vhPoll','clonePoll','autoPoll','prodPoll','swapPoll','dubPoll']){
+      for(const nombre of ['fpProductoPoll','fpPoll','vhPoll','clonePoll','autoPoll','prodPoll','swapPoll','dubGenPoll']){
         const id=l('cm_job_'+nombre);
         if(!id || typeof window[nombre]!=='function') continue;
         try{

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 import unicodedata
 from typing import Callable
 
@@ -122,23 +123,34 @@ def _norm_ad(a: dict) -> dict:
     }
 
 
-def _pedir_ads(api_key: str, params: dict) -> dict:
+def _pedir_ads(api_key: str, params: dict, _reintento: bool = True) -> dict:
     """UNA llamada cruda a /api/discovery/ads (separada para poder mockearla en tests).
-    Devuelve {ok, data:[ads crudos], cursor} o {ok:False, error}."""
+    Devuelve {ok, data:[ads crudos], cursor} o {ok:False, error}.
+    Robustez: 1 reintento suave (2s de backoff) si Foreplay tira 429/5xx o timeout/red —
+    los errores DEFINITIVOS (401 key mala) no se reintentan."""
     try:
         r = requests.get(f"{_BASE}/api/discovery/ads", headers=_headers(api_key),
                          params=params, timeout=30)
         if r.status_code == 401:
-            return {"ok": False, "error": "Key de Foreplay inválida"}
+            return {"ok": False, "error": "Key de Foreplay inválida (401) — revísala en 🔑 Claves"}
         if r.status_code == 429:
+            if _reintento:
+                time.sleep(2)
+                return _pedir_ads(api_key, params, _reintento=False)
             return {"ok": False, "error": "Sin créditos de Foreplay o límite de tasa (429)"}
         if r.status_code != 200:
+            if _reintento and r.status_code >= 500:
+                time.sleep(2)
+                return _pedir_ads(api_key, params, _reintento=False)
             return {"ok": False, "error": f"Foreplay respondió HTTP {r.status_code}"}
         body = r.json() or {}
         return {"ok": True, "data": body.get("data") or [],
                 "cursor": (body.get("metadata") or {}).get("cursor") or ""}
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e)[:150]}
+        if _reintento:                      # timeout / corte de red: una segunda chance
+            time.sleep(2)
+            return _pedir_ads(api_key, params, _reintento=False)
+        return {"ok": False, "error": f"Foreplay no respondió (red/timeout): {str(e)[:120]}"}
 
 
 def _filtrar_y_normalizar(data: list, video_only: bool) -> list[dict]:

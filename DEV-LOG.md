@@ -3657,3 +3657,38 @@ verificación estaba puliendo basura.
 - **PENDIENTE probar EN VIVO**: necesita una key gratis de Pexels (2 min, sin tarjeta) — apenas la peguen
   en Claves, el b-roll sale de stock. Verificado el código con las respuestas reales de las APIs (mock),
   py_compile + import + JS 15/15. AVISO Jack: nuevo stock_broll.py; buscar_broll ganó 2 params opcionales.
+
+### 2026-07-10 · Claude (jackingshop1-cell) · 🤖 ASISTENTE con evidencia real + bitácora de eventos + puente con Claude (terminal)
+Queja REAL de Jack: le preguntó a una IA si "Buscar creativos" (veneno de abeja) tenía resultados y le
+contestaron "no puedo confirmar desde mi lado... revisá vos". Causa raíz doble: (1) la app NO tenía
+ningún asistente con acceso al backend; (2) /api/creative-search era 100% efímero — no dejaba NINGÚN
+rastro en disco (ni conteos ni errores), así que no había evidencia que mirar.
+- **NUEVO `pipeline/asistente.py` + endpoint `POST /api/asistente`** (chat, botón 🤖 flotante en el
+  front): antes de responder junta EVIDENCIA real — snapshot de JOBS (tipo, %, cuánto lleva, cuánto
+  suele tardar por tipo, alerta de colgado, qué produjo o el error exacto), bitácora de eventos, y
+  estado de keys (Gemini en vivo, créditos Foreplay cacheados 10 min). Prompt en criollo con reglas
+  duras (PROHIBIDO "revisá vos"/"no puedo confirmar"). Motor: Gemini flash (REST thinking=0 → SDK
+  fallback). Si Gemini está CAÍDO responde igual con `respuesta_deterministica` (estado real sin IA).
+- **Bitácora `work/_eventos.jsonl`** (rotación automática): TODA búsqueda (creative-search /
+  tiktok-search / creative-more) anota producto, conteos tiktok/foreplay, errores y duración; y todo
+  job anota inicio/fin (hook ÚNICO en /api/status, flags _ev_ini/_ev_fin). Sobrevive reinicios.
+- **`tipo` en TODOS los jobs** (19 sitios: cortar_clips, doblaje, ads_imagen, etc.) → el asistente
+  dice "tu doblaje de hace 5 min" en vez de "un trabajo". /api/render y /api/disruptive-images
+  también refrescan `created` al reusar el job (elapsed honesto).
+- **Puente con Claude (pedido de Jack)**: si el asistente detecta algo que lo excede, escribe una
+  línea JSON {fecha, tema, duda, contexto, urgencia} en `/Users/jaca/Vidaria/data/dudas-superapp.jsonl`
+  (la lee Claude terminal) y le dice a Jack "le dejé la duda anotada a Claude". Urgencia alta → aviso
+  por Telegram (bot del negocio, token leído de /Users/jaca/Vidaria/.env, best-effort).
+- **Robustez**: `foreplay_search._pedir_ads` reintenta 1 vez (backoff 2s) en 429/5xx/timeout (401 NO);
+  errores más accionables. `gemini_fast.generate` ahora guarda `ultimo_error` (motivo real: HTTP code
+  + cuerpo, sin la key) en vez de tragarse el error — comportamiento externo idéntico (None → SDK).
+- **VERIFICADO (~$0)**: py_compile 4/4 (app.py, asistente.py, gemini_fast.py, foreplay_search.py);
+  JS 16/16; unit tests offline 6/6 (bitácora, snapshot, fallback sin IA, alerta colgado, parser JSON,
+  puente); E2E REAL con TestClient + 1 llamada flash: preguntas "¿hubo resultados del veneno?" y
+  "¿qué onda el doblaje?" → respondió con los conteos y el error EXACTOS y anotó la duda. Limpié los
+  datos fake del test de la bitácora/dudas. ⚠️ Hay que REINICIAR :8420 (el server corriendo es viejo,
+  ni /api/busy tiene).
+- AVISO Juan: NUEVOS pipeline/asistente.py + /api/asistente + widget 🤖 en index.html (aditivos).
+  JOBS ganan clave "tipo" (aditiva, nadie la leía antes). /api/status ahora loguea eventos (mismo
+  response). _pedir_ads ganó kwarg opcional `_reintento` (default = 1 retry; tus tests con mock no
+  cambian salvo que mockeen errores → ahora reintenta una vez). gemini_fast expone `ultimo_error`.

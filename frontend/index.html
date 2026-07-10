@@ -3938,5 +3938,77 @@ async function dubGenPoll(id){
   }, 300); });
 })();
 </script>
+
+<!-- ═══ 🤖 ASISTENTE DE LA APP — pregunta lo que sea: mira el estado REAL del backend y responde con evidencia ═══ -->
+<style>
+  #asisBtn{position:fixed;right:22px;bottom:22px;z-index:9000;width:56px;height:56px;border-radius:50%;
+    background:var(--gold);color:var(--ink);font-size:26px;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;box-shadow:var(--glow);user-select:none;transition:transform .15s}
+  #asisBtn:hover{transform:scale(1.08)}
+  #asisPanel{position:fixed;right:22px;bottom:90px;z-index:9001;width:min(400px,calc(100vw - 44px));
+    height:min(540px,calc(100vh - 130px));display:none;flex-direction:column;background:var(--card);
+    border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  #asisPanel.abierto{display:flex}
+  #asisHead{padding:12px 14px;background:var(--card2);border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:8px;font-weight:700}
+  #asisHead small{font-weight:400;color:var(--muted);font-size:11px;flex:1}
+  #asisHead b{cursor:pointer;color:var(--muted);font-weight:400}
+  #asisMsgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+  .asisM{max-width:88%;padding:9px 12px;border-radius:12px;white-space:pre-wrap;word-break:break-word;line-height:1.45}
+  .asisM.vos{align-self:flex-end;background:rgba(212,175,55,.18);border:1px solid rgba(212,175,55,.3)}
+  .asisM.app{align-self:flex-start;background:var(--card2);border:1px solid var(--line)}
+  #asisBar{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:var(--card2)}
+  #asisIn{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:10px;
+    padding:9px 11px;font-size:13px;outline:none}
+  #asisIn:focus{border-color:var(--accent)}
+  #asisBar button{background:var(--gold);color:var(--ink);border:none;border-radius:10px;padding:0 16px;
+    font-size:15px;cursor:pointer;font-weight:700}
+</style>
+<div id="asisBtn" onclick="asisToggle()" title="Preguntale a la app — mira el estado real de tus trabajos">🤖</div>
+<div id="asisPanel">
+  <div id="asisHead">🤖 Asistente <small>mira el estado real de tus trabajos antes de responder</small><b onclick="asisToggle()">✕</b></div>
+  <div id="asisMsgs"></div>
+  <div id="asisBar">
+    <input id="asisIn" placeholder="¿Cómo va mi búsqueda? ¿Por qué falló el doblaje?"
+           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();asisSend()}">
+    <button onclick="asisSend()">➤</button>
+  </div>
+</div>
+<script>
+(function(){
+  let hist=[], ocupado=false, saludado=false;
+  window.asisToggle=function(){
+    const p=document.getElementById('asisPanel');
+    p.classList.toggle('abierto');
+    if(p.classList.contains('abierto')){
+      if(!saludado){ saludado=true;
+        push('app','¡Hola Jack! Preguntame por tus trabajos y te digo el estado REAL: qué está corriendo, qué terminó, qué falló y por qué. Si algo me excede, se lo anoto a Claude en la terminal.'); }
+      document.getElementById('asisIn').focus();
+    }
+  };
+  function push(rol,txt){
+    const m=document.createElement('div'); m.className='asisM '+rol; m.textContent=txt;
+    const box=document.getElementById('asisMsgs'); box.appendChild(m); box.scrollTop=box.scrollHeight;
+    return m;
+  }
+  window.asisSend=async function(){
+    if(ocupado) return;
+    const inp=document.getElementById('asisIn'); const q=(inp.value||'').trim(); if(!q) return;
+    inp.value=''; ocupado=true; push('vos',q);
+    const esperando=push('app','👀 Dejame mirar el estado real…');
+    try{
+      const fd=new FormData(); fd.append('mensaje',q); fd.append('historial',JSON.stringify(hist.slice(-10)));
+      const r=await fetch('/api/asistente',{method:'POST',body:fd});
+      const j=await r.json();
+      esperando.textContent=(j&&j.respuesta)?j.respuesta:'No pude armar la respuesta — probá de nuevo.';
+      hist.push({rol:'vos',texto:q},{rol:'app',texto:esperando.textContent});
+    }catch(e){
+      esperando.textContent='No pude hablar con el backend ('+e+'). ¿Está corriendo la app? Probá recargar la página.';
+    }
+    ocupado=false;
+    const box=document.getElementById('asisMsgs'); box.scrollTop=box.scrollHeight;
+  };
+})();
+</script>
 </body>
 </html>

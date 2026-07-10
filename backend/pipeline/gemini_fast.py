@@ -15,6 +15,10 @@ import urllib.request
 
 _MODEL = "gemini-2.5-flash"
 
+# Último error crudo de generate() (por qué devolvió None) — lo leen el asistente y los flujos
+# para decir QUÉ falló de verdad (429, key mala, timeout) en vez de un silencio. Solo diagnóstico.
+ultimo_error: str | None = None
+
 
 def generate(api_key: str, parts: list, model: str = _MODEL, timeout: int = 75) -> str | None:
     """parts: lista de str (texto) y/o tuplas (bytes, mime_type) (imágenes).
@@ -41,6 +45,23 @@ def generate(api_key: str, parts: list, model: str = _MODEL, timeout: int = 75) 
                                      headers={"Content-Type": "application/json",
                                               "x-goog-api-key": api_key})
         resp = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+        global ultimo_error
+        ultimo_error = None
         return resp["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        # anota el MOTIVO (sin la key: va por header, no aparece en el error) y devuelve None
+        # para que el caller caiga al SDK como siempre. Comportamiento externo idéntico.
+        try:
+            import urllib.error
+            if isinstance(e, urllib.error.HTTPError):
+                cuerpo = ""
+                try:
+                    cuerpo = (e.read() or b"")[:200].decode("utf-8", "ignore")
+                except Exception:  # noqa: BLE001
+                    pass
+                globals()["ultimo_error"] = f"HTTP {e.code}: {cuerpo}"[:250]
+            else:
+                globals()["ultimo_error"] = str(e)[:250]
+        except Exception:  # noqa: BLE001
+            pass
         return None

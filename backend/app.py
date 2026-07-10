@@ -38,6 +38,7 @@ from pipeline.image_variator import variar_imagen
 from pipeline import foreplay_search as fp
 from pipeline.hook_variator import variar_hook
 from pipeline.creative_variator import generar_variaciones
+from pipeline import asistente as asst
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE, "uploads")
@@ -669,7 +670,7 @@ def process(
     JOBS[job_id] = {
         "status": "running", "progress": 0,
         "message": "Iniciando...", "result": None,
-        "created": time.time(),
+        "created": time.time(), "tipo": "cortar_clips",
     }
     settings = {
         "target_seconds": float(target_seconds),
@@ -751,7 +752,7 @@ def more_versions(job_id: str = Form(...), n: int = Form(1)):
         raise HTTPException(400, "Ya tienes las 8 versiones (es el máximo).")
     n = max(1, min(7, min(int(n), 8 - ya)))
     rid = uuid.uuid4().hex[:12]
-    JOBS[rid] = {"status": "running", "progress": 0, "message": "Iniciando…",
+    JOBS[rid] = {"tipo": "mas_versiones", "status": "running", "progress": 0, "message": "Iniciando…",
                  "result": None, "created": time.time()}
     threading.Thread(target=_run_more_versions_job, args=(rid, job_id, ya, n), daemon=True).start()
     return {"job_id": rid}
@@ -938,6 +939,21 @@ def status(job_id: str):
     job = _get_job(job_id)   # memoria, o disco si el server se reinició
     if not job:
         raise HTTPException(404, "Trabajo no encontrado")
+    # 🤖 Bitácora para el asistente (punto ÚNICO: el front sondea este endpoint para TODO job).
+    # Anota inicio y fin (con error o con qué produjo) UNA sola vez; best-effort, nunca rompe.
+    try:
+        st = job.get("status")
+        if st == "running" and not job.get("_ev_ini"):
+            job["_ev_ini"] = True
+            asst.log_evento(WORK_DIR, "job_inicio", job=job_id, tipo=job.get("tipo", ""))
+        if st in ("done", "error") and not job.get("_ev_fin"):
+            job["_ev_fin"] = True
+            detalle = (str(job.get("message", ""))[:200] if st == "error"
+                       else asst._resumen_result(job.get("result")))
+            asst.log_evento(WORK_DIR, "job_fin", job=job_id, tipo=job.get("tipo", ""),
+                            status=st, detalle=detalle)
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "status": job.get("status", "running"), "progress": job.get("progress", 0),
         "message": job.get("message", ""), "result": job.get("result"),
@@ -1004,7 +1020,7 @@ def auto(
     if not files:
         raise HTTPException(400, "Sube al menos un video ganador")
     job_id, paths = _save_uploads(files)
-    JOBS[job_id] = {"status": "running", "progress": 0,
+    JOBS[job_id] = {"tipo": "crear_creativo", "status": "running", "progress": 0,
                     "message": "Iniciando...", "result": None, "created": time.time()}
     settings = {
         "product_desc": product_desc.strip(),
@@ -1217,13 +1233,23 @@ def tiktok_search(nombre: str = Form(""), count: int = Form(20),
     img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
     if not (nombre.strip() or img_paths):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
-    r = buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
-               api_key=_load_env_key(), count=int(count),
-               anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
-               foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
-               image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
-               landing_text=_texto_landing(landing),  # página de venta → mejores términos
-               rellenar_n=True)                       # devolver los N pedidos (por tiers, mismo producto)
+    _t0 = time.time()
+    try:
+        r = buscar(image_path=(img_paths[0] if img_paths else None), nombre=nombre.strip(),
+                   api_key=_load_env_key(), count=int(count),
+                   anthropic_key=_load_anthropic_key(),   # Claude = 2º juez de que sea el mismo producto
+                   foreplay_key=_load_foreplay_key(),     # + ads ganadores de Foreplay al mismo pool
+                   image_paths=img_paths or None,         # fotos + frames: ficha + jueces con más ángulos
+                   landing_text=_texto_landing(landing),  # página de venta → mejores términos
+                   rellenar_n=True)                       # devolver los N pedidos (por tiers, mismo producto)
+    except Exception as e:  # noqa: BLE001
+        # 🤖 bitácora: sin esto la búsqueda se esfumaba y NADIE podía confirmar después qué pasó
+        asst.log_evento(WORK_DIR, "busqueda", fuente="tiktok-search", producto=nombre.strip(),
+                        ok=False, error=str(e)[:200], seg=int(time.time() - _t0))
+        raise
+    asst.log_evento(WORK_DIR, "busqueda", fuente="tiktok-search", producto=nombre.strip(),
+                    ok=bool(r.get("links")), tiktok=len(r.get("links") or []),
+                    error=str(r.get("error") or "")[:200], seg=int(time.time() - _t0))
     r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
     return r
 
@@ -1250,13 +1276,28 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     img_path = img_paths[0] if img_paths else None
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
-    r = buscar_creativos(image_path=img_path, nombre=nombre.strip(),
-                         gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
-                         anthropic_key=_load_anthropic_key(),
-                         count=int(count), fp_count=int(fp_count),
-                         image_paths=img_paths or None,
-                         landing_text=_texto_landing(landing),
-                         rellenar_n=True)   # devolver los N pedidos (por tiers, mismo producto)
+    _t0 = time.time()
+    try:
+        r = buscar_creativos(image_path=img_path, nombre=nombre.strip(),
+                             gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
+                             anthropic_key=_load_anthropic_key(),
+                             count=int(count), fp_count=int(fp_count),
+                             image_paths=img_paths or None,
+                             landing_text=_texto_landing(landing),
+                             rellenar_n=True)   # devolver los N pedidos (por tiers, mismo producto)
+    except Exception as e:  # noqa: BLE001
+        # 🤖 bitácora del asistente: la búsqueda era 100% efímera (ni job ni archivo) → si fallaba,
+        # después NADIE (ni la IA) podía decir qué pasó. Ahora queda anotado el error concreto.
+        asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search", producto=nombre.strip(),
+                        ok=False, error=str(e)[:200], seg=int(time.time() - _t0))
+        raise
+    _tk, _fp = r.get("tiktok") or {}, r.get("foreplay") or {}
+    asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search", producto=nombre.strip(),
+                    ok=bool(r.get("ok")), tiktok=len(_tk.get("links") or []),
+                    foreplay=len(_fp.get("ads") or []),
+                    error_tiktok=str(_tk.get("error") or "")[:150],
+                    error_foreplay=str(_fp.get("error") or "")[:150],
+                    seg=int(time.time() - _t0))
     # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
     r["foto"] = os.path.basename(img_path) if img_path else ""
     r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
@@ -1277,12 +1318,16 @@ def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
         p = os.path.join(UPLOAD_DIR, "tksearch", os.path.basename(foto.strip()))
         if os.path.exists(p):
             img_path = p
-    return buscar_mas(fuente=fuente, nombre=nombre.strip(), desc=desc.strip(),
-                      terminos=[t.strip() for t in terminos.splitlines() if t.strip()],
-                      angulo=angulo.strip(),
-                      excluir=[e.strip() for e in excluir.splitlines() if e.strip()],
-                      n=int(n), image_path=img_path,
-                      gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key())
+    r = buscar_mas(fuente=fuente, nombre=nombre.strip(), desc=desc.strip(),
+                   terminos=[t.strip() for t in terminos.splitlines() if t.strip()],
+                   angulo=angulo.strip(),
+                   excluir=[e.strip() for e in excluir.splitlines() if e.strip()],
+                   n=int(n), image_path=img_path,
+                   gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key())
+    asst.log_evento(WORK_DIR, "busqueda", fuente=f"creative-more:{fuente}",
+                    producto=nombre.strip(), ok=bool(r.get("ok")),
+                    items=len(r.get("items") or []), error=str(r.get("error") or "")[:150])
+    return r
 
 
 # ---- CLON GANADOR CON MI PRODUCTO (reemplazo inteligente por movimiento) ----
@@ -1351,7 +1396,7 @@ def clone(
     photo_paths = [_save(f, "photos") for f in (photos or []) if f and f.filename]
     video_paths = [_save(f, "videos") for f in (videos or []) if f and f.filename]
 
-    JOBS[job_id] = {"status": "running", "progress": 0,
+    JOBS[job_id] = {"tipo": "clonar_ganador", "status": "running", "progress": 0,
                     "message": "Iniciando...", "result": None, "created": time.time()}
     settings = {
         "product_desc": product_desc.strip(), "old_desc": old_desc.strip(),
@@ -1489,7 +1534,7 @@ def scripts(
                                 "reference_" + os.path.basename(reference_ad.filename))
         with open(ref_path, "wb") as rf:
             shutil.copyfileobj(reference_ad.file, rf)
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "guiones", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     settings = {
         "target_seconds": float(target_seconds),
@@ -1712,6 +1757,7 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
                 stages = _s
         except Exception:
             stages = None
+    job["tipo"] = "render_versiones"; job["created"] = time.time()
     job["status"] = "running"; job["progress"] = 0; job["message"] = "Iniciando..."; job["result"] = None
     # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
     voces = (["juan_carlos"] * max(0, min(8, int(voz_jc)))
@@ -1791,7 +1837,7 @@ def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(...),
         with open(dest, "wb") as f:
             shutil.copyfileobj(nf.file, f)
         new_paths.append(dest)
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "reemplazar_producto", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_swap_job,
                      args=(job_id, old_path, new_paths, product_desc.strip(), new_desc.strip()),
@@ -1874,7 +1920,7 @@ def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
             shutil.copyfileobj(video.file, f)
     else:
         raise HTTPException(400, "Sube un video o pasa un creativo de Foreplay")
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "doblaje", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_dub_job,
                      args=(job_id, vpath, target_lang, source_lang, bool(oferta_2x1),
@@ -1944,7 +1990,7 @@ def dub_preview(video: UploadFile = File(None), video_url: str = Form(""),
                 product_desc: str = Form("")):
     """Paso ①: sube el video → devuelve la traducción por frase (original + español) para revisar."""
     job_id, vpath = _save_dub_upload(video, video_url)
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Analizando el video...",
+    JOBS[job_id] = {"tipo": "doblaje_traduccion", "status": "running", "progress": 0, "message": "Analizando el video...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_dub_preview_job, args=(job_id, vpath, product_desc.strip()),
                      daemon=True).start()
@@ -2048,7 +2094,7 @@ def dub_generar(prev_job_id: str = Form(...), voz: str = Form("juan_carlos"),
     if voz not in ("kate", "juan_carlos", "exacto"):
         voz = "juan_carlos"
     job_id = uuid.uuid4().hex[:12]
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "doblaje_voz", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_dub_generar_job,
                      args=(job_id, prev_job_id.strip(), voz, lst, bool(oferta_2x1),
@@ -2085,7 +2131,7 @@ def download_videos(urls: str = Form(...)):
     if not links:
         raise HTTPException(400, "Pega al menos un link")
     job_id = uuid.uuid4().hex[:12]
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "descargar_videos", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_download_job, args=(job_id, links), daemon=True).start()
     return {"job_id": job_id}
@@ -2178,7 +2224,7 @@ def regenerate_version_ep(job_id: str = Form(...), name: str = Form(...),
     if name not in (estado.get("versions") or {}):
         raise HTTPException(400, "Esa versión no existe en el proyecto.")
     rid = uuid.uuid4().hex[:12]
-    JOBS[rid] = {"status": "running", "progress": 0, "message": "Iniciando…",
+    JOBS[rid] = {"tipo": "regenerar_version", "status": "running", "progress": 0, "message": "Iniciando…",
                  "result": None, "created": time.time()}
     threading.Thread(target=_run_regen_version_job, args=(rid, job_id, name, motivo),
                      daemon=True).start()
@@ -2273,7 +2319,7 @@ def producto_clips(
     _mix = {"TOFU": max(0, int(tofu)), "MOFU": max(0, int(mofu)), "BOFU": max(0, int(bofu))}
     if sum(_mix.values()) > 0:
         settings["mix"] = _mix
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "producto_clips", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_producto_job,
                      args=(job_id, links, product_url.strip(), image_path,
@@ -2388,7 +2434,7 @@ def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(Fals
             shutil.copyfileobj(foto.file, f)
     if not (nombre.strip() or image_path):
         raise HTTPException(400, "Dame el nombre del producto o su foto")
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "foreplay_producto", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_foreplay_producto_job,
                      args=(job_id, image_path, nombre.strip(), bool(solo_activos)),
@@ -2475,7 +2521,7 @@ def foreplay_clips(videos: str = Form(...), aspect: str = Form("9:16"),
                 "max_clip": min(5.0, max(1.0, float(max_clip))),
                 "blur_captions": bool(blur_captions), "text_mode": text_mode}
     job_id = uuid.uuid4().hex[:12]
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "foreplay_clips", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     threading.Thread(target=_run_foreplay_clips_job, args=(job_id, ads, settings), daemon=True).start()
     return {"job_id": job_id}
@@ -2616,7 +2662,7 @@ def disruptive_angles(producto: str = Form(""), link: str = Form(""),
                                   tipo=tipo)
     if not conceptos:
         raise HTTPException(502, "No se pudieron generar los conceptos (revisa la key de Claude)")
-    JOBS[ctx_id] = {"status": "angles", "result": {"variantes": conceptos, "tipo": tipo},
+    JOBS[ctx_id] = {"tipo": "ads_imagen", "status": "angles", "result": {"variantes": conceptos, "tipo": tipo},
                     "created": time.time(),
                     "_image_path": image_path, "_precio": precio.strip(), "_ofertas": ofertas_list,
                     "_producto": producto.strip() or link.strip(), "_page_text": page_text,
@@ -2666,7 +2712,7 @@ def disruptive_images(ctx_id: str = Form(...), indices: str = Form(...),
         raise HTTPException(400, "Elige al menos un concepto")
     hd = str(modelo).lower() in ("pro", "hd", "2", "nano2", "nanobanana2")
     ctx["_hd"] = hd          # el modelo elegido: regenerar/otro ángulo lo reusan
-    ctx.update({"status": "running", "progress": 0, "message": "Iniciando...",
+    ctx.update({"tipo": "ads_imagen", "created": time.time(), "status": "running", "progress": 0, "message": "Iniciando...",
                 "result": {"variantes": elegidos}})
     threading.Thread(target=_run_disruptive_v2_job,
                      args=(ctx_id, elegidos, ctx.get("_precio", ""), ctx.get("_ofertas", []),
@@ -2877,7 +2923,7 @@ def variar_imagen_endpoint(imagen: UploadFile = File(...),
     tset = tuple(t.strip() for t in tipos.split(",") if t.strip()) or ("estilo", "escenario", "fondo")
     n = max(1, min(int(n or 6), 10))
     pro = str(modelo).lower() in ("pro", "hd", "2", "nano2", "nanobanana2")
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "variar_imagen", "status": "running", "progress": 0, "message": "Iniciando...",
                     "created": time.time(), "_src": src, "_producto": producto.strip(), "_pro": pro}
     threading.Thread(target=_run_variar_imagen_job,
                      args=(job_id, src, os.path.join(WORK_DIR, job_id), tset, n, pro, producto.strip()),
@@ -3003,7 +3049,7 @@ def variar_hook_ep(producto: str = Form(""), link: str = Form(""),
         winner = next((b.get("path") for b in bajados if b.get("ok") and b.get("path")), None)
     if not winner or not os.path.exists(winner):
         raise HTTPException(400, "Sube el video ganador o pega su link de TikTok")
-    JOBS[job_id] = {"status": "running", "progress": 0, "message": "Iniciando...",
+    JOBS[job_id] = {"tipo": "variar_hook", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time(), "_winner": winner,
                     "_producto": producto, "_modo": modo, "_voz": voz, "_page_text": ""}
     threading.Thread(target=_run_varhook_job,
@@ -3045,6 +3091,96 @@ def variar_hook_otro(job_id: str = Form(...), index: int = Form(...)):
     JOBS[job_id] = job         # re-ancla en memoria (por si _gc_jobs lo sacó durante el render largo)
     _persist_varhook(job_id)
     return {"variacion": v}
+
+
+# ═══ 🤖 ASISTENTE DE LA APP — responde con el estado REAL del backend, nunca "revisá vos" ═══
+# Queja real de Jack (2026-07-10): una IA le contestó "no puedo confirmarte desde mi lado...
+# revisá vos la sección Buscar creativos". Este endpoint vive EN el proceso de los jobs:
+# junta la evidencia (JOBS en memoria + bitácora work/_eventos.jsonl + estado de las keys)
+# y con eso responde. Si algo lo excede, anota la duda para Claude (terminal) en
+# /Users/jaca/Vidaria/data/dudas-superapp.jsonl y avisa por Telegram si es urgente.
+
+_FP_USAGE_CACHE: dict = {"t": 0.0, "v": None}
+
+
+def _foreplay_creditos() -> dict | None:
+    """Créditos de Foreplay con cache de 10 min (fp.usage pega HTTP; no en cada mensaje)."""
+    key = _load_foreplay_key()
+    if not key:
+        return None
+    if time.time() - _FP_USAGE_CACHE["t"] < 600 and _FP_USAGE_CACHE["v"] is not None:
+        return _FP_USAGE_CACHE["v"]
+    try:
+        u = fp.usage(key)
+    except Exception as e:  # noqa: BLE001
+        u = {"ok": False, "error": str(e)[:120]}
+    _FP_USAGE_CACHE.update(t=time.time(), v=u)
+    return u
+
+
+def _evidencia_asistente() -> dict:
+    """La foto REAL del backend que el asistente usa para responder: jobs, bitácora y keys."""
+    ev = {
+        "ahora": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "jobs": asst.snapshot_jobs(JOBS),
+        "eventos_recientes": asst.leer_eventos(WORK_DIR, 40),
+        "nota_eventos": ("'busqueda' = una corrida de Buscar creativos/TikTok con sus conteos "
+                         "reales (tiktok/foreplay = cuántos encontró) y su error si falló. "
+                         "'job_inicio'/'job_fin' = trabajos de video/imagen."),
+    }
+    try:
+        gk = _load_env_key()
+        chk = _check_gemini_key(gk) if gk else None
+        ev["keys"] = {
+            "gemini": ("sin_key" if not gk else
+                       ("ok" if (chk or {}).get("ok") is True else
+                        (chk or {}).get("reason") or "desconocido")),
+            "elevenlabs_configurada": bool(_load_eleven_key()),
+            "anthropic_configurada": bool(_load_anthropic_key()),
+            "foreplay_configurada": bool(_load_foreplay_key()),
+            "foreplay_creditos": _foreplay_creditos(),
+        }
+    except Exception:  # noqa: BLE001
+        ev["keys"] = {}
+    return ev
+
+
+@app.post("/api/asistente")
+def asistente_chat(mensaje: str = Form(...), historial: str = Form("[]")):
+    """Chat del asistente. SIEMPRE mira primero el estado real (jobs + bitácora + keys) y
+    responde con evidencia. Si el modelo detecta algo que lo excede, la duda queda anotada
+    en el puente con Claude y (si es urgente) avisa por Telegram."""
+    import json as _json
+    msg = (mensaje or "").strip()
+    if not msg:
+        raise HTTPException(400, "Escribí la pregunta")
+    try:
+        hist = _json.loads(historial) if (historial or "").strip() else []
+        if not isinstance(hist, list):
+            hist = []
+    except Exception:  # noqa: BLE001
+        hist = []
+
+    ev = _evidencia_asistente()
+    r = asst.responder(msg, hist, ev, _load_env_key())
+
+    duda, anotada = r.get("duda"), False
+    if isinstance(duda, dict) and str(duda.get("duda", "")).strip():
+        anotada = asst.anotar_duda(duda.get("tema", "SuperApp"), duda.get("duda", ""),
+                                   duda.get("contexto", ""), duda.get("urgencia", "normal"))
+        if anotada and duda.get("urgencia") == "alta":
+            asst.notificar_telegram("🚨 SuperApp (asistente): "
+                                    f"{duda.get('tema', '')} — {str(duda.get('duda', ''))[:400]}\n"
+                                    "Quedó anotada para Claude en dudas-superapp.jsonl")
+        if anotada and "claude" not in str(r.get("respuesta", "")).lower():
+            r["respuesta"] = (str(r.get("respuesta", "")) +
+                              "\n\n📝 Le dejé la duda anotada a Claude (el orquestador en la "
+                              "terminal) para que lo resuelva.")
+
+    asst.log_evento(WORK_DIR, "asistente", pregunta=msg[:150], motor=r.get("motor", ""),
+                    duda_anotada=anotada)
+    return {"ok": True, "respuesta": r.get("respuesta", ""), "motor": r.get("motor", ""),
+            "duda_anotada": anotada}
 
 
 if __name__ == "__main__":

@@ -892,10 +892,12 @@
       function tkFpCard(a,i,verif){
         const badge=a.dias>=1?`<span class="fpBadge win">🔥 ${tkEsc(a.corriendo)}</span>`
                              :(a.corriendo?`<span class="fpBadge">${tkEsc(a.corriendo)}</span>`:'');
+        // fallback de idiomas: ganador validado del mismo nicho pero en OTRO idioma → se dobla
+        const otro=a.otro_idioma?'<span class="fpBadge" style="left:8px;top:8px;bottom:auto;background:rgba(0,0,0,.68);color:#fbbf24" title="Ganador validado del mismo nicho en OTRO idioma — dóblalo al español con 🎙️ Doblar">🌎 otro idioma — dóblalo</span>':'';
         return `<div class="fpCard" style="cursor:default">
           <div class="fpThumbWrap">
             <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
-            ${badge}${tkVerBadge(a.verificado_producto,verif)}</div>
+            ${badge}${otro}${tkVerBadge(a.verificado_producto,verif)}</div>
           <div class="fpBody"><div class="fpName">${tkEsc(a.name)||'—'}</div>
             <div class="fpDesc">${tkEsc((a.description||'').slice(0,120))}</div>
             <div class="fpBtns">
@@ -2640,13 +2642,15 @@
                            :(a.corriendo?`<span class="fpBadge">${fpEsc(a.corriendo)}</span>`:'');
       const verif=_fpModo==='producto'?(a.verificado_producto?'<span class="fpVerif">✅ tu producto</span>'
                                                             :'<span class="fpVerif no">⚠️ revisar</span>'):'';
+      // fallback de idiomas: ganador validado del mismo nicho pero en OTRO idioma → se dobla
+      const otro=a.otro_idioma?'<span class="fpVerif no" title="No alcanzaron los ganadores en español — este es del MISMO nicho y validado, pero en otro idioma. Dóblalo al español con 🎙️ Doblar.">🌎 otro idioma — dóblalo</span>':'';
       const nombre=fpEsc(a.name)||'—';
       const av=_fpAvatarCols[(nombre.charCodeAt(0)||65)%_fpAvatarCols.length];
       const plats=(a.publisher_platform||[]).map(p=>p[0]).join(' ').toUpperCase();
       return `<div class="fpCard${_fpSel.has(i)?' sel':''}" onclick="fpToggle(${i})">
         <div class="fpThumbWrap">
           <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
-          ${badge}${verif}<span class="fpCheck">✓</span></div>
+          ${badge}${verif}${otro}<span class="fpCheck">✓</span></div>
         <div class="fpBody">
           <div class="fpBrandRow"><span class="fpAvatar" style="background:${av}">${nombre[0]?nombre[0].toUpperCase():'A'}</span>
             <span class="fpName">${nombre}</span><span class="fpPlats">${fpEsc(plats)}</span></div>

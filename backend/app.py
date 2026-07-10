@@ -2259,8 +2259,11 @@ def foreplay_search(query: str = Form(""), live: bool = Form(True),
                     languages: str = Form(""), niches: str = Form(""),
                     video_only: bool = Form(True), running_min_days: int = Form(0),
                     video_max_seconds: int = Form(0), cursor: str = Form(""),
-                    limit: int = Form(0), order: str = Form("")):
-    """Busca ads ganadores en Foreplay (+100M) por keyword/idioma/nicho."""
+                    limit: int = Form(0), order: str = Form(""),
+                    fallback_idiomas: bool = Form(True)):
+    """Busca ads ganadores en Foreplay (+100M) por keyword/idioma/nicho.
+    Si el idioma pedido no llena el `limit`, completa con ganadores del mismo nicho en
+    otro idioma (marcados `otro_idioma=True` → se doblan con 🎙️ Doblar)."""
     key = _load_foreplay_key()
     if not key:
         raise HTTPException(400, "Falta la API key de Foreplay (ponla en 🔑 Claves)")
@@ -2269,7 +2272,8 @@ def foreplay_search(query: str = Form(""), live: bool = Form(True),
                       running_min_days=running_min_days or None,
                       video_max_seconds=video_max_seconds or None, cursor=cursor,
                       limit=limit or None,
-                      order=order if order in ("newest", "oldest", "longest_running") else "")
+                      order=order if order in ("newest", "oldest", "longest_running") else "",
+                      fallback_idiomas=fallback_idiomas)
     if not r.get("ok"):
         raise HTTPException(502, r.get("error", "No se pudo buscar en Foreplay"))
     return r

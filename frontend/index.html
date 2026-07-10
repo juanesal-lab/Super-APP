@@ -2857,6 +2857,13 @@ async function refreshConfig(){
   const setPill=(id,ok)=>{const p=document.getElementById(id);
     p.textContent=ok?"configurada ✓":"sin configurar"; p.className=ok?"pill":"pill off";};
   setPill("keyPill", j.has_gemini_key);
+  // Estado EN VIVO de la key de Gemini: si existe pero Google la rechaza, la pill avisa
+  // (antes decía "configurada ✓" aunque la key estuviera en 429). "ok"/"desconocido" → como siempre.
+  if(j.gemini_key_status==="cuota"||j.gemini_key_status==="invalida"){
+    const kp=document.getElementById("keyPill");
+    kp.textContent=(j.gemini_key_status==="cuota")?"sin cuota (429)":"key inválida";
+    kp.className="pill off";
+  }
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);

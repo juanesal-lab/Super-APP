@@ -203,6 +203,37 @@ def _load_shopify() -> tuple[str | None, str | None, str | None]:
             _load_key("SHOPIFY_THEME_ID"))
 
 
+# --- Chequeo EN VIVO de la key de Gemini (auditoría: la pill decía "configurada ✓" con la key en 429) ---
+# Cache en memoria por key con TTL: no le pegamos a Google en cada refresh del front.
+_GEMINI_CHECK_TTL = 600  # 10 minutos
+_GEMINI_CHECK_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def _check_gemini_key(key: str) -> dict:
+    """Valida la key de Gemini con una llamada BARATA (listar modelos, NO consume tokens).
+    Devuelve {"ok": True} si sirve, {"ok": False, "reason": "invalida"|"cuota"} si Google
+    la rechaza, y {"ok": None, "reason": "red"} si no hubo respuesta (timeout / sin internet:
+    NO castigamos la key, el estado queda desconocido)."""
+    cacheado = _GEMINI_CHECK_CACHE.get(key)
+    if cacheado and time.time() - cacheado[0] < _GEMINI_CHECK_TTL:
+        return cacheado[1]
+    try:
+        r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
+                         params={"key": key, "pageSize": 1}, timeout=6)
+        if r.status_code == 200:
+            res = {"ok": True}
+        elif r.status_code in (400, 403):
+            res = {"ok": False, "reason": "invalida"}
+        elif r.status_code == 429:
+            res = {"ok": False, "reason": "cuota"}
+        else:
+            res = {"ok": None, "reason": "red"}  # respuesta rara de Google: no castigamos la key
+    except Exception:  # noqa: BLE001
+        res = {"ok": None, "reason": "red"}  # timeout / excepción de red: desconocido, no inválida
+    _GEMINI_CHECK_CACHE[key] = (time.time(), res)
+    return res
+
+
 def _agregar_banner_oferta(versions: list[dict], work_dir: str, progress,
                            start: float = 0.0, dur: float = 0.0,
                            line2: str = "OFERTA 2X1") -> None:
@@ -417,7 +448,7 @@ def index():
 
 @app.get("/api/config")
 def get_config():
-    return {
+    cfg = {
         "has_gemini_key": bool(_load_env_key()),
         "has_eleven_key": bool(_load_eleven_key()),
         "has_anthropic_key": bool(_load_anthropic_key()),
@@ -428,6 +459,24 @@ def get_config():
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
+    # Aditivo: estado EN VIVO de la key de Gemini ("ok"|"invalida"|"cuota"|"desconocido"|"sin_key").
+    # NO reemplaza has_gemini_key (otros flujos lo usan). try/except total: el config
+    # NUNCA se puede romper por este chequeo.
+    try:
+        gk = _load_env_key()
+        if not gk:
+            cfg["gemini_key_status"] = "sin_key"
+        else:
+            chk = _check_gemini_key(gk)
+            if chk.get("ok") is True:
+                cfg["gemini_key_status"] = "ok"
+            elif chk.get("ok") is False:
+                cfg["gemini_key_status"] = chk.get("reason") or "desconocido"
+            else:
+                cfg["gemini_key_status"] = "desconocido"
+    except Exception:  # noqa: BLE001
+        cfg["gemini_key_status"] = "desconocido"
+    return cfg
 
 
 @app.get("/api/caption-preview")

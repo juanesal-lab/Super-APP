@@ -71,6 +71,19 @@ def _sin_acentos(s: str) -> str:
                    if not unicodedata.combining(c)).lower()
 
 
+# alias PÚBLICO (lo usa el scoring de relevancia de creative_search; misma función)
+sin_acentos = _sin_acentos
+
+
+def texto_ad(a: dict) -> str:
+    """TODO el texto útil de un ad NORMALIZADO (para puntuar relevancia producto↔ad):
+    título + headline + descripción + transcripción + niches + link. Minúsculas, sin tildes."""
+    partes = [str(a.get(k) or "") for k in
+              ("name", "headline", "description", "transcripcion", "link_url")]
+    partes += [str(x) for x in (a.get("niches") or [])]
+    return _sin_acentos(" ".join(p for p in partes if p))
+
+
 def _es_colombiano(a: dict) -> bool:
     """True si el ad CRUDO de Foreplay tiene señales colombianas claras en su texto.
     Se corre sobre el ad crudo (antes de _norm_ad) para aprovechar full_transcription."""
@@ -88,6 +101,9 @@ def _norm_ad(a: dict) -> dict:
         "name": a.get("name") or "",
         "description": (a.get("description") or "")[:300],
         "headline": a.get("headline") or "",
+        # transcripción del video (si Foreplay la trae): señal FUERTE para la relevancia
+        # producto↔ad (el título a veces no nombra el producto pero el guion sí). Acotada.
+        "transcripcion": (a.get("full_transcription") or "")[:600],
         "video": a.get("video") or "",
         "thumbnail": a.get("thumbnail") or a.get("image") or "",
         "display_format": a.get("display_format") or "",

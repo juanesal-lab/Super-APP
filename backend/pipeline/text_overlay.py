@@ -12,6 +12,40 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_utils import run, probe
 
+# ─────────────────── ZONAS SEGURAS (regla dura del dueño — CLAUDE.md §7) ───────────────────
+# Referencia sobre lienzo 9:16 = 1080×1920. Todo se escala al tamaño REAL del video.
+# Estas constantes son el contrato compartido: offer_banner.py las importa de acá.
+SAFE_REF_W, SAFE_REF_H = 1080, 1920
+SAFE_SIDE_PX = 64          # margen lateral mínimo: ninguna letra toca el borde (ancho útil ≈950px)
+SAFE_TOP_PX = 90           # el banner de arriba empieza a ≥90px (reloj/UI de la plataforma)
+SAFE_TOP_ZONE = 0.12       # el banner vive dentro del 12% superior (best effort si son 2+ líneas)
+SAFE_BANNER_PAD_PX = 24    # padding interno mínimo de la caja del banner (letras no tocan la caja)
+SAFE_BOTTOM_DEAD = 0.78125  # (1920−420)/1920: de acá para abajo la UI tapa → CERO texto clave
+SAFE_SUB_ZONE = (0.55, 0.78125)  # franja segura de subtítulos (55%–78%; y máx = 1500/1920)
+SAFE_MIN_SUB_PX = 48       # tamaño mínimo legible de subtítulo en el celular
+SAFE_MIN_BANNER_PX = 44    # tamaño mínimo legible del banner
+
+
+def safe_margin_x(W: int) -> int:
+    """Margen lateral mínimo en px reales (≥64px sobre 1080 de ancho)."""
+    return max(8, round(SAFE_SIDE_PX * W / SAFE_REF_W))
+
+
+def safe_top_min(H: int) -> int:
+    """y mínima del banner superior en px reales (≥90px sobre 1920 de alto)."""
+    return max(8, round(SAFE_TOP_PX * H / SAFE_REF_H))
+
+
+def safe_bottom_limit(H: int) -> int:
+    """y MÁXIMA (borde inferior) para texto clave: nunca dentro de la zona muerta de abajo."""
+    return int(H * SAFE_BOTTOM_DEAD)
+
+
+def safe_px(H: int, ref_px: int) -> int:
+    """Escala un tamaño de referencia (px sobre 1920 de alto) al alto real del video."""
+    return max(12, round(ref_px * H / SAFE_REF_H))
+
+
 _FONTS = [
     # macOS
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",

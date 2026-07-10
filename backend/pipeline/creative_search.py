@@ -18,11 +18,14 @@ Los endpoints viejos (/api/tiktok-search y /api/foreplay-search) NO cambian; est
 """
 from __future__ import annotations
 
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import foreplay_search as fp
 from .tiktok_search import _expandir, _verificar, _verificar_video, analizar_foto, buscar
+
+log = logging.getLogger("creative_search")
 
 # tope de thumbnails de Foreplay verificados con Gemini (costo acotado; flash es barato pero no gratis)
 # Pool más grande (era 24): como ahora SOLO se devuelven matches alta/media (se descarta baja), hace

@@ -5,7 +5,7 @@ import os
 import subprocess
 from typing import Callable
 
-from .ffmpeg_utils import probe, run
+from .ffmpeg_utils import probe, run, video_ok
 from .analyze import analyze_video, Segment, MAX_CLIP, segment_signature, segment_signatures, sig_distance
 from .gemini_rank import rank_with_gemini
 from concurrent.futures import ThreadPoolExecutor
@@ -842,6 +842,22 @@ def render_versions(
                 v["sfx_events"] = None
 
     report("Finalizando...", 98)
+
+    # ── VALIDACIÓN DE SALIDA: que ningún mp4 truncado/corrupto se entregue como "listo" ──
+    versiones_malas = [v["name"] for v in versions if not video_ok(v["path"])]
+    if versiones_malas:
+        avisos.append("⚠️ Estas versiones salieron corruptas/truncadas (mp4 inválido) y NO "
+                      "sirven: " + ", ".join(versiones_malas) + " — vuelve a intentar.")
+    if versions and len(versiones_malas) == len(versions):
+        return {"ok": False, "avisos": avisos,
+                "error": "Todas las versiones salieron corruptas/truncadas (mp4 inválido) — "
+                         "vuelve a intentar el proceso."}
+    clips_buenos = [c for c in loose_clips if video_ok(c["path"])]
+    if len(clips_buenos) < len(loose_clips):
+        avisos.append(f"⚠️ {len(loose_clips) - len(clips_buenos)} clip(s) suelto(s) salieron "
+                      "corruptos/truncados y se descartaron.")
+        loose_clips = clips_buenos
+
     manifest = {
         "ok": True,
         "avisos": avisos,   # ⚠️ pasos de IA que NO corrieron (traducir/gancho) — honestidad

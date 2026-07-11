@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 
@@ -26,6 +28,39 @@ import requests
 _TIKWM = "https://tikwm.com/api/feed/search"
 _MODEL = "gemini-2.5-flash"
 _UA = {"User-Agent": "Mozilla/5.0"}
+
+# ── LÍMITE REAL de tikwm gratis: 1 request/segundo (comprobado en vivo: en paralelo devuelve
+# code=-1 "Free Api Limit: 1 request/second" y el código viejo lo trataba como "0 resultados").
+# Este pacer GLOBAL (compartido entre TODOS los hilos) serializa las llamadas a ~1/s, y si aun
+# así tikwm responde rate-limit o falla la red, se reintenta con backoff en vez de rendirse.
+_TK_LOCK = threading.Lock()
+_TK_INTERVALO = 1.05          # segundos entre requests a tikwm (el límite gratis es 1/s)
+_tk_ultimo = 0.0
+
+
+def _tk_get(url: str, params: dict, timeout: int = 25, reintentos: int = 2) -> dict:
+    """GET a tikwm RESPETANDO su límite gratis (1 req/s global) + retry con backoff.
+
+    Devuelve el JSON con code=0, o {} si tras los reintentos sigue fallando (el caller ya
+    trataba dict vacío como "sin videos"). Los hilos del ThreadPool pasan por aquí en fila:
+    el lock hace la pausa DENTRO, así el paralelismo de arriba no revienta el límite."""
+    global _tk_ultimo
+    for intento in range(reintentos + 1):
+        with _TK_LOCK:                       # pausa global: nadie dispara antes de tiempo
+            espera = _tk_ultimo + _TK_INTERVALO - time.time()
+            if espera > 0:
+                time.sleep(espera)
+            _tk_ultimo = time.time()
+        try:
+            r = requests.get(url, params=params, headers=_UA, timeout=timeout)
+            j = r.json() or {}
+        except Exception:  # noqa: BLE001   # timeout / red / JSON roto → reintento
+            j = None
+        if j is not None and j.get("code") == 0:
+            return j
+        if intento < reintentos:             # rate-limit (code=-1) o error → backoff y otra vez
+            time.sleep(1.2 * (intento + 1))
+    return {}
 
 
 def _client(api_key):
@@ -119,6 +154,32 @@ def _expandir(kw: str, variants: list[str]) -> list[str]:
         if q and q.lower() not in {x.lower() for x in out}:
             out.append(q)
     return out[:16]
+
+
+def _queries_escalera(kw: str, queries: list[str]) -> list[str]:
+    """ESCALERA de emergencia cuando la búsqueda normal trae 0 (o casi 0) crudos: variantes más
+    CORTAS que en tikwm devuelven muchos más resultados. Del keyword saca el sustantivo NÚCLEO
+    ("rodillera"), núcleo+contexto ("rodillera rodilla"), y rescata las queries de 1-2 palabras
+    que ya se tenían (ahí suele estar el inglés corto tipo "knee brace"). Sin repetir."""
+    kw = (kw or "").strip()
+    pal = [p for p in kw.split() if p]
+    out: list[str] = []
+
+    def _add(q: str):
+        q = (q or "").strip()
+        if q and q.lower() not in {x.lower() for x in out}:
+            out.append(q)
+
+    if pal:
+        _add(pal[0])                                     # sustantivo núcleo: "rodillera"
+        if len(pal) >= 2:
+            _add(f"{pal[0]} {pal[1]}")                   # núcleo + contexto: "rodillera rodilla"
+    for q in queries:                                    # las cortas que ya había (ES e inglés corto)
+        if 0 < len(q.split()) <= 2:
+            _add(q)
+    if pal:
+        _add(f"#{pal[0]}")                               # variante hashtag (tikwm también la busca)
+    return out[:6]
 
 
 def mejores_frames(video_path: str, n: int = 5, muestreo: int = 24,
@@ -237,16 +298,16 @@ def _tk_key(c: dict) -> str:
 
 
 def buscar_tiktok(keywords: str, count: int = 40, pages: int = 2) -> list[dict]:
-    """Videos reales de TikTok con paginación + datos de engagement (views/likes/región/duración)."""
+    """Videos reales de TikTok con paginación + datos de engagement (views/likes/región/duración).
+    Pasa por el pacer global de tikwm (1 req/s + retry): un rate-limit ya NO se disfraza de 0."""
     out: list[dict] = []
     if not keywords.strip():
         return out
     cursor = 0
     try:
         for _ in range(max(1, pages)):
-            r = requests.get(_TIKWM, params={"keywords": keywords, "count": 30, "cursor": cursor},
-                             headers=_UA, timeout=25)
-            data = (r.json() or {}).get("data") or {}
+            j = _tk_get(_TIKWM, {"keywords": keywords, "count": 30, "cursor": cursor})
+            data = j.get("data") or {}
             vids = data.get("videos") or []
             for v in vids:
                 au = (v.get("author") or {}).get("unique_id", "")
@@ -280,10 +341,9 @@ def _posts_cuenta(unique_id: str, count: int = 30) -> list[dict]:
     if not (unique_id or "").strip():
         return out
     try:
-        r = requests.get("https://tikwm.com/api/user/posts",
-                         params={"unique_id": unique_id, "count": count},
-                         headers=_UA, timeout=25)
-        data = (r.json() or {}).get("data") or {}
+        j = _tk_get("https://tikwm.com/api/user/posts",
+                    {"unique_id": unique_id, "count": count})
+        data = j.get("data") or {}
         for v in data.get("videos") or []:
             au = (v.get("author") or {}).get("unique_id", "") or unique_id
             vid = v.get("video_id", "")
@@ -998,13 +1058,23 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     queries = [q for q in queries if q][:16] or [(nombre or "").strip()]
     kw = queries[0]
 
-    # AMPLIAR: MUCHAS consultas (producto + beneficios/compra) × varias páginas → muchísimos candidatos.
-    # En PARALELO para que buscar en 10 términos × 3 páginas no se demore.
+    # AMPLIAR: MUCHAS consultas (producto + beneficios/compra) × páginas → muchísimos candidatos.
+    # El ThreadPool queda, pero el pacer global de tikwm (1 req/s + retry) serializa por debajo:
+    # antes esto disparaba todo a la vez y tikwm rebotaba casi TODAS las queries con rate-limit
+    # (que se leía como "0 resultados" → la pestaña quedaba en 0). pages=2 basta: 2×30 = el count.
     cands: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=6) as ex:
-        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=4), queries):
+        for res in ex.map(lambda q: buscar_tiktok(q, count=60, pages=2), queries):
             for c in res:
                 cands.setdefault(_tk_key(c), c)   # dedup por video_id (no por url: el @ engaña)
+    # ESCALERA: si aun con retry llegaron 0 (o casi 0) crudos, degradar a variantes más CORTAS
+    # (núcleo "rodillera", núcleo+contexto, inglés corto, #hashtag) — las cortas rinden mucho más.
+    if len(cands) < max(10, count // 2):
+        for q in _queries_escalera(kw, queries):
+            for c in buscar_tiktok(q, count=60, pages=2):
+                cands.setdefault(_tk_key(c), c)
+            if len(cands) >= max(30, count * 2):   # ya hay material de sobra: no seguir gastando
+                break
     # + FOREPLAY: ads GANADORES ya probados (video descargable) al MISMO pool y con la MISMA verificación
     for c in _foreplay_candidatos(queries, foreplay_key):
         cands.setdefault(_tk_key(c), c)
@@ -1017,6 +1087,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                    reverse=True)
 
     verificado = False
+    candidatos: list[dict] = []   # 🟡 crudos prometedores SIN confirmar (sección aparte en la UI)
     if ref_bytes and api_key and cand_list:
         verificado = True
         # RELEVANCIA POR TÍTULO antes de gastar visión: los videos del PRODUCTO real (vendedores de
@@ -1055,6 +1126,11 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
             return (1 if v.get("match") else 0, _CONF.get(v.get("confianza"), 0),
                     _title_score(c), c.get("plays", 0))
 
+        # veredictos del juez PROFUNDO por candidato (id(c) → dict o None si no se pudo juzgar):
+        # se guardan TODOS (no solo los aprobados) para poder separar después los "candidatos sin
+        # confirmar" (el juez dudó / no se pudo verificar) de los rechazados DEFINITIVOS (match=false).
+        deep_res: dict[int, dict | None] = {}
+
         def _confirmar_contenido(cands):
             """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja.
             SIEMPRE (también con `rellenar_n`) se DESCARTA la confianza baja: el flujo "buscar
@@ -1066,6 +1142,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
                 for fut in as_completed(futs):
                     v = fut.result()
+                    deep_res[id(futs[fut])] = v          # también los que dudó / no pudo / rechazó
                     if v and v.get("match") and v.get("confianza") != "baja":
                         c = futs[fut]
                         c["_conf"] = v.get("confianza")
@@ -1084,13 +1161,15 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
 
         # 2) DOBLE JUEZ: Claude VETA (2º juez estricto) lo confirmado por contenido. False = fuera;
         #    True o None (fallo técnico) = se queda (ya pasó el filtro ESTRICTO de contenido).
+        vetados: set[int] = set()          # ids que el 2º juez (Claude) rechazó DEFINITIVO
         if anthropic_key and matches:
             res_cl: dict[int, object] = {}
             with ThreadPoolExecutor(max_workers=5) as ex:
                 cf = {ex.submit(_verificar_claude, c, ref_bytes, ref_desc, anthropic_key): c for c in matches}
                 for fut in as_completed(cf):
                     res_cl[id(cf[fut])] = fut.result()
-            matches = [c for c in matches if res_cl.get(id(c)) is not False]
+            vetados = {id(c) for c in matches if res_cl.get(id(c)) is False}
+            matches = [c for c in matches if id(c) not in vetados]
 
         # 3) CUENTAS VENDEDORAS: si faltan, explora las cuentas de los confirmados y DEEP-verifica sus
         #    posts con el MISMO filtro exacto (no solo portada) para que no se cuele nada.
@@ -1136,6 +1215,38 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 confirmados_t.append(c)
             confirmados_t.sort(key=lambda c: (c.get("tier", 2),) + tuple(-v for v in c.get("_rank", ())))
             links = confirmados_t[:count]
+            # 🟡 CANDIDATOS SIN CONFIRMAR (sección APARTE, nunca mezclados con los confirmados):
+            # si los confirmados no llegan al count, se ofrecen los mejores crudos donde la portada
+            # CUADRA con el producto pero el juez profundo dudó (confianza baja) o no pudo verificar
+            # (video no bajó / Gemini caído). Los que el juez rechazó DEFINITIVO (match=false por
+            # contenido) NO entran jamás — eso sí sería relleno. Van etiquetados candidato=True y
+            # verificado_producto=False para que la UI los pinte en su propia sección ámbar.
+            candidatos = []
+            if len(links) < count:
+                en_links = {id(c) for c in links}
+                for c in pool:
+                    if id(c) in en_links or id(c) in vetados:   # vetado por Claude = NO definitivo
+                        continue
+                    dv = deep_res.get(id(c))
+                    cv = cover_res.get(id(c)) or {}
+                    if dv is not None and not dv.get("match"):
+                        continue                       # el juez CONFIRMÓ que NO es → fuera, siempre
+                    if dv is not None and dv.get("match"):
+                        motivo = "el juez dudó (confianza baja)"        # match pero confianza baja
+                        prio = 2
+                    elif cv.get("match"):
+                        motivo = "la portada cuadra — sin verificar a fondo"
+                        prio = 1
+                    else:
+                        continue                       # ni portada ni contenido lo apoyan → fuera
+                    c["candidato"] = True
+                    c["verificado_producto"] = False
+                    c["motivo_candidato"] = motivo
+                    c["_cand_rank"] = (prio, _CONF.get(cv.get("confianza"), 0),
+                                       _title_score(c), c.get("plays", 0))
+                    candidatos.append(c)
+                candidatos.sort(key=lambda c: c.get("_cand_rank", ()), reverse=True)
+                candidatos = candidatos[:count - len(links)]
         else:
             for c in matches:
                 c["verificado_producto"] = True       # pasó verificación EXACTA (contenido + juez estricto)
@@ -1150,18 +1261,24 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         links = cand_list[:count]
 
     n_conf = sum(1 for c in links if c.get("verificado_producto"))
-    for c in links:
+    for c in links + candidatos:
         c.pop("_rank", None)
         c.pop("_deep", None)
         c.pop("_cuenta", None)
         c.pop("_conf", None)          # interno (tier ya calculado)
+        c.pop("_cand_rank", None)     # interno (orden de candidatos ya aplicado)
         c.setdefault("source", "tiktok")
         c.pop("_cover_bytes", None)   # bytes: no serializan a JSON
 
-    # HONESTIDAD (plan 30/30): si no se llegó al count con confirmados, decirlo CLARO, con las
-    # búsquedas que se probaron, y pedir datos para ampliar (nunca inflar con no-confirmados).
+    # HONESTIDAD (plan 30/30): el mensaje de "no encontré" queda SOLO para el caso de verdad vacío
+    # (ni confirmados NI candidatos tras toda la escalera). Si hay candidatos, la sección ámbar de
+    # la UI ya explica sola qué son (separados de los confirmados: eso no es relleno).
     mensaje = ""
-    if verificado and n_conf < count:
+    if verificado and not links and not candidatos:
+        mensaje = (f"Encontré 0 con estas búsquedas: "
+                   f"[{', '.join(queries[:6])}]. "
+                   "Dame la marca, un hashtag o el país para ampliar.")
+    elif verificado and n_conf < count and not candidatos:
         mensaje = (f"Encontré {n_conf} confirmados con estas búsquedas: "
                    f"[{', '.join(queries[:6])}]. "
                    "Dame la marca, un hashtag o el país para ampliar.")
@@ -1175,7 +1292,9 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                                  anthropic_key=anthropic_key)
         except Exception:  # noqa: BLE001
             broll = []
-    return {"ok": bool(links), "keywords": kw, "links": links, "verificado": verificado,
+    return {"ok": bool(links or candidatos), "keywords": kw, "links": links,
+            "candidatos": candidatos,     # 🟡 sección aparte "sin confirmar — revísalos tú"
+            "verificado": verificado,
             "n_confirmados": n_conf, "broll": broll, "mensaje_busqueda": mensaje,
             "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}"}
 

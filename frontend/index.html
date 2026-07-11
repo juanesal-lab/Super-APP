@@ -761,11 +761,19 @@
       }
       function tkRender(j){
         const tk=j.tiktok||{}, fp=j.foreplay||{};
-        const links=(tk.links||[]), ads=(fp.ads||[]);
+        // 🟡 candidatos SIN confirmar: viven en los MISMOS arrays (los handlers usan el índice)
+        // pero se pintan en su propia sección ámbar — sus índices quedan en candIdxTk/candIdxFp.
+        const linksConf=(tk.links||[]), adsConf=(fp.ads||[]);
+        const candTk=(tk.candidatos||[]), candFp=(fp.candidatos||[]);
+        const links=linksConf.concat(candTk), ads=adsConf.concat(candFp);
         // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      framesVideo:(j.frames_video||[]),   // miniaturas de los frames sacados del video
                      desc:j.desc||'', variants:(j.variants||[]), links:links, ads:ads,
+                     candIdxTk:new Set(candTk.map((_,k)=>linksConf.length+k)),
+                     candIdxFp:new Set(candFp.map((_,k)=>adsConf.length+k)),
+                     fpCrudos:(fp.total_crudo||0),   // crudos ANTES del juez (mensaje honesto)
+                     fpMenosVal:(fp.menos_validados?(fp.validacion||'menos validados'):''),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
                      fpOk:!!fp.ok, fpErr:fp.error||'', broll:(tk.broll||[]),
                      tkMens:tk.mensaje_busqueda||'', masComo:[],
@@ -801,11 +809,15 @@
              '</div></div>';
         }
         // ── grupo 1: TikTok ──────────────────────────────────────────────
-        const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1]));
+        const candIdxTk=S.candIdxTk||new Set(), candIdxFp=S.candIdxFp||new Set();
+        const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1])&&!candIdxTk.has(p[1]));
+        const candTkIdxs=[...candIdxTk].filter(i=>links[i]&&!clTk.has(i));
         const conf=mainTk.map(p=>p[0]).filter(l=>l.verificado_producto);
         h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${mainTk.length})${S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:''}</h3>`;
-        if(!mainTk.length){
+        if(!mainTk.length&&!candTkIdxs.length){
           h+='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+tkEsc(S.busq)+'" target="_blank">'+tkEsc(S.busq)+'</a></div>';
+        } else if(!mainTk.length){
+          h+='<div class="autoStep">0 confirmados EXACTOS — abajo van los 🟡 candidatos sin confirmar (revísalos tú), o ábrelo a mano: <a href="'+tkEsc(S.busq)+'" target="_blank">TikTok ↗</a></div>';
         } else {
           const urls=(conf.length?conf:mainTk.map(p=>p[0])).map(l=>l.url).join('\n');
           h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${urls.replace(/"/g,'&quot;')}">📋 Copiar los ${conf.length||mainTk.length} links${conf.length?' confirmados':''}</button>`;
@@ -822,16 +834,34 @@
           m.idxs.forEach(i=>{ if(links[i]) h+=tkTkCard(links[i],i,S.tkVerif); });
           h+='</div>';
         });
+        // ── 🟡 candidatos TikTok SIN confirmar (sección APARTE — nunca mezclados con los ✅) ──
+        if(candTkIdxs.length){
+          h+=`<h3 style="margin:22px 0 4px;color:#f59e0b">🟡 Candidatos sin confirmar (${candTkIdxs.length}) — revísalos tú</h3>`;
+          h+=`<div class="pmsg" style="margin:0 0 10px;border-left:3px solid #f59e0b">La portada CUADRA con tu producto pero la IA no lo confirmó a fondo (o el juez dudó). NO son confirmados — dales una mirada antes de usarlos.</div>`;
+          h+='<div class="fpGrid">';
+          candTkIdxs.forEach(i=>{ h+=tkTkCard(links[i],i,S.tkVerif); });
+          h+='</div>';
+        }
         // mensaje HONESTO cuando los confirmados no llegan al count pedido (con las búsquedas probadas)
         if(S.tkMens){ h+='<div class="autoStep" style="margin-top:8px">💬 '+tkEsc(S.tkMens)+'</div>'; }
         // ── grupo 2: Foreplay ────────────────────────────────────────────
-        const mainFp=ads.map((a,i)=>[a,i]).filter(p=>!clFp.has(p[1]));
+        const mainFp=ads.map((a,i)=>[a,i]).filter(p=>!clFp.has(p[1])&&!candIdxFp.has(p[1]));
+        const candFpIdxs=[...candIdxFp].filter(i=>ads[i]&&!clFp.has(i));
         const fpConf=mainFp.map(p=>p[0]).filter(a=>a.verificado_producto);
         h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${mainFp.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
+        // honesto: si el filtro de 30+ días no dio nada, estos salieron con MENOS días corriendo
+        if(S.fpMenosVal&&(mainFp.length||candFpIdxs.length)){
+          h+='<div class="autoStep" style="border-left:3px solid #f59e0b">🟡 Con el filtro de ganadores validados (30+ días) no salió NADA — estos llevan menos tiempo corriendo ('+tkEsc(S.fpMenosVal)+').</div>';
+        }
         if(!S.fpOk && S.fpErr){
           h+='<div class="autoStep bad">'+tkEsc(S.fpErr)+'</div>';
+        } else if(!mainFp.length&&!candFpIdxs.length){
+          // honesto: distinguir "Foreplay no trajo nada" de "trajo N pero el juez los descartó"
+          h+='<div class="autoStep">'+(S.fpCrudos>0
+            ?('En Foreplay salieron '+S.fpCrudos+' ads de la categoría, pero el juez visual descartó TODOS (otro producto — cero relleno). Prueba con otra foto/ángulo de tu producto o dame la marca.')
+            :'Sin resultados en Foreplay para este producto.')+'</div>';
         } else if(!mainFp.length){
-          h+='<div class="autoStep">Sin resultados en Foreplay para este producto.</div>';
+          h+='<div class="autoStep">0 confirmados EXACTOS en Foreplay — abajo van los 🟡 candidatos sin confirmar (revísalos tú).</div>';
         } else {
           const dls=(fpConf.length?fpConf:mainFp.map(p=>p[0])).map(a=>a.video).filter(Boolean).join('\n');
           h+=`<button class="btn sec" style="margin:10px 0;width:auto" onclick="navigator.clipboard.writeText(this.dataset.u);this.textContent='✅ Copiados'" data-u="${dls.replace(/"/g,'&quot;')}" title="Links directos del video (sirven en 📥 Descargar y Mi producto)">📋 Copiar los ${fpConf.length||mainFp.length} links de video${fpConf.length?' confirmados':''}</button>`;
@@ -848,6 +878,14 @@
           m.idxs.forEach(i=>{ if(ads[i]) h+=tkFpCard(ads[i],i,S.fpVerif); });
           h+='</div>';
         });
+        // ── 🟡 candidatos Foreplay SIN confirmar (sección APARTE — nunca mezclados con los ✅) ──
+        if(candFpIdxs.length){
+          h+=`<h3 style="margin:22px 0 4px;color:#f59e0b">🟡 Candidatos sin confirmar (${candFpIdxs.length}) — revísalos tú</h3>`;
+          h+=`<div class="pmsg" style="margin:0 0 10px;border-left:3px solid #f59e0b">La portada CUADRA con tu producto pero la IA no lo confirmó a fondo (o el juez dudó). NO son confirmados — dales una mirada antes de usarlos.</div>`;
+          h+='<div class="fpGrid">';
+          candFpIdxs.forEach(i=>{ h+=tkFpCard(ads[i],i,S.fpVerif); });
+          h+='</div>';
+        }
         // ── grupo 3: 🎬 B-ROLL de apoyo (escenas para darle ritmo/dopamina al ad) ──
         const br=S.broll||[];
         if(br.length){
@@ -866,12 +904,17 @@
           ?'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:var(--accent);color:var(--ink)" title="La IA confirmó que es TU producto (misma forma)">✅ tu producto</span>'
           :'<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px" title="No se pudo confirmar — revísalo tú">⚠️ sin verificar</span>';
       }
+      // 🟡 badge ámbar de los candidatos SIN confirmar (con el motivo del backend en el title)
+      function tkCandBadge(x){
+        return '<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:#f59e0b;color:#1a1a1a" title="'+tkEsc(x.motivo_candidato||'sin confirmar')+' — revísalo tú antes de usarlo">🟡 sin confirmar</span>';
+      }
       function tkTkCard(l,i,verif){
         const views=l.plays?`<span class="fpBadge">▶ ${l.plays>=1e6?(l.plays/1e6).toFixed(1)+'M':l.plays>=1e3?Math.round(l.plays/1e3)+'K':l.plays} views</span>`:'';
-        return `<div class="fpCard" style="cursor:default">
+        const cand=!!l.candidato;   // 🟡 candidato sin confirmar → borde y badge ámbar
+        return `<div class="fpCard" style="cursor:default${cand?';border:1px solid #f59e0b':''}">
           <div class="fpThumbWrap">
             <img class="fpThumb" src="${tkEsc(l.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
-            ${views}${tkVerBadge(l.verificado_producto,verif)}</div>
+            ${views}${cand?tkCandBadge(l):tkVerBadge(l.verificado_producto,verif)}</div>
           <div class="fpBody"><div class="fpName">${tkEsc(l.title)||'—'}</div>
             <div class="fpBtns">
               <button class="fpBtn" onclick="tkTkPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
@@ -894,10 +937,11 @@
                              :(a.corriendo?`<span class="fpBadge">${tkEsc(a.corriendo)}</span>`:'');
         // fallback de idiomas: ganador validado del mismo nicho pero en OTRO idioma → se dobla
         const otro=a.otro_idioma?'<span class="fpBadge" style="left:8px;top:8px;bottom:auto;background:rgba(0,0,0,.68);color:#fbbf24" title="Ganador validado del mismo nicho en OTRO idioma — dóblalo al español con 🎙️ Doblar">🌎 otro idioma — dóblalo</span>':'';
-        return `<div class="fpCard" style="cursor:default">
+        const cand=!!a.candidato;   // 🟡 candidato sin confirmar → borde y badge ámbar
+        return `<div class="fpCard" style="cursor:default${cand?';border:1px solid #f59e0b':''}">
           <div class="fpThumbWrap">
             <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
-            ${badge}${otro}${tkVerBadge(a.verificado_producto,verif)}</div>
+            ${badge}${otro}${cand?tkCandBadge(a):tkVerBadge(a.verificado_producto,verif)}</div>
           <div class="fpBody"><div class="fpName">${tkEsc(a.name)||'—'}</div>
             <div class="fpDesc">${tkEsc((a.description||'').slice(0,120))}</div>
             <div class="fpBtns">

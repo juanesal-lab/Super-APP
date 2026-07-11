@@ -1295,6 +1295,9 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search", producto=nombre.strip(),
                     ok=bool(r.get("ok")), tiktok=len(_tk.get("links") or []),
                     foreplay=len(_fp.get("ads") or []),
+                    # 🟡 candidatos sin confirmar (sección aparte): también quedan anotados
+                    candidatos_tk=len(_tk.get("candidatos") or []),
+                    candidatos_fp=len(_fp.get("candidatos") or []),
                     error_tiktok=str(_tk.get("error") or "")[:150],
                     error_foreplay=str(_fp.get("error") or "")[:150],
                     seg=int(time.time() - _t0))

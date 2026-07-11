@@ -52,15 +52,32 @@ def _parece_espanol(term: str) -> bool:
     return any(w in _ES_HINTS for w in t.split())
 
 
+_FP_STOP = {"para", "con", "sin", "anti", "las", "los", "del", "de", "la", "el", "que"}
+
+
+def _nucleo_producto(info: dict) -> str:
+    """El sustantivo NÚCLEO del producto ("rodillera" de "rodillera estabilizadora"): en Foreplay
+    las frases largas casi siempre dan 0 — la palabra núcleo sola es la que trae resultados."""
+    kw = str(info.get("keywords") or "").strip()
+    for w in kw.split():
+        if len(w) >= 4 and w.lower() not in _FP_STOP:
+            return w.lower()
+    pal = kw.split()
+    return pal[0].lower() if pal else ""
+
+
 def _terminos_foreplay(info: dict, max_terms: int = _FP_TERMS) -> list[str]:
-    """Los mejores términos para Foreplay: español PRIMERO (la búsqueda filtra idioma español),
-    después el resto, sin duplicar. Reusa lo que YA generó analizar_foto (cero llamadas extra)."""
+    """Los mejores términos para Foreplay: el sustantivo NÚCLEO primero (comprobado en vivo: la
+    frase entera da 0, "rodillera" sola da resultados validados), luego español (la búsqueda
+    filtra idioma español), después el resto, sin duplicar. Reusa lo que YA generó analizar_foto
+    (cero llamadas extra)."""
     cands = [str(info.get("keywords") or "").strip()] + \
             [str(v).strip() for v in (info.get("variants") or [])]
     cands = [c for c in cands if c]
     es = [c for c in cands if _parece_espanol(c)]
     resto = [c for c in cands if c not in es]
-    out: list[str] = []
+    nucleo = _nucleo_producto(info)
+    out: list[str] = [nucleo] if nucleo else []
     for t in es + resto:
         if t.lower() not in {x.lower() for x in out}:
             out.append(t)
@@ -85,30 +102,52 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 "n_confirmados": 0, "verificado": False, "terminos": []}
 
     # 1) buscar cada término EN PARALELO (idioma español como la pestaña Foreplay; Colombia se
-    #    excluye adentro de buscar_ads) y DEDUPLICAR entre términos.
+    #    excluye adentro de buscar_ads) y DEDUPLICAR entre términos. Con ESCALERA de validación:
+    #    · pasada 1: TODOS los términos, 30+ días corriendo (validados, regla de Jack), limit=50
+    #      + order=longest_running + el fallback de idiomas de buscar_ads (mismo nicho, otro
+    #      idioma → 🎙️ Doblar). Antes se buscaba sin limit (página de ~10) y sin fallback: por
+    #      eso "rodillera estabilizadora" daba 0 aunque "rodillera" sola tiene ganadores reales.
+    #    · pasada 2 (si 0 crudos): solo el NÚCLEO, 7+ días → marcados HONESTOS "menos validados".
+    #    · pasada 3 (si 0): solo el núcleo, sin filtro de días — también marcado.
     ads: dict[str, dict] = {}
     errores: list[str] = []
-    with ThreadPoolExecutor(max_workers=len(terms)) as ex:
-        for r in ex.map(lambda t: fp.buscar_ads(t, api_key=foreplay_key, live=True,
-                                                languages="spanish", video_only=True), terms):
-            if not r.get("ok"):
-                errores.append(r.get("error") or "Error en Foreplay")
-                continue
-            for a in r.get("ads") or []:
-                k = str(a.get("id") or a.get("video") or a.get("foreplay_url") or "")
-                if k and k not in ads and k not in (excluir or set()):
-                    ads[k] = a
+    validacion = ""                     # "" = validados 30+ días; si no, la etiqueta honesta
+    pasadas = [(terms, 30, ""),
+               (terms[:1], 7, "7+ días corriendo (menos validados)"),
+               (terms[:1], None, "sin filtro de días (sin validar tiempo corriendo)")]
+    for pterms, min_dias, etiqueta in pasadas:
+        with ThreadPoolExecutor(max_workers=len(pterms)) as ex:
+            for r in ex.map(lambda t: fp.buscar_ads(t, api_key=foreplay_key, live=True,
+                                                    languages="spanish", video_only=True,
+                                                    limit=50, order="longest_running",
+                                                    running_min_days=min_dias), pterms):
+                if not r.get("ok"):
+                    errores.append(r.get("error") or "Error en Foreplay")
+                    continue
+                for a in r.get("ads") or []:
+                    k = str(a.get("id") or a.get("video") or a.get("foreplay_url") or "")
+                    if k and k not in ads and k not in (excluir or set()):
+                        ads[k] = a
+        if ads:
+            validacion = etiqueta
+            break
+    if validacion:                      # honesto: cada ad rescatado lleva su etiqueta
+        for a in ads.values():
+            a["validacion"] = validacion
     ad_list = list(ads.values())
+    total_crudo = len(ad_list)         # cuántos trajo Foreplay ANTES del juez (honestidad en la UI)
     if not ad_list:
         return {"ok": not errores, "error": (errores[0] if errores else ""), "ads": [],
+                "candidatos": [], "menos_validados": False, "total_crudo": 0,
                 "n_confirmados": 0, "verificado": False, "terminos": terms}
 
     # 2) verificar EXACTO: portada (pre-filtro ESTRICTO) → CONTENIDO del video (deep) de los que pasan.
     verificado = bool(ref_bytes and gemini_key)
+    candidatos: list[dict] = []          # 🟡 sección aparte "sin confirmar" (solo con rellenar_n)
     if verificado:
         ref_desc = str(info.get("desc") or "")
         pool = ad_list[:verify_max]
-        cover_ok = []
+        cover_ok, dudosos = [], []       # dudosos: el juez de portada DUDÓ o no pudo mirar
         with ThreadPoolExecutor(max_workers=8) as ex:
             futs = {}
             for a in pool:
@@ -122,6 +161,15 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 if v and v.get("match") and v.get("confianza") != "baja":
                     a["_cover_conf"] = v.get("confianza")
                     cover_ok.append(a)
+                elif v and v.get("match"):                     # match pero confianza baja: DUDÓ
+                    a["_motivo"] = "el juez dudó (confianza baja en la portada)"
+                    a["_cand_prio"] = 2
+                    dudosos.append(a)
+                elif v is None:                                # portada no se pudo juzgar (CDN caído)
+                    a["_motivo"] = "no se pudo verificar la portada"
+                    a["_cand_prio"] = 1
+                    dudosos.append(a)
+                # match=False → otro producto CONFIRMADO por el juez: fuera SIEMPRE (ni candidato)
         # CONTENIDO: baja el video del ad y lo juzga por DENTRO (exacto = match + confianza no baja).
         confirmados = []
         with ThreadPoolExecutor(max_workers=4) as ex:
@@ -140,8 +188,22 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                     a["_conf"] = v.get("confianza")
                     a["verificado_producto"] = True
                     confirmados.append(a)
-                # match=False o confianza baja por contenido → fuera (no es seguro el mismo producto)
+                elif v.get("match"):             # match por dentro pero confianza baja: DUDÓ
+                    a["_motivo"] = "el juez dudó (confianza baja en el contenido)"
+                    a["_cand_prio"] = 3          # el más prometedor de los no confirmados
+                    dudosos.append(a)
+                # match=False por contenido → fuera SIEMPRE (no es el mismo producto)
         confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
+        if rellenar_n and len(confirmados) < count:
+            # 🟡 CANDIDATOS SIN CONFIRMAR: sección APARTE y etiquetada (nunca mezclados con los
+            # confirmados — eso sería el relleno prohibido). Solo los que tienen ALGO a favor
+            # (portada cuadra a medias / juez dudó); los match=false NO entran jamás.
+            dudosos.sort(key=lambda a: (a.get("_cand_prio", 0), a.get("dias", 0)), reverse=True)
+            for a in dudosos[:count - len(confirmados)]:
+                a["candidato"] = True
+                a["verificado_producto"] = False
+                a["motivo_candidato"] = a.get("_motivo") or "sin verificar"
+                candidatos.append(a)
         if rellenar_n:
             # TIERED (flujo "buscar creativos"): SOLO confianza ALTA (tier 1) o MEDIA (tier 2). Ya no
             # hay confianza baja aquí (se filtró arriba); tier 3 nunca se devuelve. Ordena tier→días
@@ -168,12 +230,18 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
         ad_list.sort(key=lambda a: a.get("dias", 0), reverse=True)
 
     ad_list = ad_list[:count]
-    for a in ad_list:
+    for a in ad_list + candidatos:
         a.pop("_cover_bytes", None)                # bytes: no serializan a JSON
         a.pop("_conf", None)                       # internos (tier ya calculado)
         a.pop("_cover_conf", None)
+        a.pop("_motivo", None)                     # internos de candidatos (ya copiados)
+        a.pop("_cand_prio", None)
     n_conf = sum(1 for a in ad_list if a.get("verificado_producto"))
     return {"ok": True, "ads": ad_list, "n_confirmados": n_conf,
+            "candidatos": candidatos,              # 🟡 aparte: "sin confirmar — revísalos tú"
+            "menos_validados": bool(validacion),   # True = salieron por la escalera (<30 días)
+            "validacion": validacion,
+            "total_crudo": total_crudo,            # crudos ANTES del juez (para el mensaje honesto)
             "verificado": verificado, "terminos": terms}
 
 
@@ -218,7 +286,8 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
         tk = tk_fut.result()
         fpr = fp_fut.result()
 
-    return {"ok": bool(tk.get("links") or fpr.get("ads")),
+    return {"ok": bool(tk.get("links") or tk.get("candidatos")
+                       or fpr.get("ads") or fpr.get("candidatos")),
             "keywords": tk.get("keywords") or info.get("keywords") or nombre,
             "desc": info.get("desc", ""),
             "variants": [v for v in (info.get("variants") or []) if v][:6],

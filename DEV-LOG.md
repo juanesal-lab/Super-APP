@@ -3718,3 +3718,27 @@ lo suyo ($0) y yo verifiqué el COMBINADO tras fusionar (py 100%, 58 rutas, JS 1
 - Fusión: 2 conflictos menores resueltos (ffmpeg_utils: ambas funciones conviven; DEV-LOG). AVISO Juan:
   todo aditivo — video_ok/normalize_loudness nuevos en ffmpeg_utils; end_card.py nuevo; buscar_ads ganó
   1 param opcional; /api/config ganó gemini_key_status. Nada de guiones/voz tocado. Reiniciar :8420.
+
+### 2026-07-11 · Claude (jackingshop1-cell) · 🔍 Buscar creativos: de 0 resultados → 8/8 confirmados (causa raíz: rate-limit de tikwm)
+Jack buscó "rodillera meniscal" y recibió TikTok(0) + Foreplay(0). Agente con diagnóstico EN VIVO:
+- **CAUSA RAÍZ TikTok**: tikwm gratis = 1 request/segundo. El código disparaba 16 queries × 4 páginas
+  con 6 hilos SIN pausa → tikwm rebotaba con `code=-1 "Free Api Limit"` y buscar_tiktok lo TRAGABA como
+  "sin videos" (sin retry). Probado: en paralelo 10/11 queries rebotadas (0 videos); las MISMAS queries
+  en secuencial a 1.2s → 29-30 videos CADA UNA. No eran las queries: era el rate-limit disfrazado.
+- **CAUSA Foreplay**: frase larga sin limit/orden. El núcleo "rodillera" + running_min_days=30 +
+  limit=50 + order=longest_running → 11 ganadores reales (267-488 días corriendo).
+- **FIXES** (tiktok_search.py, creative_search.py, index.html, app.py):
+  · Pacer global 1 req/s + 2 retries con backoff en tikwm (_tk_get) — el error ya no se disfraza de 0.
+  · Escalera de queries cortas si llegan <10 crudos; pages 4→2 (2×30 cubre el count).
+  · Foreplay: núcleo del producto primero, escalera honesta 30→7→sin días (etiquetada "menos
+    validados"), limit=50 + longest_running + fallback de idiomas.
+  · **Resultados por NIVELES**: confirmados ✅ primero (intacto); si faltan, sección ámbar aparte
+    "🟡 Candidatos sin confirmar — revísalos tú" (portada cuadra sin verificar a fondo / juez dudó;
+    match=false JAMÁS entra → cero relleno respetado). Mensaje "no encontré" solo si de verdad vacío,
+    y ahora dice "el juez descartó los N que salieron" en vez de un seco "Sin resultados".
+- **ANTES/DESPUÉS real** ("rodillera meniscal", flujo completo 393s): TikTok 0 → **8/8 confirmados
+  confianza ALTA** (0.7M-3.4M views) + 10 b-roll. Foreplay: crudos SÍ salieron; el juez visual los
+  descartó (otro producto que la foto de referencia) y la UI ahora lo DICE honesto.
+- Verificado post-merge: py 100%, 58 rutas, JS 16/16. AVISO Juan: tiktok_search/creative_search ganaron
+  el pacer + niveles (buscar() devuelve campo aditivo `candidatos`); tus flujos que ya los usan siguen
+  igual (confirmados intactos). OJO: la prueba e2e gastó ~6-8 requests de Foreplay (créditos de Jack).

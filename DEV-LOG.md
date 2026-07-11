@@ -3692,3 +3692,29 @@ rastro en disco (ni conteos ni errores), así que no había evidencia que mirar.
   JOBS ganan clave "tipo" (aditiva, nadie la leía antes). /api/status ahora loguea eventos (mismo
   response). _pedir_ads ganó kwarg opcional `_reintento` (default = 1 retry; tus tests con mock no
   cambian salvo que mockeen errores → ahora reintenta una vez). gemini_fast expone `ultimo_error`.
+
+### 2026-07-10 · Claude (jackingshop1-cell) · ⚡ 5 MEJORAS EN PARALELO (5 agentes, worktrees aislados, todo verificado y fusionado)
+Jack pidió "más de 3 agentes que implementen cosas mejores". 5 agentes en worktrees, cada uno verificó
+lo suyo ($0) y yo verifiqué el COMBINADO tras fusionar (py 100%, 58 rutas, JS 16/16, prueba encadenada):
+- **🛡️ video_ok() (pendiente auditoría)**: ffmpeg_utils.video_ok(path) — existe + peso mínimo + ffprobe
+  lee video >0.1s. El manifest de render_versions AVISA versiones/clips corruptos (ok:False si ninguna
+  sirve) y _run_dub_job/_run_dub_generar_job/_run_clone_job dan error honesto en vez de "Listo" con mp4
+  truncado.
+- **🔑 Key de Gemini validada EN VIVO (pendiente auditoría)**: _check_gemini_key (GET /models?pageSize=1,
+  NO consume tokens, cache 10 min) + campo aditivo gemini_key_status en /api/config → la pill del front
+  dice "sin cuota (429)" o "key inválida" en vez del "configurada ✓" mentiroso. has_gemini_key intacto.
+- **🏁 END-CARD CTA (NUEVO pipeline/end_card.py)**: cierre de 1.5s al final de cada versión — "PAGAS AL
+  RECIBIR" grande + "ENVÍO GRATIS A TODA COLOMBIA" + pill naranja "PIDE EL TUYO AQUÍ" + flecha ▼ (estilo
+  idéntico a offer_banner, sin precios). Toggle "🏁 Cierre final" en Cortar clips + Form end_card en
+  /api/process y /api/scripts (default False). Funciona con y sin audio. Orden del post-proceso: música →
+  banner → end-card → hooks → normalizar.
+- **🔊 Loudness -14 LUFS (SIEMPRE activo)**: ffmpeg_utils.normalize_loudness (loudnorm I=-14:TP=-1.5,
+  video -c:v copy) + _normalizar_audio como ÚLTIMO paso en _run_job/_run_render_job/_run_more_versions
+  (también el path_45). Medido real: video bajito -47.9→-14.0, reventado -18.3→-14.0. Best-effort.
+- **🌎 Foreplay fallback de idiomas (pendiente DEV-LOG)**: buscar_ads(fallback_idiomas=True) — si el
+  español no llena el count, 2ª pasada SIN filtro de idioma (mismos filtros de días/orden/Colombia),
+  dedup por id, español SIEMPRE primero, completados marcados otro_idioma=True + badge "🌎 otro idioma —
+  dóblalo" en las tarjetas. No es relleno: mismo nicho, validados. creative_search (juez propio) intacto.
+- Fusión: 2 conflictos menores resueltos (ffmpeg_utils: ambas funciones conviven; DEV-LOG). AVISO Juan:
+  todo aditivo — video_ok/normalize_loudness nuevos en ffmpeg_utils; end_card.py nuevo; buscar_ads ganó
+  1 param opcional; /api/config ganó gemini_key_status. Nada de guiones/voz tocado. Reiniciar :8420.

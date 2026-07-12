@@ -3742,3 +3742,17 @@ Jack buscó "rodillera meniscal" y recibió TikTok(0) + Foreplay(0). Agente con 
 - Verificado post-merge: py 100%, 58 rutas, JS 16/16. AVISO Juan: tiktok_search/creative_search ganaron
   el pacer + niveles (buscar() devuelve campo aditivo `candidatos`); tus flujos que ya los usan siguen
   igual (confirmados intactos). OJO: la prueba e2e gastó ~6-8 requests de Foreplay (créditos de Jack).
+
+### 2026-07-11 · Claude (juanesal-lab) · 🎬 Nueva sección INDEPENDIENTE: Montador (app aparte en :8440) embebida
+Juan quiere su otra app "Montador · Vidaria" (repo aparte /Users/juanes/montador-ads, uvicorn en :8440,
+monta ads desde voz+clips) como una sección MÁS de la Super-APP, pero INDEPENDIENTE — sin unir código ni
+tocar sus agentes. Solución: embeberla en un IFRAME. Su servidor sigue corriendo solo; la Super-APP solo
+la muestra. Verifiqué que :8440 no manda X-Frame-Options/CSP → se puede embeber.
+- **frontend/index.html**: nueva pestaña "🎬 Montar ad (voz + clips)" (grupo propio "Montador ads") +
+  panel `p-montador` con iframe a http://127.0.0.1:8440 (82vh), barra de estado, "↗ Abrir aparte",
+  "↻ Recargar", y si está apagada un botón "▶️ Prender Montador".
+- **backend/app.py**: `/api/montador/status` (ping a :8440, solo lee) y `/api/montador/start` (lanza SU
+  PROPIO ~/montador-ads/run.sh desprendido con start_new_session — no altera su código). Cero acople.
+- Verificado: py_compile, import, status()=up:True (estaba corriendo), JS 17/17, panel/pestaña/iframe OK.
+AVISO Jack: NO toqué montador-ads (es otro repo). En esta app solo: 1 pestaña + 1 panel iframe en
+index.html + 2 endpoints de status/start en app.py. Nada del pipeline existente cambia.

@@ -519,6 +519,38 @@ def get_config():
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
+
+
+# ── 🎬 MONTADOR: app INDEPENDIENTE (repo aparte, puerto 8440). Esta app solo la MUESTRA en un
+#    iframe y opcionalmente la PRENDE con su propio run.sh — nunca toca su código ni sus agentes. ──
+_MONTADOR_DIR = os.path.expanduser("~/montador-ads")
+_MONTADOR_URL = "http://127.0.0.1:8440"
+
+
+@app.get("/api/montador/status")
+def montador_status():
+    """¿Está viva la app Montador (puerto 8440)? Solo hace ping; no la modifica."""
+    try:
+        import urllib.request
+        with urllib.request.urlopen(_MONTADOR_URL, timeout=1.5) as r:
+            return {"up": 200 <= getattr(r, "status", 200) < 500}
+    except Exception:  # noqa: BLE001
+        return {"up": False}
+
+
+@app.post("/api/montador/start")
+def montador_start():
+    """Prende la app Montador con SU PROPIO run.sh, desprendida (no altera su código/agentes)."""
+    run_sh = os.path.join(_MONTADOR_DIR, "run.sh")
+    if not os.path.exists(run_sh):
+        raise HTTPException(404, f"No encuentro {run_sh}. ¿Está el proyecto montador-ads en ~/montador-ads?")
+    try:
+        subprocess.Popen(["/bin/bash", run_sh], cwd=_MONTADOR_DIR,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, start_new_session=True)
+        return {"ok": True}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No pude lanzar Montador: {e}")
     # Aditivo: estado EN VIVO de la key de Gemini ("ok"|"invalida"|"cuota"|"desconocido"|"sin_key").
     # NO reemplaza has_gemini_key (otros flujos lo usan). try/except total: el config
     # NUNCA se puede romper por este chequeo.

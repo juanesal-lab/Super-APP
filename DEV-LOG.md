@@ -3798,3 +3798,32 @@ subirlo a mano. Ahora es un botón:
   creative_search + app/index) — compilaba OK y se commiteó como auto-guardado ANTES del merge (convención
   del repo), luego el merge limpio. AVISO Juan: no toqué creative_search/tiktok_search (tu WIP intacto);
   app.py solo ganó reference_url/reference_name en /api/scripts + el warning honesto del blueprint.
+
+### 2026-07-11 · Claude (jackingshop1-cell) · 🎯 AVATARES + ESTRUCTURAS VALIDADAS: cada versión ataca una persona distinta con una estructura probada
+Jack: "he testeado los creativos y no venden — quiero formatos DIFERENTES para avatares DIFERENTES,
+basado en lo VALIDADO". Antes las 8 versiones eran variaciones de edición con la misma duración y el
+mismo público. Ahora (flujo con voz):
+- **NUEVO assets/estructuras-validadas.json**: 9 estructuras destiladas del research REAL del repo
+  (patron-ganador-validado, playbook-por-nicho, research-hooks 2026 x2, funnel-tofu-mofu-bofu, blueprint,
+  guion-framework, manual-maestro): Patrón hogar 20-30s BOFU · Mecanismo 45-60s MOFU · Transformación
+  30-45s · Reveal visual 12-18s TOFU · Testimonio íntimo 20-30s · Storytime 35-55s · Demo cruda 12-18s ·
+  Problema→Solución 20-25s · Objeción derribada 25-34s. Duraciones VARIABLES por estructura (cierra el
+  pendiente "scripts.py usa duración fija").
+- **NUEVO pipeline/estructuras_validadas.py**: asignar_estructuras(product_desc, n, key) — 1 llamada
+  Gemini flash genera 4-8 AVATARES del producto (deportista lesionado / abuela con artrosis / hijo que
+  compra para el papá...) y asigna a cada versión un par (avatar, estructura) DISTINTO y coherente.
+  Fallback sin key/IA caída: rota la biblioteca (verificado: 8/8 estructuras distintas), jamás lanza.
+- **scripts.py (ADITIVO, aviso en código)**: generate_scripts(asignaciones=None) — con asignaciones cada
+  guion se escribe PARA su avatar (su dolor/objeción) con las fases y palabras de SU estructura; CTA
+  obligatorio intacto; sin asignaciones = comportamiento EXACTO de hoy (test lo confirma).
+- **app.py**: _run_scripts_job asigna antes de los guiones; /api/render acepta metas_json; el manifest
+  etiqueta cada versión con avatar/estructura.
+- **Frontend**: badge "🎯 avatar · estructura · ~Ns" en la lista de guiones Y en las tarjetas de
+  versiones → Jack SABE qué avatar testea con cada video y puede leer sus campañas de Meta.
+- VERIFICADO: 69/69 tests offline del agente + post-merge py 100%, 63 rutas, JS 17/17, fallback real
+  8/8 distintas. ⚠️ HALLAZGO IMPORTANTE: la key de Gemini de esta máquina está SIN CRÉDITOS
+  (429 RESOURCE_EXHAUSTED "prepayment credits depleted") — la llamada real de validación no se pudo
+  hacer; con créditos recargados los avatares salen del producto real automáticamente (ruta cubierta
+  por tests). La pill de Claves ya lo muestra ("sin cuota 429") gracias al check en vivo del 2026-07-10.
+AVISO Juan: scripts.py ganó el param OPCIONAL asignaciones + helpers (214-273) — sin él, todo idéntico
+(verificado). estructuras_validadas.py y el JSON son nuevos. Tu WIP de creative_search intacto.

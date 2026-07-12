@@ -420,7 +420,7 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     import time as _time
     _t = _time.time()
     def _lap(msg):
-        print(f"[cs-timing] {msg}: {_time.time()-_t:.1f}s", flush=True)
+        log.debug("[cs-timing] %s: %.1fs", msg, _time.time() - _t)
     nombre = (nombre or "").strip()
     ref_bytes = None
     paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
@@ -460,7 +460,10 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
         tk_fut = ex.submit(_tk_timed,
                            dict(image_path=image_path, nombre=nombre, api_key=gemini_key,
                                 count=count, anthropic_key=anthropic_key, analisis=info_tk,
-                                image_paths=image_paths, rellenar_n=rellenar_n),
+                                image_paths=image_paths, rellenar_n=rellenar_n,
+                                # explorar cuentas baja+juzga posts extra (más tikwm + portadas) y en
+                                # modo rápido no se puede deep-verificar → costo sin confirmados: OFF.
+                                explorar_cuentas=False),
                            tk_deep_max)
         fp_fut = ex.submit(_fp_timed, info, ref_bytes, foreplay_key, gemini_key,
                            fp_count, fp_verify_max, rellenar_n=rellenar_n,

@@ -3777,3 +3777,24 @@ Ahora TODO se hace desde la app:
   launchd) — NO lo activé porque gasta 69 créditos/día; decidir cuando Jack tenga la key.
 AVISO Juan: radar_api.py ganó 2 endpoints aditivos + página sin-datos nueva; app.py solo el provider
 nuevo en _KEY_ENV + has_scrapecreators_key + el doble-write a radar/.env. Tu motor radar/ intacto.
+
+### 2026-07-11 · Claude (jackingshop1-cell) · 🧬 "Usar estructura de este ganador": Foreplay → Cortar clips clona la estructura del ad validado
+Jack: "busca en Meta cómo venden los demás y en base a esa estructura VALIDADA dame los videos". La pieza
+ya existía a medias: /api/scripts aceptaba reference_ad (upload) → analyze_narrative → _blueprint_text
+inyecta "CLONA este arco/orden/ritmo" al prompt de guiones. Pero nadie iba a bajar un ad de Foreplay y
+subirlo a mano. Ahora es un botón:
+- **Backend**: /api/scripts gana `reference_url` + `reference_name` (Form opcionales). URL de Foreplay
+  (host validado como /api/dub; ajeno → 400) → fp.descargar_video → MISMO carril que el upload. Descarga
+  o análisis fallido → `reference_warning` en el resultado (arregla de paso el HUECO viejo: blueprint
+  None en silencio = guiones "listos" sin clonar nada). `reference_name` solo si SÍ se clonó.
+- **Frontend**: botón "🧬 Usar estructura" en las tarjetas de Foreplay y Buscar creativos → salta a
+  ✂️ Cortar clips con banner "🧬 Estructura de referencia: <nombre> (ganador X días) [✖ Quitar]"
+  (persiste en localStorage; aviso si la voz está apagada — la clonación va por el flujo con voz;
+  archivo local y ref de Foreplay se excluyen mutuamente). renderScripts muestra "🧬 Estructura clonada
+  de: <nombre>" o el aviso honesto.
+- VERIFICADO ($0, mockeado): 26/26 tests del endpoint (mismo ref_path que upload, warning con descarga
+  caída, 400 con hosts ajenos tipo foreplay.co.evil.com); py 100%; JS 17/17. Sin render E2E real.
+- NOTA de coordinación: había WIP sin commitear de la sesión paralela (camino rápido de TikTok en
+  creative_search + app/index) — compilaba OK y se commiteó como auto-guardado ANTES del merge (convención
+  del repo), luego el merge limpio. AVISO Juan: no toqué creative_search/tiktok_search (tu WIP intacto);
+  app.py solo ganó reference_url/reference_name en /api/scripts + el warning honesto del blueprint.

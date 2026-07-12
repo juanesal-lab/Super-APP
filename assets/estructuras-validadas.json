@@ -1,0 +1,151 @@
+{
+  "_que_es": "Biblioteca de ESTRUCTURAS VALIDADAS para Cortar clips (flujo con voz). Destiladas del research real del repo (assets/*.md): cada una sale de ads que YA venden (Foreplay +30 días, dataset de 246 videos +1M, estudios 2026). La usa backend/pipeline/estructuras_validadas.py para que cada versión del lote ataque un AVATAR distinto con una estructura distinta y su PROPIA duración.",
+  "_reglas": "Sin precios/cifras de dinero en hooks ni guiones. Nada de claims médicos (usar 'ayuda a / apoya'). El CTA duro de contraentrega (scripts.CTA_OBLIGATORIO) se mantiene intacto en el flujo clásico. pct_tiempo de las fases suma ~100.",
+  "estructuras": [
+    {
+      "id": "patron_validado_hogar",
+      "nombre": "Patrón validado hogar",
+      "fuente": "patron-ganador-validado.md (3 ejemplos de Jack + Foreplay 499-590 días activos) + playbook-por-nicho.md §1",
+      "duracion_s": [20, 30],
+      "tipo_hook": "producto + antagonista juntos en pantalla / dato impactante",
+      "funnel": "bofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 13, "funcion": "frenar el scroll con el producto y el 'enemigo' (plaga/desastre/mugre) JUNTOS desde el segundo 0", "que_se_ve": "producto + antagonista al lado, texto gigante de beneficio"},
+        {"fase": "problema", "pct_tiempo": 22, "funcion": "agitar el asco/miedo con un detalle cotidiano real", "que_se_ve": "b-roll crudo del problema: la plaga en la cocina de noche, la mugre, la cara de asco"},
+        {"fase": "giro", "pct_tiempo": 22, "funcion": "presentar el producto como respuesta tangible y real", "que_se_ve": "la caja/empaque EN LA MANO, se ve la marca"},
+        {"fase": "producto", "pct_tiempo": 26, "funcion": "demo que prueba que es real: acción, no promesa", "que_se_ve": "dedo presionando el botón, enchufado brillando, el problema retrocediendo"},
+        {"fase": "cta", "pct_tiempo": 17, "funcion": "cierre de contraentrega sin precio", "que_se_ve": "producto funcionando + texto de oferta"}
+      ],
+      "avatares_sugeridos": ["ama de casa asqueada del problema en SU cocina", "papá que protege a los niños/mascotas", "quien ya pagó una solución cara que no sirvió"]
+    },
+    {
+      "id": "mecanismo_autoridad",
+      "nombre": "Mecanismo/autoridad",
+      "fuente": "playbook-por-nicho.md §4 (veneno de abeja 45-60s) + research-hooks-y-formatos-2026.md §c (belleza 45-60s, suplementos 52% autoridad)",
+      "duracion_s": [45, 60],
+      "tipo_hook": "autoridad-revelación / 'por qué no te ha funcionado lo que probaste'",
+      "funnel": "mofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 6, "funcion": "revelación que descoloca al que ya probó de todo", "que_se_ve": "cara real hablando a cámara o close-up del producto"},
+        {"fase": "problema", "pct_tiempo": 14, "funcion": "el dolor acumulado: plata y tiempo perdidos en soluciones que no pasaron de la superficie", "que_se_ve": "b-roll del dolor cotidiano y de los intentos fallidos"},
+        {"fase": "giro", "pct_tiempo": 30, "funcion": "MECANISMO: por qué esto actúa DISTINTO (el momento 'ajá'), tono explicativo pausado, sin claims médicos", "que_se_ve": "close-up del producto/ingrediente, cómo trabaja"},
+        {"fase": "producto", "pct_tiempo": 25, "funcion": "aplicación/uso real mostrando textura y facilidad (un gesto, un número de uso real)", "que_se_ve": "aplicándolo en la zona, se absorbe, rutina real"},
+        {"fase": "prueba", "pct_tiempo": 15, "funcion": "prueba honesta de persona común (jamás bata blanca ni 'doctor certifica')", "que_se_ve": "persona real contando qué notó, reacción de otros"},
+        {"fase": "cta", "pct_tiempo": 10, "funcion": "cierre con reversión de riesgo", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["quien ya probó cremas/pastillas y desconfía", "persona mayor con molestia diaria que limita su rutina", "quien busca la alternativa natural a lo caro"]
+    },
+    {
+      "id": "transformacion_funcional",
+      "nombre": "Transformación funcional",
+      "fuente": "playbook-por-nicho.md §5 (rodillera 30-45s con bloque mecanismo) + estudio-marcas-grandes-2026.md (estructura 0-3/3-10/10-18)",
+      "duracion_s": [30, 45],
+      "tipo_hook": "direct address / trigger de situación ('si te cuesta X, mira esto antes de resignarte')",
+      "funnel": "mofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 8, "funcion": "nombrar de frente la situación exacta del que mira (lo califica)", "que_se_ve": "la situación limitada: detenerse en la escalera, levantarse con esfuerzo"},
+        {"fase": "problema", "pct_tiempo": 15, "funcion": "las mini-derrotas cotidianas que causa el problema", "que_se_ve": "b-roll de gestos reales: la mueca, la pausa, lo que ya no hace"},
+        {"fase": "giro", "pct_tiempo": 25, "funcion": "por qué ESTE mecanismo ayuda (honesto: apoya/alivia, no cura)", "que_se_ve": "el producto de cerca, cómo se pone/ajusta"},
+        {"fase": "producto", "pct_tiempo": 30, "funcion": "el contraste 'antes no podía / ahora sí' EN MOVIMIENTO real, no solo hablado", "que_se_ve": "la misma acción de antes, ahora fluida, con el producto puesto"},
+        {"fase": "prueba", "pct_tiempo": 12, "funcion": "testimonio corto de alguien que probó otros antes", "que_se_ve": "persona común, entorno de casa"},
+        {"fase": "cta", "pct_tiempo": 10, "funcion": "cierre con contraentrega", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["adulto mayor recuperando independencia", "quien ya probó otra versión que falló", "trabajador que lo necesita para aguantar el día"]
+    },
+    {
+      "id": "reveal_visual",
+      "nombre": "Reveal visual corto",
+      "fuente": "playbook-por-nicho.md §3 (leggins 12-16s casi sin voz) + research-hooks-y-formatos-2026.md §c (moda: reveal <15s) + guion-framework.md v3 (demo cruda 12-18s)",
+      "duracion_s": [12, 18],
+      "tipo_hook": "reveal / resultado-primero (el resultado visual en el segundo 0)",
+      "funnel": "tofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 15, "funcion": "el RESULTADO visual de una vez (test, giro, transformación) — el video se explica solo", "que_se_ve": "la prueba en cámara: sentadilla, giro 360°, el antes/ahora en un gesto"},
+        {"fase": "producto", "pct_tiempo": 35, "funcion": "beneficio visual puro con voz mínima (frases cortas de asombro)", "que_se_ve": "el producto luciéndose: silueta, detalle, movimiento libre"},
+        {"fase": "prueba", "pct_tiempo": 30, "funcion": "comparación rápida que derriba LA objeción #1 de la categoría", "que_se_ve": "try-on / lado a lado / test de material en cámara"},
+        {"fase": "cta", "pct_tiempo": 20, "funcion": "cierre directo", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["quien se quemó comprando uno que falló en lo básico", "la que quiere verse bien sin sacrificar comodidad", "quien decide por los ojos en 3 segundos"]
+    },
+    {
+      "id": "testimonio_intimo",
+      "nombre": "Testimonio íntimo",
+      "fuente": "guion-framework.md v3 §4 (dolor/vergüenza: testimonio 1ª persona 10-24s) + playbook-por-nicho.md §2 (incontinencia: empático, jamás clínico ni burla)",
+      "duracion_s": [20, 30],
+      "tipo_hook": "confesión / POV ('llevaba años sin… por miedo a…')",
+      "funnel": "mofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 12, "funcion": "confesión en 1ª persona de algo que nadie admite en público", "que_se_ve": "cara real, tono íntimo, sin producción"},
+        {"fase": "problema", "pct_tiempo": 28, "funcion": "el detalle íntimo y cotidiano del dolor (lo que evitaba, lo que revisaba, lo que cancelaba)", "que_se_ve": "b-roll de las situaciones evitadas, gestos pequeños y reales"},
+        {"fase": "giro", "pct_tiempo": 20, "funcion": "el descubrimiento, contado como a una amiga (jamás como vendedor)", "que_se_ve": "el producto aparece por primera vez, en mano, natural"},
+        {"fase": "producto", "pct_tiempo": 25, "funcion": "resultado inmediato + honestidad calculada ('no hace milagros, pero…')", "que_se_ve": "demo íntima: cómo se usa, que no se nota, la vida recuperada"},
+        {"fase": "cta", "pct_tiempo": 15, "funcion": "cierre empático con reversión de riesgo", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["quien lo sufre en silencio y le da pena hasta buscarlo", "la que dejó de hacer planes por el problema", "cuidador/a que lo compra para alguien que no lo pediría"]
+    },
+    {
+      "id": "storytime_familiar",
+      "nombre": "Storytime familiar",
+      "fuente": "guion-framework.md v3 §1 (storytime 35-59s = mejor ratio del dataset, 5.03%) + §3 (familiar como personaje: 'le compré esto a mi mamá' = récord 15% likes/plays)",
+      "duracion_s": [35, 55],
+      "tipo_hook": "regalo a familiar / confesión con personaje",
+      "funnel": "tofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 10, "funcion": "presentar al PERSONAJE de la historia a mitad de pensamiento ('le compré esto a mi papá y…')", "que_se_ve": "el personaje o el producto en contexto de la historia"},
+        {"fase": "problema", "pct_tiempo": 30, "funcion": "el conflicto del personaje contado con detalle cotidiano (lo que sufría, lo que intentó)", "que_se_ve": "b-roll de la vida del personaje y su problema"},
+        {"fase": "giro", "pct_tiempo": 20, "funcion": "el descubrimiento DENTRO de la historia, no como anuncio", "que_se_ve": "el momento del regalo/hallazgo, la primera reacción"},
+        {"fase": "producto", "pct_tiempo": 20, "funcion": "demo integrada en la historia (el personaje usándolo a su manera)", "que_se_ve": "el personaje usándolo en su rutina real"},
+        {"fase": "prueba", "pct_tiempo": 10, "funcion": "el remate emocional ('ya no me lo devuelve', 'ahora todos preguntan')", "que_se_ve": "reacción de otros, el personaje feliz"},
+        {"fase": "cta", "pct_tiempo": 10, "funcion": "cierre natural que no rompe la historia", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["hijo/a que lo compra para su papá o mamá", "quien busca el regalo que quede bien de verdad", "el nieto que resuelve el problema del abuelo"]
+    },
+    {
+      "id": "demo_cruda",
+      "nombre": "Demo cruda express",
+      "fuente": "guion-framework.md v3 §1 (demo cruda 12-18s: donde viven los +50M; los +5M duran mediana 17s) + blueprint-creativos-ganadores.md (óptimo direct-response 9-15s)",
+      "duracion_s": [12, 18],
+      "tipo_hook": "resultado-primero / imperativo ('lo necesitas')",
+      "funnel": "tofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 20, "funcion": "la demo YA arrancada en el segundo 0 — cero intro, el video se explica solo", "que_se_ve": "el producto actuando sobre el problema, plano cerrado"},
+        {"fase": "producto", "pct_tiempo": 55, "funcion": "el producto resolviendo en crudo, satisfactorio, cortes rápidos; la voz solo mete 1-2 frases de asombro", "que_se_ve": "demo ASMR/satisfactoria: la mugre saliendo, el ajuste perfecto, el gesto que resuelve"},
+        {"fase": "prueba", "pct_tiempo": 10, "funcion": "un remate corto que ancla el valor sin cifras", "que_se_ve": "el resultado final limpio"},
+        {"fase": "cta", "pct_tiempo": 15, "funcion": "cierre directo", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["el impulsivo que compra lo que le sorprende", "quien no aguanta videos largos", "el práctico que solo quiere ver si funciona"]
+    },
+    {
+      "id": "problema_solucion",
+      "nombre": "Problema→Solución clásico",
+      "fuente": "blueprint-creativos-ganadores.md (estructura madre HOOK→PROBLEMA→SOLUCIÓN→PRUEBA→CTA) + manual-maestro-adoptado.md §10.1 (sweet spot frío 20-25s) + research 2026 (dolor/pain-point = 1 de las 3 estructuras del 71% de ganadores +30 días)",
+      "duracion_s": [20, 25],
+      "tipo_hook": "dolor exacto / mito roto ('tu casa no es fea, solo está mal iluminada')",
+      "funnel": "bofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 12, "funcion": "opinión/mala noticia/pregunta incómoda que califica al comprador — jamás el producto primero", "que_se_ve": "el problema en cámara o cara con actitud"},
+        {"fase": "problema", "pct_tiempo": 28, "funcion": "agitar el dolor con UN detalle cotidiano donde el cliente se reconoce", "que_se_ve": "b-roll del dolor real, primer plano del detalle"},
+        {"fase": "giro", "pct_tiempo": 25, "funcion": "giro + producto nombrado UNA vez, la transición se siente ganada", "que_se_ve": "el producto entra como respuesta, en mano"},
+        {"fase": "producto", "pct_tiempo": 20, "funcion": "prueba concreta, no superlativa (demo o social proof conversacional)", "que_se_ve": "demo corta o reacción real"},
+        {"fase": "cta", "pct_tiempo": 15, "funcion": "cierre con contraentrega", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["quien sufre el problema a diario y no sabía que había solución", "el que cree que su solución actual sí sirve", "quien está a un empujón de decidirse"]
+    },
+    {
+      "id": "objecion_derribada",
+      "nombre": "Objeción derribada",
+      "fuente": "guion-framework.md v3 §1 (21-34s = el rango correcto para manejar UNA objeción en ad pagado) + funnel-tofu-mofu-bofu-2026.md (MOFU: 'probé N y solo una…', comparación) + playbook-por-nicho.md (objeción #1 por nicho)",
+      "duracion_s": [25, 34],
+      "tipo_hook": "escéptico que prueba ('yo tampoco creía… hasta que lo puse a prueba')",
+      "funnel": "mofu",
+      "fases": [
+        {"fase": "hook", "pct_tiempo": 10, "funcion": "abrir COMO el escéptico que es el que mira (le roba su propia objeción)", "que_se_ve": "cara de duda real, el producto recién llegado"},
+        {"fase": "problema", "pct_tiempo": 25, "funcion": "decir de frente LA objeción #1 de la categoría ('¿y sí funciona o es puro cuento?')", "que_se_ve": "la situación donde la objeción vive: lo que falló antes"},
+        {"fase": "producto", "pct_tiempo": 35, "funcion": "la demo que derriba la objeción EN CÁMARA, sin cortes sospechosos", "que_se_ve": "la prueba completa, en tiempo real, cruda"},
+        {"fase": "prueba", "pct_tiempo": 15, "funcion": "comparación con lo que el avatar ya probó (por qué esto sí)", "que_se_ve": "lado a lado o referencia a la alternativa"},
+        {"fase": "cta", "pct_tiempo": 15, "funcion": "cierre con reversión de riesgo (el COD ES la garantía)", "que_se_ve": "producto + texto de cierre"}
+      ],
+      "avatares_sugeridos": ["el escéptico que ya vio mil anuncios iguales", "quien perdió plata con la versión barata", "el que está comparando opciones ahora mismo"]
+    }
+  ]
+}

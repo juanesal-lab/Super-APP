@@ -1512,11 +1512,28 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
 
         mix = settings.get("mix")
         n_guiones = sum(mix.values()) if mix else 10
+        # 🎯 AVATARES + ESTRUCTURAS VALIDADAS (fix "8 sabores del mismo helado", 2026-07-11):
+        # cada guion del lote ataca un COMPRADOR distinto con una estructura ganadora distinta
+        # (biblioteca destilada del research en assets/estructuras-validadas.json) y su PROPIA
+        # duración de voz. Best-effort: sin Gemini rota la biblioteca; si falla del todo → None
+        # y el flujo queda EXACTO como antes.
+        asignaciones = None
+        try:
+            from pipeline.estructuras_validadas import asignar_estructuras
+            funnel_seq = ((["TOFU"] * mix.get("TOFU", 0) + ["MOFU"] * mix.get("MOFU", 0)
+                           + ["BOFU"] * mix.get("BOFU", 0)) if mix else None)
+            progress("Asignando avatares y estructuras validadas (IA)...", 66)
+            asignaciones = asignar_estructuras(settings["product_desc"], n_guiones,
+                                               _load_env_key(), funnel_seq=funnel_seq) or None
+        except Exception:  # noqa: BLE001
+            asignaciones = None
         progress(f"Generando {n_guiones} guiones de voz en off"
-                 + (" (embudo TOFU/MOFU/BOFU)..." if mix else "..."), 70)
+                 + (" (embudo TOFU/MOFU/BOFU)..." if mix else
+                    (" (un avatar y una estructura por guion)..." if asignaciones else "...")), 70)
         scripts = generate_scripts(_load_env_key(), settings["product_desc"], page_text,
                                    settings["target_seconds"], sample, blueprint=blueprint,
-                                   oferta_2x1=settings.get("oferta_2x1", False), mix=mix)
+                                   oferta_2x1=settings.get("oferta_2x1", False), mix=mix,
+                                   asignaciones=asignaciones)
         if not scripts:
             # Nunca terminar "Guiones listos" con 0 guiones (auditoría 2026-07-06)
             raise RuntimeError("La IA corrió pero no entregó ningún guion — reintenta.")
@@ -1629,7 +1646,8 @@ N_VERSIONS = 8   # DEBE ir igual a orchestrator._N_VERSIONS: con 6, las versione
 
 def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
                     voces: list[str] | None = None, stages: list[str] | None = None,
-                    n_versions: int = N_VERSIONS, start_version: int = 0):
+                    n_versions: int = N_VERSIONS, start_version: int = 0,
+                    metas: list[dict] | None = None):
     job = JOBS[job_id]
 
     def progress(msg, pct):
@@ -1741,6 +1759,17 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(manifest, dict) and manifest.get("ok") and manifest.get("versions"):
             _normalizar_audio(manifest["versions"], wd, progress)
+        # 🎯 avatar/estructura de cada versión (aditivo, 2026-07-11): viaja al manifest para que
+        # Jack SEPA qué avatar testea con cada video. `metas` va paralelo a `scripts`, así que el
+        # mapeo guion→versión es el MISMO que el de `chosen` (1:1 en embudo; cíclico desde sv si no).
+        if metas and isinstance(manifest, dict) and manifest.get("ok"):
+            for _i, _v in enumerate(manifest.get("versions") or []):
+                _m = metas[_i % len(metas)] if stage_mode else metas[(sv + _i) % len(metas)]
+                if isinstance(_m, dict) and isinstance(_v, dict):
+                    if _m.get("avatar"):
+                        _v["avatar"] = str(_m["avatar"])[:80]
+                    if _m.get("estructura"):
+                        _v["estructura"] = str(_m["estructura"])[:80]
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
         _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})
@@ -1780,6 +1809,7 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
            voz_jc: int = Form(0), voz_kate: int = Form(0),
            scripts_json: str = Form(""), script_text: str = Form(""),
            stages_json: str = Form(""),
+           metas_json: str = Form(""),   # 🎯 avatar/estructura por guion (paralelo a scripts_json)
            n_versions: int = Form(8), start_version: int = Form(0)):
     job = JOBS.get(job_id)
     if not job or "selected" not in job:
@@ -1806,6 +1836,15 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
                 stages = _s
         except Exception:
             stages = None
+    # 🎯 Avatar/estructura por guion (aditivo): solo si calza 1:1 con los guiones elegidos.
+    metas: list[dict] | None = None
+    if metas_json.strip():
+        try:
+            _m = [x if isinstance(x, dict) else {} for x in _json.loads(metas_json)]
+            if len(_m) == len(scripts) and any(x.get("avatar") or x.get("estructura") for x in _m):
+                metas = _m
+        except Exception:
+            metas = None
     job["tipo"] = "render_versiones"; job["created"] = time.time()
     job["status"] = "running"; job["progress"] = 0; job["message"] = "Iniciando..."; job["result"] = None
     # Mezcla personalizada de voces: N versiones con juan_carlos + M con kate (0/0 = todas con `voice`)
@@ -1815,6 +1854,7 @@ def render(job_id: str = Form(...), voice: str = Form("kate"),
     sv = max(0, min(7, int(start_version)))
     threading.Thread(target=_run_render_job,
                      args=(job_id, scripts, voice, voces, stages, nv, sv),
+                     kwargs={"metas": metas},
                      daemon=True).start()
     return {"job_id": job_id}
 

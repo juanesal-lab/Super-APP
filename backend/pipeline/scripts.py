@@ -209,6 +209,71 @@ def _stage_plan_text(stages: list[str], target_seconds: float) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ── AVATARES + ESTRUCTURAS VALIDADAS (biblioteca en assets/estructuras-validadas.json) ──────
+# AVISO Juan: bloque ADITIVO (2026-07-11, sesión jackingshop1-cell). Si `generate_scripts` recibe
+# `asignaciones` (de pipeline/estructuras_validadas.asignar_estructuras), cada guion se escribe
+# para SU avatar (su dolor/objeción/momento) con SU estructura validada (fases y duración PROPIA,
+# no la global). Sin asignaciones → comportamiento EXACTO de siempre. No cambié nada de lo tuyo.
+
+def _asig_max_words(asig: dict) -> int:
+    """Presupuesto de palabras de UNA asignación: la duración de SU estructura (~2.55 pal/seg,
+    mismo cálculo que el global). Si la asignación viene sin duración, 0 → el caller usa el global."""
+    try:
+        secs = float(asig.get("duracion_s") or 0)
+    except (TypeError, ValueError):
+        secs = 0.0
+    return max(30, int(secs * 2.55)) if secs > 0 else 0
+
+
+def _asignaciones_plan_text(asignaciones: list[dict], stages: list[str] | None = None) -> str:
+    """Bloque de prompt que le dice al modelo, guion por guion, su AVATAR (a quién le habla:
+    su dolor, su objeción, su momento) y su ESTRUCTURA validada (fases + duración propia)."""
+    lines = ["=== PLAN DE AVATARES Y ESTRUCTURAS VALIDADAS (OBLIGATORIO: cada guion le habla a "
+             "SU avatar con SU estructura, en ESTE MISMO orden) ==="]
+    nicho = next((a.get("nicho") for a in asignaciones if a.get("nicho")), "")
+    if nicho:
+        lines.append(f"Nicho detectado: {nicho}.")
+    for i, a in enumerate(asignaciones):
+        est = a.get("estructura_def") or {}
+        mw = _asig_max_words(a)
+        fases = " → ".join(
+            f"{f.get('fase')} ({f.get('pct_tiempo', '?')}% del tiempo: {f.get('funcion', '')})"
+            for f in est.get("fases", []) if isinstance(f, dict))
+        linea = f"Guion {i + 1} — AVATAR: {a.get('avatar', '')}."
+        if a.get("dolor"):
+            linea += f" Su dolor: {a['dolor']}."
+        if a.get("objecion"):
+            linea += f" Su objeción antes de pedir: {a['objecion']}."
+        if a.get("momento"):
+            linea += f" El momento en que le pega: {a['momento']}."
+        lines.append(linea)
+        if est:
+            dur = a.get("duracion_s", "")
+            lines.append(
+                f"   ESTRUCTURA \"{est.get('nombre', '')}\" (~{dur}s"
+                + (f" ≈ {mw} palabras TOTALES, CTA incluido" if mw else "")
+                + f"; hook tipo: {est.get('tipo_hook', '')}): {fases}.")
+    lines.append(
+        "CÓMO SE USA EL AVATAR: cada guion le habla A ESA persona (tú/usted), en su lenguaje — "
+        "SU dolor es el detalle cotidiano del guion, SU objeción se responde DENTRO del guion "
+        "(en la fase de prueba/demo), y el hook la agarra en SU momento. PROHIBIDO describir al "
+        "avatar en demográfico ('señora de 60 años que…'): se le habla A la persona, no DE ella.")
+    lines.append(
+        "LA DURACIÓN LA MANDA LA ESTRUCTURA: cada guion tiene SU largo (arriba), NO el largo "
+        "global. Un guion de estructura corta (12-18s) es casi puro visual con 1-2 frases de "
+        "asombro + CTA; uno de mecanismo (45-60s) desarrolla el POR QUÉ con calma.")
+    lines.append(
+        "El TIPO DE HOOK de cada guion lo fija su estructura; dentro de ese tipo, elige la "
+        "fórmula del banco que mejor calce con el avatar.")
+    lines.append(
+        "OJO con el campo 'fases' del JSON de salida: aunque la estructura tenga fases con otros "
+        "nombres (mecanismo, demo, testimonio…), devuelve SIEMPRE las llaves estándar "
+        "(hook/problema/giro/producto/prueba/cta) repartiendo el texto: mecanismo→giro, "
+        "demo→producto, testimonio→prueba.")
+    lines.append("=== FIN DEL PLAN DE AVATARES ===")
+    return "\n".join(lines) + "\n"
+
+
 _ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "assets")
 
@@ -299,7 +364,8 @@ def _frame_bytes(seg: Segment) -> bytes | None:
 def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str = "",
                      target_seconds: float = 15.0, sample_seg: Segment | None = None,
                      n: int = 10, blueprint: dict | None = None,
-                     oferta_2x1: bool = False, mix: dict | None = None) -> list[dict]:
+                     oferta_2x1: bool = False, mix: dict | None = None,
+                     asignaciones: list[dict] | None = None) -> list[dict]:
     """Devuelve hasta n guiones: [{'angulo': str, 'texto': str}].
 
     Si la IA NO PUDO correr (sin keys, cuota 429, respuesta ilegible) levanta RuntimeError
@@ -313,12 +379,24 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
     asigna una ETAPA por índice, se inyecta un bloque por etapa (arco + familias de hook + dureza
     de CTA + largo) y cada guion sale etiquetado con `stage`/`temp`. n = sum(mix.values()). Si es
     None, comportamiento idéntico al de antes (n guiones sin etapa, CTA duro en todos).
+
+    `asignaciones`: opcional (estructuras_validadas.asignar_estructuras), un par (AVATAR,
+    ESTRUCTURA validada) por guion. Cada guion se escribe para SU avatar con las fases y la
+    DURACIÓN de SU estructura (no la global), y sale etiquetado con `avatar`/`estructura`
+    (campos aditivos). Con `mix` a la vez: la etapa manda el CTA, la estructura manda el largo.
+    Si es None, comportamiento idéntico al de antes.
     """
     from .ia_errors import error_amigable
     # ── Embudo: lista de etapas por índice (o None = flujo clásico sin etapas) ──
     stages = _build_stage_list(mix)
     if stages:
         n = len(stages)
+    # ── Avatares/estructuras: una asignación por índice (aditivo; None = flujo de siempre) ──
+    if asignaciones:
+        if stages and len(asignaciones) != len(stages):
+            asignaciones = None    # no calzan con el embudo pedido → mejor sin plan que uno roto
+        else:
+            n = len(asignaciones) if not stages else n
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ak = _anthropic_key()          # Claude escribe mejor copy: es la 1ª opción; Gemini respaldo
     if not api_key and not ak:
@@ -353,6 +431,8 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
             "(mismas fases, mismo orden, ritmo parecido). " if bp else "")
     # Embudo activo: el plan por etapa se inyecta y el bloque CTA/presupuesto se vuelve por-etapa.
     stage_plan = _stage_plan_text(stages, target_seconds) + "\n" if stages else ""
+    # Avatares/estructuras activos: plan por guion (avatar + fases + duración propia), aditivo.
+    asig_plan = _asignaciones_plan_text(asignaciones, stages) + "\n" if asignaciones else ""
     if stages:
         # Con etapas el CTA duro NO va en todos: cada guion cierra según su etapa (ver PLAN).
         cta_budget_block = (
@@ -366,7 +446,24 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
             "Reparte cada guion así — hook ≤12, problema/mecanismo ≤14, giro+producto/demo ≤16, "
             "prueba ≤10 — y si un beat no cabe, FUSIÓNALO o elimínalo TÚ conscientemente (mejor 3 "
             "momentos bien desarrollados que 6 telegramas). Sin emojis, sin overlays ni acotaciones "
-            "de escena, listo para narrar de corrido.\n")
+            "de escena, listo para narrar de corrido.\n"
+            + ("OJO AL LARGO: como también hay PLAN DE AVATARES, el LARGO de cada guion lo manda "
+               "SU estructura (las palabras del plan de avatares), no el rango de la etapa.\n"
+               if asignaciones else ""))
+    elif asignaciones:
+        # Avatares/estructuras SIN embudo: CTA duro obligatorio en TODOS (igual que el flujo
+        # clásico — regla de oro de la casa), pero el LARGO es por guion según SU estructura.
+        cta_budget_block = (
+            f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
+            f"cambiar ni una palabra): \"{CTA_OBLIGATORIO}\".\n"
+            "Cada guion: SOLO el VOICEOVER hablado completo y fluido, con el LARGO que SU "
+            "estructura pide en el PLAN DE AVATARES (~2.5 palabras por segundo, CTA incluido — el "
+            "CTA fijo ya gasta 17 de esas palabras). En los guiones cortos (12-18s) el cuerpo son "
+            "1-2 frases de asombro; en los largos (45-60s) desarrolla el mecanismo con calma. Si "
+            "un beat no cabe, FUSIÓNALO o elimínalo TÚ conscientemente (mejor 3 momentos bien "
+            "desarrollados que 6 telegramas). Si te pasas, el guion se AMPUTA por el final y "
+            "pierde el momento del producto — inaceptable. Sin emojis, sin overlays ni "
+            "acotaciones de escena, listo para narrar de corrido.\n")
     else:
         cta_budget_block = (
             f"OBLIGATORIO: TERMINA cada guion con esta frase EXACTA como cierre (cópiala igual, sin "
@@ -392,7 +489,8 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
         + framework[:30000] +
         "\n=== FIN DEL BANCO ===\n"
         + bp
-        + stage_plan +
+        + stage_plan
+        + asig_plan +
         "\n"
         f"TAREA: escribe {n} guiones DISTINTOS para la voz en off de un video de TikTok/Reels de "
         f"~{int(target_seconds)} segundos. " + arco + "PRIMERO elige las 2-3 FAMILIAS de hook del "
@@ -567,6 +665,12 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
             stage = stages[i] if (stages and i < len(stages)) else None
             cta_mode = _STAGES_META[stage]["cta_mode"] if stage else "hard"
             mw = _stage_max_words(stage, target_seconds) if stage else max_words
+            # ASIGNACIÓN de este guion (avatar+estructura): la DURACIÓN de su estructura manda
+            # sobre la global/de etapa (la voz de cada versión sigue el largo de SU estructura).
+            asig = asignaciones[i] if (asignaciones and i < len(asignaciones)) else None
+            amw = _asig_max_words(asig) if asig else 0
+            if amw:
+                mw = amw
             # recorte por FASES primero (respeta hook/producto/CTA); si no hay desglose,
             # recorte ciego por frases + CTA de la etapa
             crudo = str(d["texto"]).strip()[:900]
@@ -578,6 +682,15 @@ def generate_scripts(api_key: str | None, product_desc: str = "", page_text: str
             if stage:
                 item["stage"] = stage
                 item["temp"] = _STAGES_META[stage]["temp"]
+            if asig:   # aditivo: avatar + estructura de este guion (viajan hasta el manifest/UI)
+                item["avatar"] = str(asig.get("avatar", ""))[:80]
+                item["estructura"] = str(asig.get("estructura", ""))[:80]
+                item["estructura_id"] = str(asig.get("estructura_id", ""))[:40]
+                try:
+                    if asig.get("duracion_s"):
+                        item["duracion_s"] = int(asig["duracion_s"])
+                except (TypeError, ValueError):
+                    pass
             f = d.get("fases")
             if isinstance(f, dict):   # desglose por fase (hook/problema/giro/producto/prueba/cta)
                 item["fases"] = {k: str(v)[:220] for k, v in f.items() if isinstance(v, str) and v.strip()}

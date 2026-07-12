@@ -3068,6 +3068,13 @@ const STAGE_BADGE = {
   MOFU:`<span style="${_stageBase};background:#d97706">🌤️ MOFU · tibio</span>`,
   BOFU:`<span style="${_stageBase};background:#dc2626">🔥 BOFU · caliente</span>`};
 function stageBadge(st){ return st && STAGE_BADGE[st] ? STAGE_BADGE[st] : ''; }
+// 🎯 Avatar + estructura validada de un guion/versión (ej. "🎯 Abuela con artrosis · Mecanismo/autoridad · ~52s")
+// — para que Jack SEPA qué avatar está testeando con cada video y pueda leer sus campañas.
+function avatarBadge(o){
+  if(!o || !(o.avatar || o.estructura)) return '';
+  const txt = [o.avatar, o.estructura].filter(Boolean).join(' · ');
+  return `<span style="${_stageBase};background:#7c3aed" title="Avatar (a quién le habla) · estructura validada (arco y duración)">🎯 ${txt}</span>`;
+}
 function funnelMix(){
   return {TOFU:+(document.getElementById('funTofu').value||0),
           MOFU:+(document.getElementById('funMofu').value||0),
@@ -3482,7 +3489,7 @@ function renderScripts(jobId, scripts, meta){
       <label style="display:flex;gap:10px;cursor:pointer;align-items:flex-start">
         <input type="checkbox" class="scriptChk" data-i="${i}" ${chk} style="width:18px;height:18px;accent-color:var(--accent);margin-top:2px">
         <span>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">${stageBadge(s.stage)}<span style="font-size:12px;color:var(--accent2);text-transform:uppercase">${s.angulo||('Opción '+(i+1))}</span></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">${stageBadge(s.stage)}${avatarBadge(s)}<span style="font-size:12px;color:var(--accent2);text-transform:uppercase">${s.angulo||('Opción '+(i+1))}</span></div>
           <div style="font-size:14px">${s.texto}</div>
         </span>
       </label>
@@ -3518,13 +3525,19 @@ function renderScripts(jobId, scripts, meta){
     // Embudo: manda las etapas → el backend hace UNA versión por guion (stage_mode ignora n_versions).
     if(hasStages && sel.every(s=>s.stage))
       fd.append("stages_json", JSON.stringify(sel.map(s=>s.stage)));
+    // 🎯 Avatar/estructura por guion → viajan al manifest (cada versión queda etiquetada)
+    let metasJson = "";
+    if(sel.some(s=>s.avatar || s.estructura)){
+      metasJson = JSON.stringify(sel.map(s=>({avatar:s.avatar||'', estructura:s.estructura||''})));
+      fd.append("metas_json", metasJson);
+    }
     fd.append("voice", document.getElementById("voice").value);
     const vm=(document.getElementById("voiceMezcla").value||'').split(',');
     fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
     fd.append("n_versions", "1");        // 1 de PRUEBA (luego "N más")
     fd.append("start_version", "0");
     // contexto para "N más": el flujo con voz reusa el MISMO job (pool ya enmascarado) + estos guiones
-    window._gen = {flow:'voice', jobId:jobId, scriptsJson:scriptsJson, generated:0};
+    window._gen = {flow:'voice', jobId:jobId, scriptsJson:scriptsJson, metasJson:metasJson, generated:0};
     const r = await fetch("/api/render",{method:"POST",body:fd});
     const j = await r.json();
     poll(j.job_id);
@@ -3556,6 +3569,7 @@ function renderResults(res, rootId){
       <div class="body">
         <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''} ${stageBadge(v.stage)}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        ${(v.avatar||v.estructura)?`<div style="margin-top:4px">${avatarBadge(v)}</div>`:''}
         ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
         ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
@@ -3690,6 +3704,7 @@ async function generarMas(){
       const fd = new FormData();
       fd.append("job_id", g.jobId);
       fd.append("scripts_json", g.scriptsJson);
+      if(g.metasJson) fd.append("metas_json", g.metasJson);   // 🎯 avatar/estructura por guion
       fd.append("voice", document.getElementById("voice").value);
       const vm=(document.getElementById("voiceMezcla").value||'').split(',');
       fd.append("voz_jc", vm[0]||'0'); fd.append("voz_kate", vm[1]||'0');
@@ -3746,8 +3761,9 @@ function appendVersions(res){
     div.className = "vcard";
     div.innerHTML = `<video src="${file}" controls muted loop preload="metadata" style="aspect-ratio:${ar}"></video>
       <div class="body">
-        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''}</div>
+        <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''} ${stageBadge(v.stage)}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
+        ${(v.avatar||v.estructura)?`<div style="margin-top:4px">${avatarBadge(v)}</div>`:''}
         ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
           <select id="res${i}">

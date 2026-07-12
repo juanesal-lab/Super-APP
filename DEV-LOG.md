@@ -3870,3 +3870,16 @@ job inexistente ("Trabajo no encontrado" seco, con secciones a medias). Dos arre
 - **index.html (tkPoll)**: si /api/status devuelve 404, mensaje honesto y accionable: "La app se
   actualizó y esta búsqueda se perdió — dale otra vez a Buscar" (antes: error críptico + UI a medias).
 Verificado: bash -n OK, JS 17/17. AVISO Juan: solo run.sh (loop) + 5 líneas en tkPoll.
+
+### 2026-07-12 · Claude (jackingshop1-cell) · 🎬 Montador: mensaje honesto en máquinas donde NO está instalado
+Jack le dio "▶️ Prender Montador" y recibió el alert críptico "No pude prenderla sola. Ábrela a mano:
+cd ~/montador-ads && ./run.sh" — pero el Montador es un repo APARTE que solo existe en la máquina de
+Juan (/Users/juanes/montador-ads); en la de Jack no hay nada que prender y no está en GitHub
+(gh: juanesal-lab solo tiene Super-APP público).
+- /api/montador/status ahora devuelve también `instalado` (¿existe ~/montador-ads/run.sh aquí?).
+- El panel p-montador: si NO está instalado, en vez del botón imposible muestra la verdad: "es una app
+  aparte de Juan, no está instalada en esta máquina; apenas la comparta se instala y la pestaña vive".
+- Verificado: py OK; status en máquina de Jack = {up:False, instalado:False}; JS 17/17.
+📢 **AVISO JUAN (pedido concreto): sube `montador-ads` a GitHub** (o comparte el repo con
+jackingshop1-cell) — Jack quiere usar la pestaña 🎬 Montar ad y hoy es imposible desde su máquina.
+Cuando esté, yo se la clono en ~/montador-ads y el botón "Prender" le funciona tal cual lo hiciste.

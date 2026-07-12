@@ -549,13 +549,16 @@ _MONTADOR_URL = "http://127.0.0.1:8440"
 
 @app.get("/api/montador/status")
 def montador_status():
-    """¿Está viva la app Montador (puerto 8440)? Solo hace ping; no la modifica."""
+    """¿Está viva la app Montador (puerto 8440)? Solo hace ping; no la modifica.
+    `instalado`: ¿existe ~/montador-ads en ESTA máquina? (es un repo aparte de Juan — en la máquina
+    de Jack no está; el front lo dice honesto en vez de un botón que jamás va a poder prender nada)."""
+    instalado = os.path.exists(os.path.join(_MONTADOR_DIR, "run.sh"))
     try:
         import urllib.request
         with urllib.request.urlopen(_MONTADOR_URL, timeout=1.5) as r:
-            return {"up": 200 <= getattr(r, "status", 200) < 500}
+            return {"up": 200 <= getattr(r, "status", 200) < 500, "instalado": instalado}
     except Exception:  # noqa: BLE001
-        return {"up": False}
+        return {"up": False, "instalado": instalado}
 
 
 @app.post("/api/montador/start")

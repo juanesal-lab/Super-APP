@@ -1106,20 +1106,31 @@
       <button class="btn" style="width:auto" onclick="montadorStart(this)">▶️ Prender Montador</button>
       <p class="pmsg" style="margin:10px 0 0">O ábrela tú en su terminal: <code>cd ~/montador-ads &amp;&amp; ./run.sh</code></p>
     </div>
+    <div id="montNoInst" class="card" style="display:none;border-color:var(--warn)">
+      <p style="margin:0">🎬 El <b>Montador</b> es una app APARTE de Juan (otro repo) y <b>no está
+      instalada en esta máquina</b> — por eso no se puede prender desde aquí.
+      <span style="color:var(--muted)">Ya quedó el aviso en la bitácora para que Juan la suba a GitHub;
+      apenas la comparta, te la instalo y esta pestaña queda viva. Mientras tanto, esta sección solo
+      funciona en el compu de Juan.</span></p>
+    </div>
     <iframe id="montadorFrame" title="Montador" allow="clipboard-read; clipboard-write; camera; microphone"
       style="display:none;width:100%;height:82vh;border:1px solid var(--line);border-radius:14px;background:#0e0f13"></iframe>
     <script>
     const MONT_URL = "http://127.0.0.1:8440";
-    function montadorSet(up){
-      const s=document.getElementById('montStatus'), f=document.getElementById('montadorFrame'), d=document.getElementById('montDown');
+    function montadorSet(up, instalado){
+      const s=document.getElementById('montStatus'), f=document.getElementById('montadorFrame'),
+            d=document.getElementById('montDown'), ni=document.getElementById('montNoInst');
       s.textContent = up ? 'prendida ✓' : 'apagada'; s.className = up ? 'pill' : 'pill off';
-      d.style.display = up ? 'none' : 'block';
+      // sin ~/montador-ads en esta máquina: mensaje honesto (el botón jamás podría prender nada)
+      const noInst = (instalado === false) && !up;
+      ni.style.display = noInst ? 'block' : 'none';
+      d.style.display = (up || noInst) ? 'none' : 'block';
       if(up){ if(!f.src) f.src = MONT_URL; f.style.display='block'; } else { f.style.display='none'; }
     }
     async function montadorCheck(reload){
       try{
         const j = await (await fetch('/api/montador/status',{cache:'no-store'})).json();
-        montadorSet(!!j.up);
+        montadorSet(!!j.up, j.instalado);
         if(reload && j.up){ document.getElementById('montadorFrame').src = MONT_URL + '?t=' + Date.now(); }
       }catch(e){ montadorSet(false); }
     }

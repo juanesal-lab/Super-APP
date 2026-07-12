@@ -950,6 +950,7 @@
             <div class="fpBtns">
               <button class="fpBtn" onclick="tkFpPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
               <button class="fpBtn" onclick="tkFpDoblar(${i})" title="Doblar este creativo: abre Doblar en una pestaña nueva con el video ya cargado (esta queda para seguir buscando)">🎙️ Doblar</button>
+              <button class="fpBtn" onclick="tkFpUsarEstructura(${i})" title="Clonar la ESTRUCTURA narrativa de este ganador validado en tus guiones (te lleva a ✂️ Cortar clips)">🧬 Usar estructura</button>
               <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar el video">⬇️</a>
               <button class="fpBtn" onclick="tkMore('foreplay',${i},this,false)" title="No me gusta: busca OTRO y ponlo en este puesto">🔄</button>
               <button class="fpBtn" onclick="tkMore('foreplay',${i},this,true)" title="Me gusta: busca 5 MÁS basados en este (salen en su propia sección abajo)">🎯 5 más así</button>
@@ -966,6 +967,11 @@
         const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video){ alert('Este creativo no tiene video'); return; }
         // Abre Doblar en pestaña NUEVA con el video ya cargado; Buscar creativos queda para seguir buscando.
         abrirDoblarNuevaPestana(a.video, a.name||'Creativo de Foreplay');
+      }
+      // 🧬 usar este GANADOR como referencia de estructura para los guiones (✂️ Cortar clips)
+      function tkFpUsarEstructura(i){
+        const a=(window._tkS?window._tkS.ads:[])[i]; if(!a||!a.video){ alert('Este creativo no tiene video'); return; }
+        usarEstructuraGanador(a.video, a.name||'Creativo de Foreplay', a.dias||0);
       }
       // 🎬 tarjetas de B-ROLL con preview (mismo look que los creativos, sin botones de juez)
       function tkBrCard(b,i){
@@ -1490,6 +1496,9 @@
 
   <div class="panel" id="p-crear">
   <div class="qhace"><b>¿Qué hace?</b> Subes varios videos del proveedor y la IA encuentra los mejores momentos, los recorta a clips 1:1 y arma <b>8 versiones</b> distintas para tu landing. Opcional: voz en off, subtítulos, tapar/traducir textos y GIFs.</div>
+
+  <!-- 🧬 Referencia de un GANADOR de Foreplay (viene del botón "Usar estructura" de la tarjeta) -->
+  <div id="refGanadorBanner" class="card" style="display:none;border:1px solid var(--accent);padding:14px 16px;margin-bottom:16px"></div>
 
   <!-- Upload -->
   <div class="card">
@@ -2766,6 +2775,7 @@
             <button class="fpBtn" onclick="fpPlay(${i},this)">▶️ Ver</button>
             <a class="fpBtn" href="/api/foreplay-video?url=${encodeURIComponent(a.video||'')}&dl=1" download title="Descargar">⬇️</a>
             <button class="fpBtn dob" onclick="fpDoblar(${i})">🎙️ Doblar</button>
+            <button class="fpBtn" onclick="fpUsarEstructura(${i})" title="Clonar la ESTRUCTURA narrativa de este ganador validado en tus guiones (te lleva a ✂️ Cortar clips)">🧬 Usar estructura</button>
           </div>
           <a class="fpLink" href="${fpEsc(a.foreplay_url)||'#'}" target="_blank" onclick="event.stopPropagation()">ver en Foreplay ↗</a>
         </div></div>`;
@@ -2805,6 +2815,11 @@
       const a=_fpAds[i]; if(!a.video){ alert('Este ad no tiene video'); return; }
       // Abre Doblar en una VENTANA NUEVA con el video ya cargado; esta pestaña queda para seguir buscando.
       abrirDoblarNuevaPestana(a.video, a.name||'Creativo de Foreplay');
+    }
+    // 🧬 usar este GANADOR como referencia de estructura para los guiones (✂️ Cortar clips)
+    function fpUsarEstructura(i){
+      const a=_fpAds[i]; if(!a||!a.video){ alert('Este ad no tiene video'); return; }
+      usarEstructuraGanador(a.video, a.name||'Creativo de Foreplay', a.dias||0);
     }
     // Abre la app en una pestaña nueva directo en Doblar con el creativo de Foreplay precargado.
     function abrirDoblarNuevaPestana(videoUrl, nombre){
@@ -3054,6 +3069,8 @@ useVO.onchange = ()=>{
   document.getElementById("voiceWrap").style.display = useVO.checked ? "flex" : "none";
   document.getElementById("funnelWrap").style.display = useVO.checked ? "block" : "none";
   document.getElementById("go").textContent = useVO.checked ? "📝  Generar guiones de voz" : "✂️  Generar clips";
+  // 🧬 el aviso "activa la voz" del banner de referencia depende de este toggle
+  if(typeof refGanadorPaint==='function') refGanadorPaint();
 };
 
 // --- Files ---
@@ -3150,11 +3167,47 @@ let refFile = null;
 const refInput = document.getElementById("refInput");
 refInput.onchange = e=>{
   refFile = e.target.files[0] || null;
+  if(refFile && window._refGanador) quitarRefGanador();   // el archivo subido manda — sin doble referencia
   document.getElementById("refName").textContent =
     refFile ? ("📐 "+refFile.name) : "Clonar estructura de un ad ganador";
   const lbl = document.getElementById("refName").closest("label");
   if(lbl && typeof vthumbStripAfter==='function') vthumbStripAfter(lbl, 'refInputThumbs', refFile?[refFile]:[]);
 };
+
+// --- 🧬 Estructura de un GANADOR de Foreplay como referencia (botón "Usar estructura") ---
+// La tarjeta guarda la URL del video + nombre; al generar guiones, el backend baja el video de
+// Foreplay y clona su estructura narrativa (mismo camino que subir un reference_ad a mano).
+function refGanadorPaint(){
+  const b=document.getElementById('refGanadorBanner'); if(!b) return;
+  const r=window._refGanador;
+  if(!r||!r.url){ b.style.display='none'; b.innerHTML=''; return; }
+  const dias=r.dias?` (ganador ${r.dias} día${r.dias!==1?'s':''} corriendo)`:'';
+  // la estructura se clona en los GUIONES → solo aplica al flujo CON voz (/api/scripts)
+  const avisoVoz=!useVO.checked
+    ?'<div class="pmsg" style="margin:8px 0 0;color:#f59e0b">⚠️ Activa 🎙️ <b>Voz en off</b> (abajo en Ajustes): la estructura se clona en los <b>guiones</b>, que salen solo en el flujo con voz.</div>':'';
+  b.innerHTML=`<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <span>🧬 <b>Estructura de referencia:</b> ${fpEsc(r.nombre||'Creativo de Foreplay')}${fpEsc(dias)} — los guiones clonarán su estructura</span>
+    <button class="btn sec" style="width:auto;padding:7px 14px;margin:0" onclick="quitarRefGanador()">✖ Quitar</button></div>${avisoVoz}`;
+  b.style.display='';
+}
+function quitarRefGanador(){
+  window._refGanador=null;
+  try{ localStorage.removeItem('ref_ganador'); }catch(e){}
+  refGanadorPaint();
+}
+function usarEstructuraGanador(url, nombre, dias){
+  if(!url){ alert('Este ad no tiene video'); return; }
+  window._refGanador={url:url, nombre:nombre||'Creativo de Foreplay', dias:dias||0};
+  try{ localStorage.setItem('ref_ganador', JSON.stringify(window._refGanador)); }catch(e){}
+  if(refFile){ refFile=null; refInput.value='';   // referencia nueva reemplaza al archivo subido
+    document.getElementById('refName').textContent='Clonar estructura de un ad ganador'; }
+  // saltar a ✂️ Cortar clips con el banner visible (el usuario ya está dentro de la app)
+  const bt=document.querySelector('#tabs button[data-p="p-crear"]'); if(bt) bt.click();
+  refGanadorPaint();
+}
+// restaurar la referencia guardada (sobrevive recargas de la página)
+try{ const _rg=JSON.parse(localStorage.getItem('ref_ganador')||'null'); if(_rg&&_rg.url) window._refGanador=_rg; }catch(e){}
+refGanadorPaint();
 
 // --- Process ---
 function buildForm(){
@@ -3165,6 +3218,11 @@ function buildForm(){
     else fd.append("link_paths", v.path);                 // videos ya bajados de TikTok
   });
   if(refFile && useVO.checked) fd.append("reference_ad", refFile);
+  else if(window._refGanador && window._refGanador.url && useVO.checked){
+    // 🧬 ganador de Foreplay como referencia: el backend lo baja y clona su estructura
+    fd.append("reference_url", window._refGanador.url);
+    fd.append("reference_name", window._refGanador.nombre || "");
+  }
   fd.append("target_seconds", dur.value);
   fd.append("max_clip", document.getElementById("maxClip").value);
   fd.append("use_gemini", document.getElementById("useGemini").checked);
@@ -3343,7 +3401,7 @@ async function poll(id){
   document.getElementById("progCard").classList.add("hidden");
   if(j.result){
     if(j.result.versions){ j.result._job_id = id; renderResults(j.result); }   // videos cortados
-    if(j.result.scripts){ renderScripts(id, j.result.scripts); }  // guiones (si hay) — pueden venir AMBOS
+    if(j.result.scripts){ renderScripts(id, j.result.scripts, j.result); }  // guiones (si hay) — pueden venir AMBOS
   }
 }
 
@@ -3369,19 +3427,25 @@ async function previewVoice(i, text, btn){
 }
 
 // --- Paso intermedio: elegir guion de voz en off ---
-function renderScripts(jobId, scripts){
+function renderScripts(jobId, scripts, meta){
   const root = document.getElementById("scripts");
   if(!scripts || !scripts.length){
     root.innerHTML = `<div class="card"><p class="err">No se pudieron generar guiones — mira el mensaje de error del trabajo (puede ser cuota/key de la IA) y reintenta.</p></div>`;
     return;
   }
+  // 🧬 referencia: qué estructura se clonó (o aviso HONESTO si la referencia falló)
+  let refHead = "";
+  if(meta && meta.reference_name)
+    refHead += `<p class="pmsg" style="margin:-6px 0 10px;color:var(--accent)">🧬 Estructura clonada de: <b>${fpEsc(meta.reference_name)}</b></p>`;
+  if(meta && meta.reference_warning)
+    refHead += `<p class="pmsg" style="margin:-6px 0 10px;color:#f59e0b">⚠️ ${fpEsc(meta.reference_warning)}</p>`;
   const hasStages = scripts.some(s=>s.stage);
   const maxSel = hasStages ? scripts.length : 8;
   const introTxt = hasStages
     ? `Embudo <b>TOFU/MOFU/BOFU</b>: se genera <b>un video por guion</b> (${scripts.length} en total), cada uno con su gancho, arco y CTA según su etapa. Marca los que quieras. Puedes escuchar cada uno antes.`
     : `Primero se genera <b>1 video de PRUEBA</b> con el orden de guiones que marques. Si te gusta, abajo eliges <b>cuántos más</b> (1 a 7). Marca los guiones y escúchalos antes.`;
   let html = `<div class="card"><h2>📝 Guiones de voz en off</h2>
-    <p class="pmsg" style="margin:-6px 0 14px">${introTxt}</p>
+    ${refHead}<p class="pmsg" style="margin:-6px 0 14px">${introTxt}</p>
     <div style="display:flex;flex-direction:column;gap:8px" id="scriptList">`;
   scripts.forEach((s,i)=>{
     const chk = i < maxSel ? "checked" : "";

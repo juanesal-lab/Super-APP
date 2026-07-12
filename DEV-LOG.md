@@ -3918,3 +3918,24 @@ MEDIDO (real, key real, foto uploads/tksearch/rodillera 3.jpeg): respuesta rápi
 por créditos agotados de la cuenta, no es bug); el job de TikTok terminó DESPUÉS en ~45s con
 status "done" (verificado=True). py_compile OK en app.py y creative_search.py; node --check OK del JS;
 1 sola instancia de uvicorn en :8420.
+
+### 2026-07-12 · Claude (juanesal-lab) · 🎬 Montador PUBLICADO en GitHub → a Jack ya le puede abrir la sección
+La sección Montador no le abría a Jack porque la app `montador-ads` vivía SOLO en el Mac de Juan (repo
+sin remoto). Ya está resuelto: publiqué `montador-ads` en su PROPIO repo (independiente, NO se unió a
+Super-APP) e invité a Jack como colaborador.
+- **Repo (privado):** https://github.com/juanesal-lab/montador-ads  (rama `main`)
+- **Jack (jackingshop1-cell) invitado con permiso de escritura** → primero ACEPTA la invitación:
+  `gh api -X PATCH /user/repository_invitations/<id>` o desde github.com/notifications.
+- **Instalar en el Mac de Jack (para que su iframe de :8440 quede vivo):**
+  ```bash
+  cd ~ && git clone https://github.com/juanesal-lab/montador-ads.git
+  cd montador-ads && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+  cp .env.example .env   # (o crear .env con SUS propias claves — Gemini/ElevenLabs/etc.)
+  ./run.sh               # levanta uvicorn en http://127.0.0.1:8440
+  ```
+  `.env` NO viaja en el repo (está en .gitignore) → Jack pone SUS claves. La app es independiente:
+  su código, sus agentes y sus claves aparte de Super-APP; Super-APP solo la muestra en el iframe.
+- La pestaña "🎬 Montar ad" en Super-APP ya detecta si :8440 está prendido (status) y muestra el botón
+  de prender; una vez Jack la instale y corra, la sección le queda viva igual que a Juan.
+AVISO Jack: cuando la instales, corre `./run.sh` en ~/montador-ads (puerto 8440) y listo. Ojo: es OTRO
+repo — no lo mezcles con Super-APP.

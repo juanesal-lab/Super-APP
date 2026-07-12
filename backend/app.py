@@ -546,17 +546,17 @@ def get_config():
     return cfg
 
 
-# ── 🎬 MONTADOR: app INDEPENDIENTE (repo aparte, puerto 8440). Esta app solo la MUESTRA en un
-#    iframe y opcionalmente la PRENDE con su propio run.sh — nunca toca su código ni sus agentes. ──
-_MONTADOR_DIR = os.path.expanduser("~/montador-ads")
+# ── 🎬 MONTADOR: app INDEPENDIENTE que VIAJA en este repo (subcarpeta montador/, su propio server
+#    en :8440, sus propios agentes y su propio .env). Super-APP solo la MUESTRA en un iframe y la
+#    PRENDE con su run.sh — NUNCA toca su código. Al viajar en el repo, Jack la recibe con git pull. ──
+_MONTADOR_DIR = os.path.join(BASE, "montador")     # antes ~/montador-ads (repo aparte); ahora va bundleado
 _MONTADOR_URL = "http://127.0.0.1:8440"
 
 
 @app.get("/api/montador/status")
 def montador_status():
-    """¿Está viva la app Montador (puerto 8440)? Solo hace ping; no la modifica.
-    `instalado`: ¿existe ~/montador-ads en ESTA máquina? (es un repo aparte de Juan — en la máquina
-    de Jack no está; el front lo dice honesto en vez de un botón que jamás va a poder prender nada)."""
+    """¿Está viva la app Montador (:8440)? Solo hace ping; no la modifica.
+    `instalado`: ¿está la carpeta montador/ en esta copia del repo? (tras git pull, sí en ambas máquinas)."""
     instalado = os.path.exists(os.path.join(_MONTADOR_DIR, "run.sh"))
     try:
         import urllib.request
@@ -568,12 +568,18 @@ def montador_status():
 
 @app.post("/api/montador/start")
 def montador_start():
-    """Prende la app Montador con SU PROPIO run.sh, desprendida (no altera su código/agentes)."""
-    run_sh = os.path.join(_MONTADOR_DIR, "run.sh")
-    if not os.path.exists(run_sh):
-        raise HTTPException(404, f"No encuentro {run_sh}. ¿Está el proyecto montador-ads en ~/montador-ads?")
+    """Prende Montador desde la subcarpeta montador/. En la 1ª vez (ej. el Mac de Jack) crea su venv
+    e instala sus dependencias SOLO, y luego lanza su run.sh — todo desprendido (no altera su código)."""
+    if not os.path.exists(os.path.join(_MONTADOR_DIR, "run.sh")):
+        raise HTTPException(404, "No encuentro la carpeta montador/ en este repo. Haz git pull.")
+    # 1ª vez: si no hay venv, lo crea + instala requirements; luego exec run.sh (uvicorn en :8440).
+    script = ('cd "$MDIR" || exit 1; '
+              'if [ ! -x venv/bin/python ]; then python3 -m venv venv && '
+              './venv/bin/pip install -q -r requirements.txt; fi; '
+              'exec ./run.sh')
     try:
-        subprocess.Popen(["/bin/bash", run_sh], cwd=_MONTADOR_DIR,
+        subprocess.Popen(["/bin/bash", "-c", script], cwd=_MONTADOR_DIR,
+                         env={**os.environ, "MDIR": _MONTADOR_DIR},
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          stdin=subprocess.DEVNULL, start_new_session=True)
         return {"ok": True}

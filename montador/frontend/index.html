@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Montador · Vidaria</title>
+<style>
+  :root{--bg:#0e0f13;--card:#171921;--line:#262a36;--tx:#e8eaf0;--mut:#8b90a0;
+        --acc:#ffd400;--ok:#38d47a;--err:#ff5d5d;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,'SF Pro',Segoe UI,sans-serif;
+       max-width:1060px;margin:0 auto;padding:28px 18px 80px}
+  h1{font-size:26px;margin-bottom:2px}
+  h1 span{color:var(--acc)}
+  .sub{color:var(--mut);margin-bottom:26px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px}
+  label{display:block;font-weight:600;margin:12px 0 6px}
+  input[type=text]{width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--line);
+       background:#0d0e12;color:var(--tx);font-size:15px}
+  select{width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--line);
+       background:#0d0e12;color:var(--tx);font-size:15px}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--mut);
+        cursor:pointer;transition:.15s}
+  .drop.over{border-color:var(--acc);color:var(--acc);background:#1c1e12}
+  .drop b{color:var(--tx)}
+  .files{margin-top:8px;font-size:13px;color:var(--mut);max-height:120px;overflow:auto}
+  .files div{padding:2px 0;border-bottom:1px dotted #20232e}
+  button{background:var(--acc);color:#111;font-weight:800;font-size:16px;border:0;border-radius:11px;
+         padding:13px 26px;cursor:pointer;margin-top:16px}
+  button:disabled{opacity:.45;cursor:default}
+  button.sec{background:#232735;color:var(--tx);font-weight:600;font-size:14px;padding:9px 16px}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:280px}
+  .bar{height:9px;background:#232735;border-radius:6px;overflow:hidden;margin:10px 0}
+  .bar i{display:block;height:100%;background:var(--acc);width:0%;transition:width .5s}
+  .log{background:#0b0c10;border:1px solid var(--line);border-radius:10px;padding:12px;font:12.5px/1.7 ui-monospace,Menlo,monospace;
+       max-height:230px;overflow:auto;white-space:pre-wrap}
+  .vids{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px}
+  .vids figure{flex:1;min-width:250px;max-width:330px}
+  .vids video{width:100%;border-radius:12px;border:1px solid var(--line)}
+  .vids figcaption{font-size:13px;color:var(--mut);margin-top:5px;text-align:center}
+  a.dl{color:var(--acc);text-decoration:none;font-weight:600;margin-right:14px}
+  .plist a{display:flex;justify-content:space-between;gap:10px;padding:9px 4px;color:var(--tx);
+           text-decoration:none;border-bottom:1px solid #1d202b;font-size:14px}
+  .plist a:hover{color:var(--acc)}
+  .badge{font-size:12px;color:var(--mut)}
+  .badge.ok{color:var(--ok)} .badge.err{color:var(--err)}
+  textarea{width:100%;min-height:70px;padding:10px 12px;border-radius:9px;border:1px solid var(--line);
+           background:#0d0e12;color:var(--tx);font-size:14px;font-family:inherit}
+  .hide{display:none}
+  button.peligro{background:#2a1618;color:var(--err);border:1px solid #4a2226}
+  .tablewrap{overflow-x:auto;margin-top:10px}
+  table.plan{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+  table.plan th{color:var(--mut);font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  table.plan td{padding:6px 8px;border-bottom:1px solid #1d202b;vertical-align:middle}
+  table.plan img{width:64px;border-radius:6px;display:block}
+  table.plan .razon{color:var(--mut);font-size:12px;max-width:280px}
+  .quitar{color:var(--err);cursor:pointer;margin-left:8px;font-weight:700}
+  .agentes{display:flex;flex-direction:column;gap:6px;background:#12141b;border:1px solid var(--line);
+           border-radius:10px;padding:12px 14px}
+  .agentes .ag{display:flex;align-items:center;gap:9px;margin:0;font-weight:400;cursor:pointer}
+  .agentes .ag b{font-weight:700}
+  .agentes .ag span{color:var(--mut);font-size:13px}
+  .agentes input[type=checkbox]{accent-color:var(--acc);width:16px;height:16px}
+</style>
+</head>
+<body>
+<h1>🎬 Montador <span>· Vidaria</span></h1>
+<div class="sub">Sube tu voz en off + los clips crudos → la IA ve los videos, arma el montaje con efectos, karaoke y guion.</div>
+
+<div class="card" id="nuevo">
+  <b style="font-size:18px">Nuevo ad</b>
+  <label>Nombre del proyecto</label>
+  <input type="text" id="nombre" placeholder="ej. alfombra lujo hotel">
+  <div class="row" style="margin-top:14px">
+    <div>
+      <label>🎙️ Voces en off (1 o varias — un ad por cada voz)</label>
+      <div class="drop" id="dropA">Arrastra las <b>voces</b> aquí<br>o haz clic (mp3, m4a, wav — varias a la vez)</div>
+      <input type="file" id="inA" accept="audio/*,.m4a" multiple class="hide">
+      <div class="files" id="listA"></div>
+    </div>
+    <div>
+      <label>🎞️ Videos (clips crudos)</label>
+      <select id="selPaquete" style="margin-bottom:8px"><option value="">📦 — sin paquete guardado —</option></select>
+      <div class="drop" id="dropV">Arrastra los <b>videos</b> aquí<br>o haz clic (varios .mp4)</div>
+      <input type="file" id="inV" accept="video/mp4,video/quicktime,.mp4,.mov,.webm,.mkv" multiple class="hide">
+      <div class="files" id="listV"></div>
+      <input type="text" id="guardarPaquete" class="hide" placeholder="📦 guardar estos clips como paquete: nombre…" maxlength="50" style="margin-top:8px">
+    </div>
+    <div>
+      <label>🎵 Música de fondo (opcional)</label>
+      <div class="drop" id="dropM">Arrastra la <b>música</b> aquí<br>o haz clic (mp3, m4a, wav)</div>
+      <input type="file" id="inM" accept="audio/*,.m4a" class="hide">
+      <div class="files" id="listM"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <div>
+      <label>💬 Estilo de subtítulos</label>
+      <select id="estilo">
+        <option value="karaoke" selected>Karaoke (palabra activa amarilla)</option>
+        <option value="caja">Caja amarilla (palabra activa en caja, estilo Hormozi)</option>
+        <option value="minimal">Minimal (todo blanco, sin karaoke)</option>
+      </select>
+    </div>
+    <div>
+      <label>📱 Plataforma</label>
+      <select id="plataforma">
+        <option value="meta" selected>Meta (subtítulos al centro, 0.62)</option>
+        <option value="tiktok">TikTok (subtítulos más abajo, 0.80)</option>
+      </select>
+    </div>
+  </div>
+  <label style="margin-top:16px">🤖 Agentes (cada uno se ejecuta solo si lo marcas)</label>
+  <div class="agentes">
+    <label class="ag"><input type="checkbox" id="agEncuadre" checked>
+      <b>Encuadre</b> <span>blur difuminado para clips horizontales + rescate de clips de baja calidad</span></label>
+    <label class="ag"><input type="checkbox" id="agEmojis">
+      <b>Emojis</b> <span>emojis en los subtítulos (estilo CapCut)</span></label>
+    <label class="ag"><input type="checkbox" id="agEndcard">
+      <b>End-card</b> <span>cierre CTA con precio + botón "PIDE LA TUYA" en los últimos 2s</span></label>
+    <label class="ag"><input type="checkbox" id="agHookbanner">
+      <b>Hook-banner</b> <span>pill amarilla de beneficio sobre el gancho</span></label>
+    <input type="text" id="agHookbannerTexto" class="hide" placeholder="texto del banner (ej. 🚚 Envío GRATIS hoy)" maxlength="60" style="margin-top:8px">
+    <label class="ag"><input type="checkbox" id="agMomentos">
+      <b>Momentos</b> <span>detecta el mejor instante de cada clip antes de elegir</span></label>
+  </div>
+  <button id="btnCrear" disabled>🎬 Montar mi ad</button>
+  <span id="subiendo" class="badge hide"> subiendo archivos…</span>
+</div>
+
+<div class="card" id="ganadorCard">
+  <b style="font-size:18px">🏆 Clonar ganador</b>
+  <div class="sub" style="margin:4px 0 0">Sube un ad ganador + tus clips → la IA analiza su ADN (guion, estructura, ritmo) y genera variaciones con guiones nuevos, voz automática y tus visuales. <b>Los 🤖 agentes y el estilo de arriba aplican también aquí.</b></div>
+  <label>Nombre</label>
+  <input type="text" id="gNombre" placeholder="ej. comedero ganador FB">
+  <div class="row" style="margin-top:14px">
+    <div>
+      <label>🏆 Video ganador (1)</label>
+      <div class="drop" id="dropG">Arrastra el <b>ad ganador</b> aquí<br>o haz clic (.mp4)</div>
+      <input type="file" id="inG" accept="video/mp4,video/quicktime,.mp4,.mov,.webm,.mkv" class="hide">
+      <div class="files" id="listG"></div>
+    </div>
+    <div>
+      <label>🎞️ Tus clips (producto + b-roll)</label>
+      <select id="gSelPaquete" style="margin-bottom:8px"><option value="">📦 — sin paquete guardado —</option></select>
+      <div class="drop" id="dropGV">Arrastra <b>tus clips</b> aquí<br>o haz clic (varios .mp4)</div>
+      <input type="file" id="inGV" accept="video/mp4,video/quicktime,.mp4,.mov,.webm,.mkv" multiple class="hide">
+      <div class="files" id="listGV"></div>
+      <input type="text" id="gGuardarPaquete" class="hide" placeholder="📦 guardar estos clips como paquete: nombre…" maxlength="50" style="margin-top:8px">
+    </div>
+    <div>
+      <label>🎵 Música (opcional)</label>
+      <div class="drop" id="dropGM">Arrastra la <b>música</b><br>o haz clic</div>
+      <input type="file" id="inGM" accept="audio/*,.m4a" class="hide">
+      <div class="files" id="listGM"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <div>
+      <label>🔢 Variaciones</label>
+      <select id="gVars">
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+    </div>
+    <div>
+      <label>🔊 Audio de las variaciones</label>
+      <select id="gModoAudio">
+        <option value="auto" selected>🤖 Auto — los agentes deciden (voz o solo música según el ADN)</option>
+        <option value="voz">🗣️ Voz en off (ElevenLabs)</option>
+        <option value="musica">🎵 Solo música + captions (no gasta ElevenLabs)</option>
+      </select>
+      <select id="gVoz" style="margin-top:8px">
+        <option value="kate" selected>Kate (ElevenLabs)</option>
+        <option value="juan_carlos">Juan Carlos (ElevenLabs)</option>
+      </select>
+    </div>
+    <div>
+      <label>&nbsp;</label>
+      <label class="ag" style="margin-top:10px"><input type="checkbox" id="gOriginal" checked>
+        <b>Incluir versión con el audio ORIGINAL del ganador</b></label>
+    </div>
+  </div>
+  <button id="btnGanador" disabled>🏆 Analizar y clonar</button>
+  <span id="gSubiendo" class="badge hide"> subiendo archivos…</span>
+</div>
+
+<div class="card hide" id="detalle">
+  <button class="sec peligro" id="btnEliminar" style="float:right;margin-top:0">🗑 Eliminar</button>
+  <b style="font-size:18px" id="dNombre"></b> <span class="badge" id="dFase"></span>
+  <div class="bar"><i id="dBar"></i></div>
+  <div class="log" id="dLog"></div>
+  <button class="sec hide" id="btnReintentar">🔁 Reintentar</button>
+  <div id="dGanador" class="hide" style="margin-top:14px">
+    <p><a class="dl" id="gAdn" download>⬇ adn-ganador.md (análisis + guiones)</a></p>
+    <b>👶 Variaciones de esta tanda</b>
+    <div class="plist" id="gHijos"></div>
+  </div>
+  <div id="dResultado" class="hide">
+    <div class="vids">
+      <figure><video id="v1" controls playsinline></video><figcaption>corte-base.mp4 (limpio, para CapCut) · <a class="dl" id="w1" target="_blank">▶ Ver</a></figcaption></figure>
+      <figure><video id="v2" controls playsinline></video><figcaption>corte-base-SUBS.mp4 (subtítulos preview) · <a class="dl" id="w2" target="_blank">▶ Ver</a></figcaption></figure>
+    </div>
+    <div class="badge" style="margin-top:6px">¿El preview se queda cargando? Es una extensión de Chrome interfiriendo — usa <b>▶ Ver</b> (abre el video en su propia pestaña, siempre funciona).</div>
+    <p style="margin-top:14px">
+      <a class="dl" id="d1" download>⬇ corte-base.mp4</a>
+      <a class="dl" id="d2" download>⬇ con subtítulos</a>
+      <a class="dl" id="d3" download>⬇ guion-montaje.md</a>
+      <a class="dl" id="d4" download>⬇ subtitulos.srt</a>
+      <a class="dl" id="dz">⬇ todo en ZIP</a>
+    </p>
+    <div id="dPlanWrap" class="hide">
+      <b>🗺️ Guion visual</b>
+      <div class="tablewrap"><table class="plan" id="dPlan"></table></div>
+    </div>
+    <div id="dVers" style="margin-top:14px"></div>
+    <button class="sec" id="btnVersion" style="margin-right:10px">🎲 Otra versión (mismo plan, otro ritmo)</button>
+    <label>¿Quieres cambiar algo? Dímelo y lo re-monto (ej. “cambia el corte 3 por un clip de textura” o “el gancho más agresivo”)</label>
+    <textarea id="ajuste" placeholder="escribe tu ajuste…"></textarea>
+    <button class="sec" id="btnAjustar">🔁 Aplicar ajuste</button>
+  </div>
+</div>
+
+<div class="card">
+  <b style="font-size:18px">📦 Biblioteca de clips</b>
+  <div class="sub" style="margin:4px 0 0">Tus paquetes guardados: se reusan sin volver a subir nada, y su análisis visual queda cacheado (cambiar el guion sale casi gratis).</div>
+  <div class="plist" id="pkglist"><span class="badge">sin paquetes aún — sube clips y ponles nombre en el campo 📦</span></div>
+</div>
+
+<div class="card">
+  <b style="font-size:18px">Proyectos</b>
+  <div class="plist" id="plist"><span class="badge">cargando…</span></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let filesA=[], filesV=[], fileM=null, actual=null, timer=null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function zona(drop,input,multi,onFiles){
+  drop.onclick=()=>input.click();
+  input.onchange=()=>onFiles([...input.files]);
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+  drop.ondragleave=()=>drop.classList.remove('over');
+  drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');onFiles([...e.dataTransfer.files])};
+}
+zona($('dropA'),$('inA'),true,fs=>{
+  filesA=filesA.concat(fs.filter(f=>/\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(f.name))).slice(0,10);
+  $('listA').innerHTML=filesA.map((f,i)=>`<div>🎙️ ${esc(f.name)}<span class="quitar" onclick="quitarVoz(event,${i})">✕</span></div>`).join('');
+  check()});
+function quitarVoz(ev,i){ev.stopPropagation();filesA.splice(i,1);
+  $('listA').innerHTML=filesA.map((f,j)=>`<div>🎙️ ${esc(f.name)}<span class="quitar" onclick="quitarVoz(event,${j})">✕</span></div>`).join('');check()}
+zona($('dropV'),$('inV'),true,fs=>{filesV=filesV.concat(fs.filter(f=>/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)));
+  $('listV').innerHTML=filesV.map(f=>`<div>🎞️ ${esc(f.name)}</div>`).join('');check()});
+zona($('dropM'),$('inM'),false,fs=>{fileM=fs[0]||null;pintarMusica()});
+function pintarMusica(){
+  $('listM').innerHTML=fileM?`<div>🎵 ${esc(fileM.name)}<span class="quitar" onclick="quitarMusica(event)">✕</span></div>`:'';
+}
+function quitarMusica(ev){ev.stopPropagation();fileM=null;$('inM').value='';pintarMusica()}
+function check(){
+  const clipsOk=(filesV.length>=2)||($('selPaquete').value&&filesV.length>=0)||($('selPaquete').value!=='');
+  $('btnCrear').disabled=!(filesA.length>=1&&($('selPaquete').value!==''||filesV.length>=2));
+  $('btnCrear').textContent=filesA.length>1?`🎬 Montar ${filesA.length} ads`:'🎬 Montar mi ad';
+  $('guardarPaquete').classList.toggle('hide',!filesV.length);
+}
+$('selPaquete').onchange=check;
+
+// --- 📦 biblioteca ---
+async function cargarPaquetes(){
+  try{
+    const ps=await fetch('/api/paquetes').then(r=>r.json());
+    const opts='<option value="">📦 — sin paquete guardado —</option>'+
+      ps.map(p=>`<option value="${esc(p.nombre)}">📦 ${esc(p.nombre)} (${p.clips} clips${p.catalogo?' · análisis cacheado ⚡':''})</option>`).join('');
+    const s1=$('selPaquete'), s2=$('gSelPaquete');
+    const v1=s1.value, v2=s2.value;
+    s1.innerHTML=opts; s2.innerHTML=opts; s1.value=v1; s2.value=v2;
+    $('pkglist').innerHTML=ps.length?ps.map(p=>
+      `<a href="#" onclick="return false"><span>📦 ${esc(p.nombre)} <span class="badge">· ${p.clips} clips · ${p.mb}MB${p.catalogo?' · ⚡ análisis cacheado':''}</span></span>`+
+      `<span class="quitar" onclick="borrarPaquete(event,'${esc(p.nombre)}')">✕ eliminar</span></a>`).join('')
+      :'<span class="badge">sin paquetes aún — sube clips y ponles nombre en el campo 📦</span>';
+  }catch(_){}
+}
+async function borrarPaquete(ev,n){
+  ev.stopPropagation();
+  if(!confirm(`¿Eliminar el paquete “${n}” de la biblioteca? (los proyectos ya creados no se tocan)`))return;
+  await fetch('/api/paquetes/'+encodeURIComponent(n),{method:'DELETE'});
+  cargarPaquetes();
+}
+
+// --- 🏆 clonar ganador ---
+let fileG=null, filesGV=[], fileGM=null;
+zona($('dropG'),$('inG'),false,fs=>{fileG=fs.find(f=>/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name))||null;
+  $('listG').innerHTML=fileG?`<div>🏆 ${esc(fileG.name)}</div>`:'';checkG()});
+zona($('dropGV'),$('inGV'),true,fs=>{filesGV=filesGV.concat(fs.filter(f=>/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)));
+  $('listGV').innerHTML=filesGV.map(f=>`<div>🎞️ ${esc(f.name)}</div>`).join('');checkG()});
+zona($('dropGM'),$('inGM'),false,fs=>{fileGM=fs[0]||null;
+  $('listGM').innerHTML=fileGM?`<div>🎵 ${esc(fileGM.name)}</div>`:''});
+function checkG(){$('btnGanador').disabled=!(fileG&&($('gSelPaquete').value!==''||filesGV.length>=2));
+  $('gGuardarPaquete').classList.toggle('hide',!filesGV.length)}
+$('gSelPaquete').onchange=checkG;
+
+$('btnGanador').onclick=async()=>{
+  $('btnGanador').disabled=true;$('gSubiendo').classList.remove('hide');
+  const fd=new FormData();
+  fd.append('nombre',$('gNombre').value||'ganador');
+  fd.append('ganador',fileG);
+  filesGV.forEach(f=>fd.append('videos',f));
+  fd.append('paquete',$('gSelPaquete').value||'');
+  fd.append('guardar_paquete',$('gGuardarPaquete').value||'');
+  if(fileGM)fd.append('musica',fileGM);
+  fd.append('n_variaciones',$('gVars').value);
+  fd.append('incluir_original',$('gOriginal').checked);
+  fd.append('voz',$('gVoz').value);
+  fd.append('modo_audio',$('gModoAudio').value);
+  fd.append('estilo_subs',$('estilo').value);
+  fd.append('plataforma',$('plataforma').value);
+  fd.append('ag_encuadre',$('agEncuadre').checked);
+  fd.append('ag_emojis',$('agEmojis').checked);
+  fd.append('ag_endcard',$('agEndcard').checked);
+  fd.append('ag_hookbanner',$('agHookbanner').checked);
+  fd.append('ag_hookbanner_texto',$('agHookbannerTexto').value||'');
+  fd.append('ag_momentos',$('agMomentos').checked);
+  try{
+    const r=await fetch('/api/ganador',{method:'POST',body:fd});
+    if(!r.ok){alert('Error: '+(await r.text()));$('btnGanador').disabled=false;$('gSubiendo').classList.add('hide');return}
+    const d=await r.json();
+    fileG=null;filesGV=[];fileGM=null;$('listG').innerHTML='';$('listGV').innerHTML='';$('listGM').innerHTML='';
+    $('gSubiendo').classList.add('hide');
+    abrir(d.id); cargarLista();
+  }catch(e){alert('Error subiendo: '+e);$('btnGanador').disabled=false;$('gSubiendo').classList.add('hide')}
+};
+$('agHookbanner').onchange=()=>$('agHookbannerTexto').classList.toggle('hide',!$('agHookbanner').checked);
+
+$('btnCrear').onclick=async()=>{
+  $('btnCrear').disabled=true;$('subiendo').classList.remove('hide');
+  const fd=new FormData();
+  fd.append('nombre',$('nombre').value||'mi ad');
+  filesA.forEach(f=>fd.append('audio',f));
+  filesV.forEach(f=>fd.append('videos',f));
+  fd.append('paquete',$('selPaquete').value||'');
+  fd.append('guardar_paquete',$('guardarPaquete').value||'');
+  if(fileM)fd.append('musica',fileM);
+  fd.append('estilo_subs',$('estilo').value);
+  fd.append('plataforma',$('plataforma').value);
+  fd.append('ag_encuadre',$('agEncuadre').checked);
+  fd.append('ag_emojis',$('agEmojis').checked);
+  fd.append('ag_endcard',$('agEndcard').checked);
+  fd.append('ag_hookbanner',$('agHookbanner').checked);
+  fd.append('ag_hookbanner_texto',$('agHookbannerTexto').value||'');
+  fd.append('ag_momentos',$('agMomentos').checked);
+  try{
+    const r=await fetch('/api/proyectos',{method:'POST',body:fd});
+    if(!r.ok){alert('Error: '+(await r.text()));$('btnCrear').disabled=false;$('subiendo').classList.add('hide');return}
+    const d=await r.json();
+    filesA=[];filesV=[];fileM=null;$('listA').innerHTML='';$('listV').innerHTML='';$('listM').innerHTML='';
+    $('subiendo').classList.add('hide');
+    abrir(d.id); cargarLista();
+  }catch(e){alert('Error subiendo: '+e);$('btnCrear').disabled=false;$('subiendo').classList.add('hide')}
+};
+
+async function cargarLista(){
+  const r=await fetch('/api/proyectos'); const ps=await r.json();
+  $('plist').innerHTML=ps.length?ps.map(p=>{
+    const st=p.error?`<span class="badge err">error</span>`:
+             p.done?`<span class="badge ok">listo ✓</span>`:
+             `<span class="badge">${p.fase} ${p.progreso||0}%</span>`;
+    return `<a href="#" onclick="abrir('${p.id}');return false"><span>${p.nombre} <span class="badge">· ${p.creado||''}</span></span>${st}</a>`;
+  }).join(''):'<span class="badge">aún no hay proyectos</span>';
+}
+
+async function abrir(id){
+  actual=id; $('detalle').classList.remove('hide');
+  if(timer)clearInterval(timer);
+  await pintar(); timer=setInterval(pintar,1600);
+  window.scrollTo({top:$('detalle').offsetTop-10,behavior:'smooth'});
+}
+
+async function pintar(){
+  if(!actual)return;
+  const r=await fetch('/api/proyectos/'+actual); if(!r.ok)return;
+  const e=await r.json();
+  $('dNombre').textContent=e.nombre;
+  $('dFase').textContent='· '+(e.error?('ERROR: '+e.error):(e.fase||''));
+  $('dFase').className='badge '+(e.error?'err':e.done?'ok':'');
+  $('dBar').style.width=(e.progreso||0)+'%';
+  const lg=$('dLog'); lg.textContent=(e.log||[]).join('\n'); lg.scrollTop=lg.scrollHeight;
+  $('btnReintentar').classList.toggle('hide', !e.error);
+  if(e.tipo==='ganador'){
+    // proyecto padre 🏆: nada de videos — ADN + lista de variaciones (hijos)
+    $('dResultado').classList.add('hide');
+    $('dGanador').classList.toggle('hide', !(e.done||(e.hijos||[]).length));
+    $('gAdn').href=`/api/proyectos/${actual}/archivo/adn-ganador.md`;
+    // faltan voces (p.ej. ElevenLabs sin créditos): botón para generar lo pendiente
+    const esperadas=(e.n_variaciones||0)+((e.incluir_original&&!(e.log||[]).some(x=>x.includes('modo MÚSICA')||x.includes('letra alucinada')))?1:0);
+    const faltan=e.done&&(e.hijos||[]).length<esperadas;
+    $('btnReintentar').classList.toggle('hide', !(e.error||faltan));
+    $('btnReintentar').textContent=faltan&&!e.error?'🗣️ Generar las voces que faltan (tras recargar ElevenLabs)':'🔁 Reintentar';
+    pintarHijos(e);
+    if(e.done && timer){clearInterval(timer);timer=setInterval(pintar,6000)}
+    return;
+  }
+  $('btnReintentar').textContent='🔁 Reintentar';
+  $('dGanador').classList.add('hide');
+  if(e.done){
+    $('dResultado').classList.remove('hide');
+    const u=n=>`/api/proyectos/${actual}/archivo/${n}`;
+    if($('v1').dataset.want!==u('corte-base.mp4')){
+      cargarVideo($('v1'),u('corte-base.mp4')); cargarVideo($('v2'),u('corte-base-SUBS.mp4'));
+      $('w1').href=u('corte-base.mp4'); $('w2').href=u('corte-base-SUBS.mp4');
+      $('d1').href=u('corte-base.mp4')+'?dl=1'; $('d2').href=u('corte-base-SUBS.mp4')+'?dl=1';
+      $('d3').href=u('guion-montaje.md')+'?dl=1'; $('d4').href=u('subtitulos.srt')+'?dl=1';
+      $('dz').href=`/api/proyectos/${actual}/zip`;
+    }
+    pintarPlan(e); pintarVersiones(e);
+    if(timer){clearInterval(timer);timer=setInterval(pintar,6000)}
+  } else {
+    $('dResultado').classList.add('hide');
+  }
+}
+
+// Carga un video con plan B: si el <video> no arranca en 2.5s (extensiones de Chrome
+// que secuestran los requests de media — cazado en vivo: fetch funciona, media no),
+// se baja por fetch y se le entrega como blob.
+function cargarVideo(v,url){
+  v.dataset.want=url;
+  if(v.dataset.blob){URL.revokeObjectURL(v.dataset.blob);delete v.dataset.blob}
+  v.src=url;
+  setTimeout(async()=>{
+    if(v.dataset.want!==url)return;      // ya se cambió de proyecto
+    if(v.readyState>0)return;            // cargó por el camino normal
+    try{
+      const b=await fetch(url).then(r=>{if(!r.ok)throw 0;return r.blob()});
+      if(v.dataset.want!==url)return;
+      v.dataset.blob=URL.createObjectURL(b);
+      v.src=v.dataset.blob;
+    }catch(_){}
+  },2500);
+}
+
+async function pintarHijos(e){
+  const hijos=e.hijos||[];
+  if(!hijos.length){
+    $('gHijos').innerHTML=e.done
+      ?'<span class="badge">aún sin variaciones — recarga ElevenLabs y usa el botón 🗣️ de arriba (los guiones ya están guardados en el ADN)</span>'
+      :'<span class="badge">generando variaciones…</span>';
+    return}
+  const filas=[];
+  for(const h of hijos){
+    try{
+      const r=await fetch('/api/proyectos/'+h); const eh=await r.json();
+      const st=eh.error?'<span class="badge err">error</span>':eh.done?'<span class="badge ok">listo ✓</span>':
+               `<span class="badge">${esc(eh.fase)} ${eh.progreso||0}%</span>`;
+      filas.push(`<a href="#" onclick="abrir('${h}');return false"><span>${esc(eh.nombre)}</span>${st}</a>`);
+    }catch(_){}
+  }
+  $('gHijos').innerHTML=filas.join('')||'<span class="badge">…</span>';
+}
+
+function pintarPlan(e){
+  if(!e.plan||!e.beats){$('dPlanWrap').classList.add('hide');return}
+  const key=actual+':'+JSON.stringify(e.plan).length;
+  if($('dPlan').dataset.key===key)return;
+  $('dPlan').dataset.key=key;
+  $('dPlanWrap').classList.remove('hide');
+  const filas=e.plan.map((p,i)=>{
+    const b=e.beats[i]||{};
+    return `<tr>
+      <td><img src="/api/proyectos/${actual}/thumb/${b.n}?k=${encodeURIComponent(key)}" loading="lazy" onerror="this.style.display='none'"></td>
+      <td>${(b.t0??0).toFixed(2)}–${(b.t1??0).toFixed(2)}s</td>
+      <td>${esc(p.caption)}</td>
+      <td>clip ${esc(p.clip)} (in ${p.in}s)</td>
+      <td>${esc(p.fase)}</td>
+      <td class="razon">${esc(p.razon||'')}</td></tr>`;
+  }).join('');
+  $('dPlan').innerHTML='<tr><th></th><th>Tiempo</th><th>Subtítulo</th><th>Clip</th><th>Fase</th><th>Por qué</th></tr>'+filas;
+}
+
+function pintarVersiones(e){
+  const vs=e.versiones||[];
+  const key=actual+':v'+vs.length;
+  if($('dVers').dataset.key===key)return;
+  $('dVers').dataset.key=key;
+  if(!vs.length){$('dVers').innerHTML='';return}
+  const uv=(n,f)=>`/api/proyectos/${actual}/version/${n}/${f}`;
+  $('dVers').innerHTML='<b>🎲 Otras versiones (mismo plan, otro ritmo de cortes)</b><div class="vids">'+
+    vs.map(v=>`<figure><video controls playsinline preload="metadata" class="vver"></video>
+      <figcaption>versión ${v.n} · <a class="dl" href="${uv(v.n,'corte-base-SUBS.mp4')}" target="_blank">▶ Ver</a>
+      <a class="dl" href="${uv(v.n,'corte-base.mp4')}?dl=1" download>⬇ limpio</a>
+      <a class="dl" href="${uv(v.n,'corte-base-SUBS.mp4')}?dl=1" download>⬇ subs</a></figcaption></figure>`).join('')+'</div>';
+  document.querySelectorAll('#dVers video.vver').forEach((el,i)=>cargarVideo(el,uv(vs[i].n,'corte-base-SUBS.mp4')));
+}
+
+$('btnVersion').onclick=async()=>{
+  $('btnVersion').disabled=true;
+  const r=await fetch(`/api/proyectos/${actual}/version`,{method:'POST'});
+  $('btnVersion').disabled=false;
+  if(r.ok){$('dResultado').classList.add('hide');
+    if(timer)clearInterval(timer); timer=setInterval(pintar,1600);}
+  else alert('Error: '+await r.text());
+};
+
+$('btnEliminar').onclick=async()=>{
+  if(!actual)return;
+  const nom=$('dNombre').textContent||actual;
+  if(!confirm(`¿Eliminar el proyecto “${nom}”?\nSe borra TODA su carpeta (clips, voz y resultados). No hay deshacer.`))return;
+  const r=await fetch(`/api/proyectos/${actual}`,{method:'DELETE'});
+  if(r.ok){
+    if(timer)clearInterval(timer); timer=null; actual=null;
+    $('detalle').classList.add('hide'); cargarLista();
+  } else alert('Error: '+await r.text());
+};
+
+$('btnAjustar').onclick=async()=>{
+  const t=$('ajuste').value.trim(); if(!t)return;
+  const fd=new FormData(); fd.append('instrucciones',t);
+  const r=await fetch(`/api/proyectos/${actual}/ajustar`,{method:'POST',body:fd});
+  if(r.ok){$('ajuste').value='';$('dResultado').classList.add('hide');
+    if(timer)clearInterval(timer); timer=setInterval(pintar,1600);}
+  else alert('Error: '+await r.text());
+};
+
+$('btnReintentar').onclick=async()=>{
+  const r=await fetch(`/api/proyectos/${actual}/reintentar`,{method:'POST'});
+  if(r.ok){if(timer)clearInterval(timer);timer=setInterval(pintar,1600);}
+  else alert('Error: '+await r.text());
+};
+
+cargarLista(); cargarPaquetes(); setInterval(cargarLista,8000); setInterval(cargarPaquetes,20000);
+</script>
+</body>
+</html>

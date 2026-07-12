@@ -1149,14 +1149,11 @@
     <div id="montDown" class="card" style="display:none;border-color:var(--warn)">
       <p style="margin:0 0 10px">⚠️ La app <b>Montador</b> no está prendida (puerto 8440).</p>
       <button class="btn" style="width:auto" onclick="montadorStart(this)">▶️ Prender Montador</button>
-      <p class="pmsg" style="margin:10px 0 0">O ábrela tú en su terminal: <code>cd ~/montador-ads &amp;&amp; ./run.sh</code></p>
+      <p class="pmsg" style="margin:10px 0 0">La <b>primera vez</b> instala sola sus dependencias (~1-2 min) y queda lista. O ábrela tú: <code>cd montador &amp;&amp; ./run.sh</code></p>
     </div>
     <div id="montNoInst" class="card" style="display:none;border-color:var(--warn)">
-      <p style="margin:0">🎬 El <b>Montador</b> es una app APARTE de Juan (otro repo) y <b>no está
-      instalada en esta máquina</b> — por eso no se puede prender desde aquí.
-      <span style="color:var(--muted)">Ya quedó el aviso en la bitácora para que Juan la suba a GitHub;
-      apenas la comparta, te la instalo y esta pestaña queda viva. Mientras tanto, esta sección solo
-      funciona en el compu de Juan.</span></p>
+      <p style="margin:0">🎬 No encuentro la carpeta <b>montador/</b> en esta copia del repo.
+      <span style="color:var(--muted)">Haz <code>git pull</code> para traerla (viaja dentro de Super-APP) y vuelve a esta pestaña.</span></p>
     </div>
     <iframe id="montadorFrame" title="Montador" allow="clipboard-read; clipboard-write; camera; microphone"
       style="display:none;width:100%;height:82vh;border:1px solid var(--line);border-radius:14px;background:#0e0f13"></iframe>
@@ -1180,15 +1177,15 @@
       }catch(e){ montadorSet(false); }
     }
     async function montadorStart(btn){
-      const t=btn.textContent; btn.disabled=true; btn.textContent='⏳ Prendiendo…';
+      const t=btn.textContent; btn.disabled=true; btn.textContent='⏳ Instalando/Prendiendo… (1ª vez ~1-2 min)';
       try{ await fetch('/api/montador/start',{method:'POST'}); }catch(e){}
-      for(let i=0;i<20;i++){
-        await new Promise(r=>setTimeout(r,1200));
+      for(let i=0;i<70;i++){                       // hasta ~2.3 min: la 1ª vez crea venv + instala deps
+        await new Promise(r=>setTimeout(r,2000));
         try{ const j=await (await fetch('/api/montador/status',{cache:'no-store'})).json();
           if(j.up){ montadorSet(true); btn.disabled=false; btn.textContent=t; return; } }catch(e){}
       }
       btn.disabled=false; btn.textContent=t;
-      alert('No pude prenderla sola. Ábrela a mano: cd ~/montador-ads && ./run.sh');
+      alert('Tardó más de lo normal. Ábrela a mano en una terminal: cd montador && ./run.sh');
     }
     const _mb=document.querySelector('#tabs button[data-p="p-montador"]');
     if(_mb) _mb.addEventListener('click', ()=>montadorCheck(false));

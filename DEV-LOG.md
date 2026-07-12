@@ -3939,3 +3939,22 @@ Super-APP) e invité a Jack como colaborador.
   de prender; una vez Jack la instale y corra, la sección le queda viva igual que a Juan.
 AVISO Jack: cuando la instales, corre `./run.sh` en ~/montador-ads (puerto 8440) y listo. Ojo: es OTRO
 repo — no lo mezcles con Super-APP.
+
+### 2026-07-12 · Claude (juanesal-lab) · 🎬 Montador AHORA VIAJA DENTRO de Super-APP (subcarpeta montador/) — a Jack le llega con git pull
+Juan aclaró: no quiere un repo aparte para Montador; quiere que viaje por el repo que YA comparten
+(Super-APP). Hecho: metí el código de Montador en la subcarpeta **`montador/`** de este repo. Sigue
+100% independiente (su propio server en :8440, sus agentes, su propio `.env` y su propio venv) — solo
+que ahora VIAJA en Super-APP → Jack lo recibe con su `git pull` normal, SIN repo nuevo, SIN invitación,
+SIN clonar aparte. (El repo aparte `montador-ads` que había creado lo elimino.)
+- **`montador/`**: código de la app (backend/ + agentes + frontend + assets + run.sh + requirements.txt).
+  NO se copiaron los ~380MB de clips de muestra ni el .env (van en su .gitignore: venv/ projects/
+  biblioteca/ resultado/ .env). La app crea biblioteca/ sola al correr.
+- **app.py**: `_MONTADOR_DIR = BASE/montador` (antes ~/montador-ads). El botón "▶️ Prender" ahora, la 1ª
+  vez en el Mac de Jack, CREA el venv + instala requirements SOLO y luego lanza run.sh (:8440), todo
+  desprendido. `status` sigue exponiendo up/instalado.
+- **index.html**: mensajes actualizados (ya no dicen ~/montador-ads); la espera del botón subió a ~2 min
+  para la 1ª instalación.
+AVISO Jack: en tu Mac, tras `git pull`, abre la pestaña "🎬 Montar ad" y dale "▶️ Prender Montador" (la
+1ª vez tarda 1-2 min instalando faster-whisper/pillow/anthropic). Pon TUS claves en `montador/.env`
+(ANTHROPIC_API_KEY + ELEVENLABS_API_KEY). Es una app aparte que solo VIVE en la carpeta montador/ —
+no la mezcles con el pipeline de Super-APP.

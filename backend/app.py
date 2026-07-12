@@ -1601,7 +1601,19 @@ def _run_scripts_job(job_id: str, paths: list[str], settings: dict):
             "used_gemini": a["used_gemini"], "n_sources": a["n_sources"],
             "settings": settings, "work_dir": wd,
         })
-        job["result"] = {"ok": True, "scripts": scripts, "blueprint": blueprint}
+        result = {"ok": True, "scripts": scripts, "blueprint": blueprint}
+        # 🧬 Honestidad con la referencia (campos ADITIVOS, no cambian el shape existente):
+        #  - reference_name → hubo referencia y SÍ se clonó su estructura (para que Jack sepa qué testea)
+        #  - reference_warning → la referencia no se pudo bajar (Foreplay) o la IA no pudo analizarla
+        ref_warn = settings.get("reference_warning")
+        if ref and os.path.exists(ref) and blueprint is None and not ref_warn:
+            ref_warn = ("No se pudo analizar la estructura del anuncio de referencia (IA) — "
+                        "los guiones se generaron SIN clonarla.")
+        if blueprint is not None:
+            result["reference_name"] = settings.get("reference_name") or "anuncio de referencia"
+        if ref_warn:
+            result["reference_warning"] = ref_warn
+        job["result"] = result
         job["status"] = "done"; job["message"] = "Guiones listos"; job["progress"] = 100
     except Exception as e:  # noqa: BLE001
         job["status"] = "error"; job["message"] = f"Error: {e}"
@@ -1644,6 +1656,8 @@ def scripts(
     mofu: int = Form(0),
     bofu: int = Form(0),
     reference_ad: UploadFile | None = File(None),
+    reference_url: str = Form(""),    # 🧬 URL de un GANADOR de Foreplay para clonar su estructura
+    reference_name: str = Form(""),   # nombre del ad de referencia (informativo, sale en el resultado)
 ):
     job_id, paths = _save_uploads(files or [])
     paths += _safe_link_paths(link_paths)      # videos bajados de TikTok
@@ -1653,11 +1667,29 @@ def scripts(
         raise HTTPException(400, "Sube al menos un video o baja unos de TikTok")
     # Anuncio de referencia (opcional) para clonar su estructura narrativa
     ref_path = None
+    ref_warning = None
     if reference_ad is not None and reference_ad.filename:
         ref_path = os.path.join(UPLOAD_DIR, job_id,
                                 "reference_" + os.path.basename(reference_ad.filename))
         with open(ref_path, "wb") as rf:
             shutil.copyfileobj(reference_ad.file, rf)
+        if not reference_name.strip():
+            reference_name = os.path.basename(reference_ad.filename)
+    elif reference_url.strip():
+        # 🧬 "Usar estructura de este ganador" (pestaña Foreplay): se baja el video del CDN de
+        # Foreplay y se usa EXACTAMENTE igual que un reference_ad subido a mano (mismo ref_path).
+        # Solo su CDN por seguridad — misma validación que /api/dub.
+        from urllib.parse import urlparse
+        host = (urlparse(reference_url).hostname or "").lower()
+        if not (host == "foreplay.co" or host.endswith(".foreplay.co")):
+            raise HTTPException(400, "URL de referencia no permitida")
+        rp = os.path.join(UPLOAD_DIR, job_id, "reference_foreplay.mp4")
+        if fp.descargar_video(reference_url.strip(), rp):
+            ref_path = rp
+        else:
+            # honesto: los guiones siguen, pero el resultado AVISA que no se clonó nada
+            ref_warning = ("No se pudo bajar el anuncio de referencia de Foreplay — "
+                           "los guiones se generaron SIN clonar su estructura.")
     JOBS[job_id] = {"tipo": "guiones", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
     settings = {
@@ -1684,6 +1716,8 @@ def scripts(
         "blur_strength": blur_strength if blur_strength in ("suave", "medio", "fuerte") else "medio",
         "caption_style": caption_style, "caption_size": caption_size,
         "reference_ad": ref_path,
+        "reference_name": reference_name.strip(),   # 🧬 nombre del ganador (sale en el resultado)
+        "reference_warning": ref_warning,           # aviso honesto si la referencia no se pudo bajar
         "broll_fases": broll_fases,
     }
     # Embudo TOFU/MOFU/BOFU (seleccionable): si el usuario pidió alguna etapa, se generan guiones

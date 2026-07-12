@@ -3827,3 +3827,37 @@ mismo público. Ahora (flujo con voz):
   por tests). La pill de Claves ya lo muestra ("sin cuota 429") gracias al check en vivo del 2026-07-10.
 AVISO Juan: scripts.py ganó el param OPCIONAL asignaciones + helpers (214-273) — sin él, todo idéntico
 (verificado). estructuras_validadas.py y el JSON son nuevos. Tu WIP de creative_search intacto.
+
+### 2026-07-11 · agente buscar-creativos-rapido · ⚡ "Buscar creativos" RÁPIDO (mata el cuello de botella de video)
+Jack: la función "Buscar creativos" tardaba MINUTOS y la UI se colgaba esperando. Diagnóstico: lo lento
+es la verificación por CONTENIDO de video (baja el mp4 ENTERO de cada candidato + lo juzga con Gemini).
+Había DOS focos de eso, no uno: (a) el juez profundo del PRODUCTO (`_verificar_video`) sobre cada ad/tiktok
+candidato, y (b) `buscar_broll` que SIEMPRE baja+juzga ~20 videos de b-roll aunque la búsqueda del producto
+no encuentre nada (costo fijo enorme). Solo se tocó **backend/pipeline/creative_search.py** (NADA de app.py
+ni de tiktok_search.py/foreplay_search.py — a esos solo se los lee).
+- **Camino rápido = juez de PORTADA (thumbnail, rápido) + deep de video OPCIONAL y ACOTADO.** El deep de
+  contenido queda DESACTIVADO por defecto (params nuevos `tk_deep_max=0`, `fp_deep_max=0`; subirlos verifica
+  por dentro solo los top N, el resto se confirma por portada). Foreplay: `_buscar_foreplay` ganó
+  `deep_video_max` (0 = confirma por portada, sin bajar videos).
+- **Sin editar tiktok_search.py:** se envuelven sus jueces (`_verificar`/`_verificar_video`/`buscar_broll`)
+  con wrappers instalados desde creative_search. SOLO cuando hay un contexto rápido activo (`_TK_FAST`,
+  vía `_tiktok_rapido`): (1) se cachea el veredicto de portada, (2) el juez profundo más allá del tope
+  devuelve ese veredicto SIN descargar el video, (3) `buscar_broll` se omite (lista vacía) en el camino
+  veloz. Sin contexto activo (p.ej. el endpoint viejo /api/tiktok-search) los wrappers llaman al original:
+  comportamiento IDÉNTICO, cero regresiones.
+- **Menos fan-out de tikwm:** `tk_terms_max=8` recorta las variantes que van a la búsqueda de TikTok
+  (tikwm serializa a 1 req/s) y `explorar_cuentas=False` en modo rápido (esos posts no se pueden
+  deep-verificar → costo sin confirmados).
+- **EXACTO vs NICHO intactos:** la exactitud se marca con el juez de portada (estricto); confirmados exactos
+  primero (con tier/confianza), y los del MISMO nicho (fallback) van en la sección "sin confirmar" APARTE y
+  etiquetada — nunca mezclados. Schema de respuesta sin cambios (foreplay.ads/candidatos/n_confirmados,
+  tiktok.links/candidatos/broll/...). Los 3 inputs (foto / frames de video / landing) siguen funcionando.
+- **TIEMPO REAL medido (endpoint /api/creative-search, foto rodillera, count/fp_count bajos):**
+  ANTES 112.4s → DESPUÉS ~52-55s. Desglose (script directo): analizar_foto ~1-3s, rama Foreplay ~8-14s
+  (en paralelo), rama TikTok ~52-55s (long pole). El cuello de botella de bajar/juzgar VIDEO quedó
+  eliminado; el residual ~52s es la BÚSQUEDA en tikwm (1 req/s + escalera) + juez de portada, que viven
+  DENTRO de tiktok_search.py (fuera de alcance). Para bajarlo de 40s haría falta tocar ese archivo
+  (reducir la escalera / el piso de 150 portadas / cachear tikwm) — queda anotado como siguiente paso.
+- py_compile de creative_search.py: OK. app.py NO se tocó (el default ya es el camino rápido).
+- REINICIAR para que aplique: matar el uvicorn de :8420 y relanzar (nohup/supervisor lo levanta con el
+  código nuevo). Ya se hizo: server arriba en :8420 con el código final (health 200).

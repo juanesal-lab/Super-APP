@@ -520,6 +520,25 @@ def get_config():
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
     }
+    # Aditivo: estado EN VIVO de la key de Gemini ("ok"|"invalida"|"cuota"|"desconocido"|"sin_key").
+    # NO reemplaza has_gemini_key (otros flujos lo usan). try/except total: el config
+    # NUNCA se puede romper por este chequeo. (Este bloque + return vivían aquí; un merge con la
+    # sesión paralela los había arrastrado al fondo de montador_start → /api/config devolvía null.)
+    try:
+        gk = _load_env_key()
+        if not gk:
+            cfg["gemini_key_status"] = "sin_key"
+        else:
+            chk = _check_gemini_key(gk)
+            if chk.get("ok") is True:
+                cfg["gemini_key_status"] = "ok"
+            elif chk.get("ok") is False:
+                cfg["gemini_key_status"] = chk.get("reason") or "desconocido"
+            else:
+                cfg["gemini_key_status"] = "desconocido"
+    except Exception:  # noqa: BLE001
+        cfg["gemini_key_status"] = "desconocido"
+    return cfg
 
 
 # ── 🎬 MONTADOR: app INDEPENDIENTE (repo aparte, puerto 8440). Esta app solo la MUESTRA en un
@@ -552,24 +571,6 @@ def montador_start():
         return {"ok": True}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"No pude lanzar Montador: {e}")
-    # Aditivo: estado EN VIVO de la key de Gemini ("ok"|"invalida"|"cuota"|"desconocido"|"sin_key").
-    # NO reemplaza has_gemini_key (otros flujos lo usan). try/except total: el config
-    # NUNCA se puede romper por este chequeo.
-    try:
-        gk = _load_env_key()
-        if not gk:
-            cfg["gemini_key_status"] = "sin_key"
-        else:
-            chk = _check_gemini_key(gk)
-            if chk.get("ok") is True:
-                cfg["gemini_key_status"] = "ok"
-            elif chk.get("ok") is False:
-                cfg["gemini_key_status"] = chk.get("reason") or "desconocido"
-            else:
-                cfg["gemini_key_status"] = "desconocido"
-    except Exception:  # noqa: BLE001
-        cfg["gemini_key_status"] = "desconocido"
-    return cfg
 
 
 @app.get("/api/caption-preview")

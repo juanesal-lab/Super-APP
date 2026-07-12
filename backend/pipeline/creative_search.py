@@ -406,7 +406,8 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
                      fp_count: int = 20, fp_verify_max: int = _FP_VERIFY_MAX,
                      image_paths: list[str] | None = None,
                      landing_text: str = "", rellenar_n: bool = False,
-                     tk_deep_max: int = 0, fp_deep_max: int = 0) -> dict:
+                     tk_deep_max: int = 0, fp_deep_max: int = 0,
+                     tk_terms_max: int = 8) -> dict:
     """Foto + nombre → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
 
     `image_paths` (opcional): hasta 6 imágenes del MISMO producto (fotos frente/lado/empaque y/o
@@ -442,6 +443,15 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     # Foreplay con juez de portada (deep acotado a fp_deep_max, 0 = OFF), EN PARALELO. Antes ambos
     # bajaban+juzgaban el video ENTERO de decenas de candidatos → minutos. Ahora la respuesta sale
     # en segundos y la exactitud la marca el juez de portada (estricto). El deep queda como opción.
+    # TikTok busca en tikwm con las `variants` (una por query) y tikwm serializa a 1 req/s → muchas
+    # variantes = muchos segundos de sola búsqueda. Para el camino RÁPIDO se recortan las variantes
+    # (las mejores primero, que ya vienen ordenadas por analizar_foto); Foreplay usa su propio set
+    # (info completo). tk_terms_max controla el tope (default 8: suficiente recall, mucho menos pacer).
+    info_tk = info
+    if isinstance(info.get("variants"), list) and len(info["variants"]) > tk_terms_max > 0:
+        info_tk = dict(info)
+        info_tk["variants"] = info["variants"][:tk_terms_max]
+
     def _tk_timed(*a):
         r = _tiktok_rapido(*a); _lap("tiktok branch done"); return r
     def _fp_timed(*a, **k):
@@ -449,7 +459,7 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     with ThreadPoolExecutor(max_workers=2) as ex:
         tk_fut = ex.submit(_tk_timed,
                            dict(image_path=image_path, nombre=nombre, api_key=gemini_key,
-                                count=count, anthropic_key=anthropic_key, analisis=info,
+                                count=count, anthropic_key=anthropic_key, analisis=info_tk,
                                 image_paths=image_paths, rellenar_n=rellenar_n),
                            tk_deep_max)
         fp_fut = ex.submit(_fp_timed, info, ref_bytes, foreplay_key, gemini_key,

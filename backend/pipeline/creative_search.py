@@ -42,6 +42,7 @@ _TK_FAST_LOCK = threading.Lock()
 _TK_FAST = None                    # dict activo mientras corre un buscar() en modo rápido
 _orig_verificar = _tks._verificar
 _orig_verificar_video = _tks._verificar_video
+_orig_buscar_broll = _tks.buscar_broll
 
 
 def _cover_key(cand: dict) -> str:
@@ -77,9 +78,21 @@ def _verificar_video_fast(cand, ref_bytes, ref_desc, api_key):
     return ctx["cover"].get(_cover_key(cand))    # veredicto de portada (o None si no se pudo juzgar)
 
 
+def _buscar_broll_fast(*args, **kwargs):
+    """B-ROLL en modo rápido: buscar() lo llama con `verificar_contenido=True`, que BAJA + juzga con
+    Gemini hasta ~20 videos de b-roll (segundo gran cuello de botella, aparte de la verificación del
+    producto). En el camino veloz el b-roll es SECUNDARIO (panel de apoyo) → se omite (lista vacía)
+    para no bloquear la respuesta de los CREATIVOS, que es lo que el dueño necesita ya. Fuera del
+    modo rápido, se comporta igual que siempre."""
+    if _TK_FAST is not None:
+        return []
+    return _orig_buscar_broll(*args, **kwargs)
+
+
 # Instalar los wrappers en el módulo tiktok_search (buscar() los resuelve como globals del módulo).
 _tks._verificar = _verificar_cached
 _tks._verificar_video = _verificar_video_fast
+_tks.buscar_broll = _buscar_broll_fast
 
 
 def _tiktok_rapido(buscar_kwargs: dict, tk_deep_max: int = 0) -> dict:
@@ -403,12 +416,17 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     (va dentro de la MISMA llamada de analizar_foto: cero llamadas extra).
     Devuelve {ok, keywords, desc, tiktok:{...igual que /api/tiktok-search...},
               foreplay:{ok, ads, n_confirmados, verificado, terminos, error?}}."""
+    import time as _time
+    _t = _time.time()
+    def _lap(msg):
+        print(f"[cs-timing] {msg}: {_time.time()-_t:.1f}s", flush=True)
     nombre = (nombre or "").strip()
     ref_bytes = None
     paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
     if paths:
         info = analizar_foto(paths[0], nombre, gemini_key,     # 1 sola llamada para AMBAS fuentes
                              image_paths=paths, landing_text=landing_text)
+        _lap("analizar_foto done")
         refs = []
         for p in paths[:2]:            # jueces: máximo 2 fotos de referencia (tope de costo)
             try:
@@ -424,17 +442,22 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     # Foreplay con juez de portada (deep acotado a fp_deep_max, 0 = OFF), EN PARALELO. Antes ambos
     # bajaban+juzgaban el video ENTERO de decenas de candidatos → minutos. Ahora la respuesta sale
     # en segundos y la exactitud la marca el juez de portada (estricto). El deep queda como opción.
+    def _tk_timed(*a):
+        r = _tiktok_rapido(*a); _lap("tiktok branch done"); return r
+    def _fp_timed(*a, **k):
+        r = _buscar_foreplay(*a, **k); _lap("foreplay branch done"); return r
     with ThreadPoolExecutor(max_workers=2) as ex:
-        tk_fut = ex.submit(_tiktok_rapido,
+        tk_fut = ex.submit(_tk_timed,
                            dict(image_path=image_path, nombre=nombre, api_key=gemini_key,
                                 count=count, anthropic_key=anthropic_key, analisis=info,
                                 image_paths=image_paths, rellenar_n=rellenar_n),
                            tk_deep_max)
-        fp_fut = ex.submit(_buscar_foreplay, info, ref_bytes, foreplay_key, gemini_key,
+        fp_fut = ex.submit(_fp_timed, info, ref_bytes, foreplay_key, gemini_key,
                            fp_count, fp_verify_max, rellenar_n=rellenar_n,
                            deep_video_max=fp_deep_max)
         tk = tk_fut.result()
         fpr = fp_fut.result()
+    _lap("both branches joined")
 
     return {"ok": bool(tk.get("links") or tk.get("candidatos")
                        or fpr.get("ads") or fpr.get("candidatos")),
@@ -682,3 +705,173 @@ def foreplay_producto(image_path: str | None = None, nombre: str = "",
     report("✅ Listo", 100)
     return {"ok": True, "ads": ad_list, "n_confirmados": n_conf, "terminos": terms,
             "total_crudo": total_crudo, "verificado": verificado}
+
+
+# ══ 🔍 BUSCAR CREATIVOS EN 2 FASES (rápidos primero, exactos después) ═════════════════════════════
+# Pedido de Jack: la pestaña "Buscar creativos" se demoraba MUCHO (todo se verificaba a fondo antes de
+# mostrar NADA). Ahora es un JOB con resultados PROGRESIVOS:
+#   · FASE 1 (segundos): candidatos por PORTADA con pocas queries → se muestran YA como "⏳ verificando".
+#   · FASE 2 (perfectos): verificación PROFUNDA por CONTENIDO del video (reusa buscar_creativos con los
+#     topes deep) → sube los CONFIRMADOS a "✅ exactos" y descarta los que no son el mismo producto.
+# Es ADITIVO: buscar_creativos() y los endpoints viejos (/api/creative-search, /api/tiktok-search…)
+# NO cambian; esto solo los orquesta con un callback de progreso.
+
+_CONF_PRE = {"alta": 2, "media": 1, "baja": 0}
+
+
+def _preliminar_tiktok(info: dict, ref_bytes, gemini_key: str | None, count: int) -> dict:
+    """FASE 1 · TikTok: POCAS queries (top 4) × 1 página → candidatos rápidos (pacer de tikwm mínimo);
+    el juez de PORTADA (barato, sin bajar videos) marca los que cuadran. Los devuelve como
+    PRELIMINARES (preliminar=True, estado='verificando'), nunca como confirmados a fondo."""
+    from urllib.parse import quote
+
+    from .tiktok_search import _ES_REGIONS, _tk_key, buscar_tiktok
+    queries = [q for q in (info.get("variants") or [info.get("keywords")]) if q][:4] \
+        or [(info.get("keywords") or "").strip()]
+    kw = queries[0] if queries else (info.get("keywords") or "")
+    cands: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for res in ex.map(lambda q: buscar_tiktok(q, count=30, pages=1), queries):
+            for c in res:
+                cands.setdefault(_tk_key(c), c)   # dedup por video_id
+    lst = [c for c in cands.values() if 4 <= c.get("dur", 0) <= 120 and c.get("region") != "CO"]
+    lst.sort(key=lambda c: (1 if c.get("region") in _ES_REGIONS else 0, c.get("plays", 0)),
+             reverse=True)
+    verificado = bool(ref_bytes and gemini_key)
+    prelim: list[dict] = []
+    if verificado and lst:
+        ref_desc = str(info.get("desc") or "")
+        pool = lst[:min(len(lst), max(24, count * 2))]     # tope de portadas a juzgar (costo acotado)
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, gemini_key): c for c in pool}
+            for fut in as_completed(futs):
+                v, c = fut.result(), futs[fut]
+                if v and v.get("match"):                    # la PORTADA cuadra → preliminar
+                    c["_pv"] = _CONF_PRE.get(v.get("confianza"), 0)
+                    prelim.append(c)
+        prelim.sort(key=lambda c: (c.get("_pv", 0), c.get("plays", 0)), reverse=True)
+    else:
+        prelim = lst[:count]                                # sin foto: top por views, sin juez
+    for c in prelim:
+        c["preliminar"] = True
+        c["verificado_producto"] = False                    # solo portada: aún NO confirmado a fondo
+        c["estado"] = "verificando"
+        c.pop("_pv", None)
+        c.pop("_cover_bytes", None)
+        c.setdefault("source", "tiktok")
+    return {"ok": bool(prelim), "links": prelim[:count], "candidatos": [], "broll": [],
+            "verificado": verificado, "n_confirmados": 0, "preliminar": True, "keywords": kw,
+            "busqueda": f"https://www.tiktok.com/search?q={quote(kw)}", "mensaje_busqueda": ""}
+
+
+def _preliminar_foreplay(info: dict, ref_bytes, foreplay_key: str | None,
+                         gemini_key: str | None, count: int) -> dict:
+    """FASE 1 · Foreplay: 1 pasada (30+ días, español) + juez de PORTADA → preliminares rápidos."""
+    if not foreplay_key:
+        return {"ok": False, "ads": [], "candidatos": [], "verificado": False, "preliminar": True,
+                "n_confirmados": 0, "terminos": [], "error": "", "total_crudo": 0,
+                "menos_validados": False}
+    terms = _terminos_foreplay(info)
+    ads: dict[str, dict] = {}
+    if terms:
+        with ThreadPoolExecutor(max_workers=max(1, len(terms))) as ex:
+            for r in ex.map(lambda t: fp.buscar_ads(t, api_key=foreplay_key, live=True,
+                                                    languages="spanish", video_only=True, limit=50,
+                                                    order="longest_running", running_min_days=30),
+                            terms):
+                if r.get("ok"):
+                    for a in r.get("ads") or []:
+                        k = str(a.get("id") or a.get("video") or a.get("foreplay_url") or "")
+                        if k and k not in ads:
+                            ads[k] = a
+    ad_list = list(ads.values())
+    verificado = bool(ref_bytes and gemini_key)
+    prelim: list[dict] = []
+    if verificado and ad_list:
+        ref_desc = str(info.get("desc") or "")
+        pool = ad_list[:_FP_VERIFY_MAX]
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_verificar, {"cover": a.get("thumbnail") or "",
+                                           "title": (a.get("name") or a.get("headline") or "")[:120]},
+                              ref_bytes, ref_desc, gemini_key): a for a in pool}
+            for fut in as_completed(futs):
+                v, a = fut.result(), futs[fut]
+                if v and v.get("match"):
+                    prelim.append(a)
+        prelim.sort(key=lambda a: int(a.get("dias", 0) or 0), reverse=True)
+    else:
+        prelim = ad_list[:count]
+    for a in prelim:
+        a["preliminar"] = True
+        a["verificado_producto"] = False
+        a["estado"] = "verificando"
+        a.pop("_cover_bytes", None)
+    return {"ok": True, "ads": prelim[:count], "candidatos": [], "verificado": verificado,
+            "preliminar": True, "n_confirmados": 0, "terminos": terms,
+            "total_crudo": len(ad_list), "menos_validados": False}
+
+
+def buscar_creativos_progresivo(image_path: str | None = None, nombre: str = "",
+                                gemini_key: str | None = None, foreplay_key: str | None = None,
+                                anthropic_key: str | None = None, count: int = 20,
+                                fp_count: int = 20, image_paths: list[str] | None = None,
+                                landing_text: str = "", progress=None,
+                                tk_deep_max: int = 8, fp_deep_max: int = 8) -> dict:
+    """Búsqueda en 2 FASES con resultados PROGRESIVOS (motor del job /api/creative-search-job).
+
+    `progress(result_dict_o_None, mensaje, pct)` se llama en cada avance — el endpoint lo vuelca en el
+    JOB para que el frontend haga poll y pinte preliminares → confirmados. Devuelve el result FINAL.
+    `tk_deep_max`/`fp_deep_max`: cuántos videos se verifican por CONTENIDO en la fase 2 (tope de costo/
+    tiempo; el resto queda confirmado por el juez de portada ESTRICTO). CERO relleno se respeta."""
+    def emit(res, msg, pct):
+        if progress:
+            try:
+                progress(res, msg, pct)
+            except Exception:  # noqa: BLE001
+                pass
+
+    nombre = (nombre or "").strip()
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
+    ref_bytes = None
+    emit(None, "📸 Analizando el producto…", 5)
+    if paths:
+        info = analizar_foto(paths[0], nombre, gemini_key, image_paths=paths,
+                             landing_text=landing_text)
+        refs = []
+        for p in paths[:2]:
+            try:
+                with open(p, "rb") as f:
+                    refs.append(f.read())
+            except Exception:  # noqa: BLE001
+                pass
+        ref_bytes = refs or None
+    else:
+        info = {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
+    base = {"keywords": info.get("keywords") or nombre, "desc": info.get("desc", ""),
+            "variants": [v for v in (info.get("variants") or []) if v][:6]}
+
+    # ── FASE 1: preliminares por PORTADA (rápido) ──
+    emit({**base, "fase": "preliminar",
+          "tiktok": {"preliminando": True, "links": [], "candidatos": []},
+          "foreplay": {"preliminando": True, "ads": [], "candidatos": []}},
+         "🔎 Buscando candidatos rápidos por portada…", 12)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        tkp = ex.submit(_preliminar_tiktok, info, ref_bytes, gemini_key, count)
+        fpp = ex.submit(_preliminar_foreplay, info, ref_bytes, foreplay_key, gemini_key, fp_count)
+        tk_prelim, fp_prelim = tkp.result(), fpp.result()
+    n_pre = len(tk_prelim.get("links") or []) + len(fp_prelim.get("ads") or [])
+    emit({**base, "fase": "preliminar", "tiktok": tk_prelim, "foreplay": fp_prelim},
+         (f"⏳ {n_pre} preliminares — ahora verifico a fondo cuáles son EXACTOS…" if n_pre
+          else "Verificando a fondo el producto exacto…"), 45)
+
+    # ── FASE 2: perfectos por CONTENIDO del video (deep, cero relleno) ──
+    full = buscar_creativos(image_path=image_path, nombre=nombre, gemini_key=gemini_key,
+                            foreplay_key=foreplay_key, anthropic_key=anthropic_key,
+                            count=count, fp_count=fp_count, image_paths=image_paths,
+                            landing_text=landing_text, rellenar_n=True,
+                            tk_deep_max=tk_deep_max, fp_deep_max=fp_deep_max)
+    full["fase"] = "final"
+    fc = sum(1 for l in (full.get("tiktok") or {}).get("links") or [] if l.get("verificado_producto"))
+    ff = sum(1 for a in (full.get("foreplay") or {}).get("ads") or [] if a.get("verificado_producto"))
+    emit(full, f"✅ Listo — {fc + ff} confirmados exactos con tu producto", 100)
+    return full

@@ -747,13 +747,30 @@
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
         document.getElementById('tkGo').disabled=true;
         document.getElementById('tkProg').classList.remove('hidden');
-        document.getElementById('tkMsg').textContent='Buscando en TikTok y Foreplay a la vez… (1-2 min)';
+        document.getElementById('tkMsg').textContent='Buscando candidatos rápidos… (los preliminares salen en segundos)';
         document.getElementById('tkResult').innerHTML='';
         try{
-          const r=await fetch('/api/creative-search',{method:'POST',body:fd}); const j=await r.json();
+          // 2 FASES: arranca un JOB y sondea /api/status. Primero llegan los PRELIMINARES (⏳ verificando),
+          // después los EXACTOS confirmados. Así Jack ve algo YA en vez de esperar 1-2 min a que termine todo.
+          const r=await fetch('/api/creative-search-job',{method:'POST',body:fd}); const j=await r.json();
           if(!r.ok) throw (j.detail||'Error');
-          document.getElementById('tkGo').disabled=false; tkRender(j);
+          tkPoll(j.job_id);
         }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
+      }
+      // Sondea el job de búsqueda: pinta cada resultado PARCIAL (preliminar → final) conforme avanza.
+      async function tkPoll(id){
+        try{
+          const r=await fetch('/api/status/'+id); const j=await r.json();
+          if(!r.ok) throw (j.detail||'Error');
+          if(j.message) document.getElementById('tkMsg').textContent=j.message;
+          if(j.result) tkRender(j.result);                 // resultado parcial: se re-pinta cada poll
+          if(j.status==='running'){ setTimeout(()=>tkPoll(id),1500); return; }
+          document.getElementById('tkGo').disabled=false;
+          if(j.status==='error'){ document.getElementById('tkMsg').textContent=j.message||'Error'; }
+        }catch(e){
+          document.getElementById('tkMsg').textContent='Error: '+e;
+          document.getElementById('tkGo').disabled=false;
+        }
       }
       // id ESTABLE de un creativo (espejo del backend): TikTok = video_id (ignora el @usuario, que
       // cambia y hacía repetir el mismo video); Foreplay = id/video/foreplay_url (ya es estable).
@@ -772,6 +789,7 @@
         // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      framesVideo:(j.frames_video||[]),   // miniaturas de los frames sacados del video
+                     fase:(j.fase||'final'), keywords:(j.keywords||''),   // 2 fases: 'preliminar' → 'final'
                      desc:j.desc||'', variants:(j.variants||[]), links:links, ads:ads,
                      candIdxTk:new Set(candTk.map((_,k)=>linksConf.length+k)),
                      candIdxFp:new Set(candFp.map((_,k)=>adsConf.length+k)),
@@ -783,7 +801,7 @@
                      // sets de TODO lo mostrado (ids normalizados) → nada se repite al traer más
                      seenTk:new Set(links.map(l=>tkNormId(l,'tiktok'))),
                      seenFp:new Set(ads.map(a=>tkNormId(a,'foreplay')))};
-        document.getElementById('tkMsg').textContent = (j.keywords ? ('🔑 Buscado: '+j.keywords) : '');
+        // el mensaje de progreso lo maneja tkPoll (⏳ preliminares → ✅ exactos); aquí no lo pisamos
         tkPaint();
       }
       // agrega items nuevos a un grupo SIN repetir (contra el set de vistos); devuelve solo los que entraron
@@ -802,7 +820,14 @@
         const mas=(S.masComo||[]);
         const clTk=new Set(mas.filter(m=>m.fuente==='tiktok').flatMap(m=>m.idxs));
         const clFp=new Set(mas.filter(m=>m.fuente==='foreplay').flatMap(m=>m.idxs));
+        const prelim=(S.fase==='preliminar');   // fase 1: candidatos por portada (aún verificando a fondo)
         let h='';
+        // ── banner de FASE: preliminares (⏳) vs exactos confirmados (✅) ──
+        if(prelim){
+          h+='<div class="autoStep" style="border-left:3px solid #f59e0b;background:rgba(245,158,11,.08)">⏳ <b>Resultados preliminares</b> — estos cuadran por la PORTADA, los estoy verificando a fondo (contenido del video). En un momento suben los <b>✅ exactos confirmados</b> y se quitan los que no son tu producto.'+(S.keywords?(' · 🔑 '+tkEsc(S.keywords)):'')+'</div>';
+        } else if(S.keywords){
+          h+='<div class="s" style="margin:4px 0">🔑 Buscado: '+tkEsc(S.keywords)+'</div>';
+        }
         // ── frames del VIDEO usados como referencia (para que veas qué se usó) ──
         if((S.framesVideo||[]).length){
           h+='<div style="margin:14px 0 4px"><b>🎥 Frames de tu video usados de referencia ('+S.framesVideo.length+')</b>'+
@@ -816,7 +841,7 @@
         const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1])&&!candIdxTk.has(p[1]));
         const candTkIdxs=[...candIdxTk].filter(i=>links[i]&&!clTk.has(i));
         const conf=mainTk.map(p=>p[0]).filter(l=>l.verificado_producto);
-        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${mainTk.length})${S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:''}</h3>`;
+        h+=`<h3 style="margin:18px 0 4px">🎵 TikTok (${mainTk.length})${prelim?' — ⏳ verificando cuáles son exactos…':(S.tkVerif?` — ✅ ${conf.length} confirmados con tu producto`:'')}</h3>`;
         if(!mainTk.length&&!candTkIdxs.length){
           h+='<div class="autoStep bad">No salieron por API. Ábrelo a mano: <a href="'+tkEsc(S.busq)+'" target="_blank">'+tkEsc(S.busq)+'</a></div>';
         } else if(!mainTk.length){
@@ -851,7 +876,7 @@
         const mainFp=ads.map((a,i)=>[a,i]).filter(p=>!clFp.has(p[1])&&!candIdxFp.has(p[1]));
         const candFpIdxs=[...candIdxFp].filter(i=>ads[i]&&!clFp.has(i));
         const fpConf=mainFp.map(p=>p[0]).filter(a=>a.verificado_producto);
-        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${mainFp.length})${S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:''}</h3>`;
+        h+=`<h3 style="margin:26px 0 4px">📚 Foreplay (${mainFp.length})${prelim?' — ⏳ verificando cuáles son exactos…':(S.fpVerif?` — ✅ ${fpConf.length} confirmados con tu producto`:'')}</h3>`;
         // honesto: si el filtro de 30+ días no dio nada, estos salieron con MENOS días corriendo
         if(S.fpMenosVal&&(mainFp.length||candFpIdxs.length)){
           h+='<div class="autoStep" style="border-left:3px solid #f59e0b">🟡 Con el filtro de ganadores validados (30+ días) no salió NADA — estos llevan menos tiempo corriendo ('+tkEsc(S.fpMenosVal)+').</div>';
@@ -911,13 +936,17 @@
       function tkCandBadge(x){
         return '<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:#f59e0b;color:#1a1a1a" title="'+tkEsc(x.motivo_candidato||'sin confirmar')+' — revísalo tú antes de usarlo">🟡 sin confirmar</span>';
       }
+      // ⏳ badge de PRELIMINAR (fase 1: cuadra por portada, verificándose a fondo)
+      function tkPrelimBadge(){
+        return '<span class="fpBadge" style="left:auto;right:8px;bottom:auto;top:8px;background:rgba(0,0,0,.72);color:#fbbf24" title="Cuadra por la portada — verificando a fondo el contenido del video">⏳ verificando…</span>';
+      }
       function tkTkCard(l,i,verif){
         const views=l.plays?`<span class="fpBadge">▶ ${l.plays>=1e6?(l.plays/1e6).toFixed(1)+'M':l.plays>=1e3?Math.round(l.plays/1e3)+'K':l.plays} views</span>`:'';
         const cand=!!l.candidato;   // 🟡 candidato sin confirmar → borde y badge ámbar
         return `<div class="fpCard" style="cursor:default${cand?';border:1px solid #f59e0b':''}">
           <div class="fpThumbWrap">
             <img class="fpThumb" src="${tkEsc(l.cover||'')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
-            ${views}${cand?tkCandBadge(l):tkVerBadge(l.verificado_producto,verif)}</div>
+            ${views}${l.preliminar?tkPrelimBadge():(cand?tkCandBadge(l):tkVerBadge(l.verificado_producto,verif))}</div>
           <div class="fpBody"><div class="fpName">${tkEsc(l.title)||'—'}</div>
             <div class="fpBtns">
               <button class="fpBtn" onclick="tkTkPlay(${i},this)" title="Reproducir aquí mismo antes de descargarlo">▶️ Ver</button>
@@ -944,7 +973,7 @@
         return `<div class="fpCard" style="cursor:default${cand?';border:1px solid #f59e0b':''}">
           <div class="fpThumbWrap">
             <img class="fpThumb" src="${a.thumbnail?('/api/foreplay-thumb?url='+encodeURIComponent(a.thumbnail)):''}" loading="lazy" onerror="this.style.opacity=0">
-            ${badge}${otro}${cand?tkCandBadge(a):tkVerBadge(a.verificado_producto,verif)}</div>
+            ${badge}${otro}${a.preliminar?tkPrelimBadge():(cand?tkCandBadge(a):tkVerBadge(a.verificado_producto,verif))}</div>
           <div class="fpBody"><div class="fpName">${tkEsc(a.name)||'—'}</div>
             <div class="fpDesc">${tkEsc((a.description||'').slice(0,120))}</div>
             <div class="fpBtns">

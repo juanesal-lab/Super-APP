@@ -1353,6 +1353,81 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     return r
 
 
+# ---- BUSCAR CREATIVOS EN 2 FASES (JOB con resultados PROGRESIVOS: rápidos primero, exactos después) ----
+# Pedido de Jack: "Buscar creativos" se demoraba MUCHO porque TODO se verificaba a fondo antes de
+# mostrar nada. Ahora es un JOB: FASE 1 (segundos) muestra candidatos por PORTADA marcados
+# "⏳ verificando"; FASE 2 sube los CONFIRMADOS (verificación profunda por contenido, cero relleno) a
+# "✅ exactos" y descarta los que no son el mismo producto. El front hace poll() a /api/status/{id}.
+# ADITIVO: /api/creative-search (bloqueante) y /api/tiktok-search siguen IGUAL.
+
+def _run_creative_search_job(job_id: str, img_paths: list[str], frames_video: list[str],
+                             nombre: str, count: int, fp_count: int, landing_text: str):
+    from pipeline.creative_search import buscar_creativos_progresivo
+    job = JOBS[job_id]
+    img_path = img_paths[0] if img_paths else None
+    foto_base = os.path.basename(img_path) if img_path else ""
+    thumbs = _thumbs_b64(frames_video)                   # miniaturas de los frames del video (para la UI)
+    _t0 = time.time()
+
+    def progress(res, msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+        if res is not None:                              # resultado PARCIAL → el front lo pinta ya
+            res = dict(res)
+            res["foto"] = foto_base
+            res["frames_video"] = thumbs
+            job["result"] = res
+
+    try:
+        r = buscar_creativos_progresivo(
+            image_path=img_path, nombre=nombre, gemini_key=_load_env_key(),
+            foreplay_key=_load_foreplay_key(), anthropic_key=_load_anthropic_key(),
+            count=count, fp_count=fp_count, image_paths=img_paths or None,
+            landing_text=landing_text, progress=progress)
+        r = dict(r)
+        r["foto"] = foto_base
+        r["frames_video"] = thumbs
+        job["result"] = r
+        job["progress"] = 100
+        job["message"] = "✅ Listo"
+        job["status"] = "done"
+        _tk, _fp = r.get("tiktok") or {}, r.get("foreplay") or {}
+        asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search-job", producto=nombre,
+                        ok=bool(r.get("ok")), tiktok=len(_tk.get("links") or []),
+                        foreplay=len(_fp.get("ads") or []),
+                        candidatos_tk=len(_tk.get("candidatos") or []),
+                        candidatos_fp=len(_fp.get("candidatos") or []),
+                        seg=int(time.time() - _t0))
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = "Error: " + str(e)[:200]
+        asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search-job", producto=nombre,
+                        ok=False, error=str(e)[:200], seg=int(time.time() - _t0))
+
+
+@app.post("/api/creative-search-job")
+def creative_search_job(nombre: str = Form(""), count: int = Form(20),
+                        fp_count: int = Form(20), foto: UploadFile = File(None),
+                        fotos: list[UploadFile] = File([]),
+                        videos_ref: list[UploadFile] = File([]),
+                        fotos_url: str = Form(""), landing: str = Form("")):
+    """Arranca la búsqueda en 2 FASES como JOB en segundo plano y devuelve {job_id}. El frontend
+    sondea /api/status/{job_id}: primero llegan los PRELIMINARES (fase='preliminar'), luego los
+    EXACTOS confirmados (fase='final'). Mismos params que /api/creative-search."""
+    fotos_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
+    frames_video = _frames_de_videos(videos_ref)         # 5 mejores frames del video del producto
+    img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
+    if not (nombre.strip() or img_paths):
+        raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
+    job_id = uuid.uuid4().hex[:12]
+    JOBS[job_id] = {"tipo": "buscar_creativos", "status": "running", "progress": 0,
+                    "message": "Iniciando…", "result": None, "created": time.time()}
+    threading.Thread(target=_run_creative_search_job,
+                     args=(job_id, img_paths, frames_video, nombre.strip(), int(count),
+                           int(fp_count), _texto_landing(landing)), daemon=True).start()
+    return {"job_id": job_id}
+
+
 @app.post("/api/creative-more")
 def creative_more(fuente: str = Form("tiktok"), nombre: str = Form(""),
                         desc: str = Form(""), terminos: str = Form(""), angulo: str = Form(""),

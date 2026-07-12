@@ -480,6 +480,105 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
             "tiktok": tk, "foreplay": fpr}
 
 
+# ══ FASES SEPARADAS: Foreplay RÁPIDO (ya) + TikTok en 2do plano (lento por tikwm 1 req/s) ═════════
+# Pedido del dueño: "resultados lo más rápido posible". buscar_creativos() corre las dos fuentes en
+# paralelo pero ESPERA a la más lenta (TikTok ~52s). Estas 3 funciones lo parten: el endpoint analiza
+# la foto UNA vez (analizar_producto), muestra Foreplay al toque (buscar_foreplay_rapido, ~10-15s) y
+# arranca TikTok como JOB en 2do plano (buscar_tiktok_solo) que se inyecta al terminar. Reusan las
+# MISMAS internals que buscar_creativos → misma exactitud, mismos fixes (inglés/nicho/modo rápido).
+
+def _analisis_y_refs(image_path: str | None, nombre: str, gemini_key: str | None,
+                     image_paths: list[str] | None, landing_text: str):
+    """Analiza la foto UNA vez (o fallback sin foto). Devuelve (info, ref_bytes). Idéntico a la
+    cabecera de buscar_creativos — extraído para compartirlo entre las fases Foreplay y TikTok."""
+    nombre = (nombre or "").strip()
+    paths = [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:6]
+    ref_bytes = None
+    if paths:
+        info = analizar_foto(paths[0], nombre, gemini_key,
+                             image_paths=paths, landing_text=landing_text)
+        refs = []
+        for p in paths[:2]:
+            try:
+                with open(p, "rb") as f:
+                    refs.append(f.read())
+            except Exception:  # noqa: BLE001
+                pass
+        ref_bytes = refs or None
+    else:
+        info = {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
+    return info, ref_bytes
+
+
+def analizar_producto(image_path: str | None = None, nombre: str = "",
+                      gemini_key: str | None = None, image_paths: list[str] | None = None,
+                      landing_text: str = "") -> dict:
+    """1 sola llamada de análisis (analizar_foto) → dict {keywords, variants, desc}. Compartido por
+    la fase Foreplay y la fase TikTok para NO analizar dos veces (cero doble costo de Gemini)."""
+    info, _ = _analisis_y_refs(image_path, nombre, gemini_key, image_paths, landing_text)
+    return info
+
+
+def buscar_foreplay_rapido(image_path: str | None = None, nombre: str = "",
+                           gemini_key: str | None = None, foreplay_key: str | None = None,
+                           anthropic_key: str | None = None, fp_count: int = 20,
+                           fp_verify_max: int = _FP_VERIFY_MAX,
+                           image_paths: list[str] | None = None, landing_text: str = "",
+                           rellenar_n: bool = False, fp_deep_max: int = 0,
+                           analisis: dict | None = None) -> dict:
+    """FASE RÁPIDA: SOLO Foreplay (sin esperar a TikTok). Si `analisis` viene (de analizar_producto)
+    NO re-analiza la foto. Mismo juez y términos que buscar_creativos → misma exactitud. Devuelve
+    {ok, keywords, desc, variants, foreplay:{...igual que buscar_creativos...}}."""
+    nombre = (nombre or "").strip()
+    if analisis is not None:
+        info = analisis
+        ref_bytes = None
+        refs = []
+        for p in [p for p in (image_paths or [image_path]) if p and os.path.exists(p)][:2]:
+            try:
+                with open(p, "rb") as f:
+                    refs.append(f.read())
+            except Exception:  # noqa: BLE001
+                pass
+        ref_bytes = refs or None
+    else:
+        info, ref_bytes = _analisis_y_refs(image_path, nombre, gemini_key, image_paths, landing_text)
+    fpr = _buscar_foreplay(info, ref_bytes, foreplay_key, gemini_key, fp_count, fp_verify_max,
+                           rellenar_n=rellenar_n, deep_video_max=fp_deep_max)
+    return {"ok": bool(fpr.get("ads") or fpr.get("candidatos")),
+            "keywords": info.get("keywords") or nombre,
+            "desc": info.get("desc", ""),
+            "variants": [v for v in (info.get("variants") or []) if v][:6],
+            "foreplay": fpr}
+
+
+def buscar_tiktok_solo(image_path: str | None = None, nombre: str = "",
+                       gemini_key: str | None = None, anthropic_key: str | None = None,
+                       count: int = 20, image_paths: list[str] | None = None,
+                       landing_text: str = "", analisis: dict | None = None,
+                       rellenar_n: bool = False, tk_deep_max: int = 8,
+                       tk_terms_max: int = 8) -> dict:
+    """FASE TIKTOK (2do plano): SOLO TikTok — el cuello de botella (tikwm serializa a 1 req/s). Reusa
+    `analisis` (de analizar_producto) para NO re-analizar la foto. Mismo camino RÁPIDO (juez de
+    portada + deep de video acotado a tk_deep_max) que buscar_creativos → misma exactitud."""
+    nombre = (nombre or "").strip()
+    if analisis is None:
+        analisis, _ = _analisis_y_refs(image_path, nombre, gemini_key, image_paths, landing_text)
+    info = analisis
+    info_tk = info
+    if isinstance(info.get("variants"), list) and len(info["variants"]) > tk_terms_max > 0:
+        info_tk = dict(info)
+        info_tk["variants"] = info["variants"][:tk_terms_max]
+    tk = _tiktok_rapido(dict(image_path=image_path, nombre=nombre, api_key=gemini_key,
+                             count=count, anthropic_key=anthropic_key, analisis=info_tk,
+                             image_paths=image_paths, rellenar_n=rellenar_n,
+                             explorar_cuentas=False),
+                        tk_deep_max)
+    return {"ok": bool(tk.get("links") or tk.get("candidatos")),
+            "keywords": tk.get("keywords") or info.get("keywords") or nombre,
+            "tiktok": tk}
+
+
 # ══ "🔄 Cambiar" y "🎯 Más con este ángulo" (botones por creativo en la UI) ═══════════════════════
 
 def _terminos_angulo(angulo: str, nombre: str, gemini_key: str | None, k: int = 3) -> list[str]:

@@ -747,15 +747,53 @@
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
         document.getElementById('tkGo').disabled=true;
         document.getElementById('tkProg').classList.remove('hidden');
-        document.getElementById('tkMsg').textContent='Buscando candidatos rápidos… (los preliminares salen en segundos)';
+        document.getElementById('tkMsg').textContent='Buscando en Foreplay… (TikTok sigue en 2do plano)';
         document.getElementById('tkResult').innerHTML='';
         try{
-          // 2 FASES: arranca un JOB y sondea /api/status. Primero llegan los PRELIMINARES (⏳ verificando),
-          // después los EXACTOS confirmados. Así Jack ve algo YA en vez de esperar 1-2 min a que termine todo.
-          const r=await fetch('/api/creative-search-job',{method:'POST',body:fd}); const j=await r.json();
+          // FOREPLAY RÁPIDO: /api/creative-search responde en ~10-15s con Foreplay LISTO y arranca
+          // TikTok (lento por tikwm 1 req/s) en un JOB en 2do plano → lo inyectamos al terminar. Así
+          // el dueño ve creativos YA en vez de esperar ~52s a que TikTok devuelva todo junto.
+          const r=await fetch('/api/creative-search',{method:'POST',body:fd}); const j=await r.json();
           if(!r.ok) throw (j.detail||'Error');
-          tkPoll(j.job_id);
+          window._tkJ=j;                 // guardo la respuesta para inyectarle TikTok cuando llegue
+          tkRender(j);                   // Foreplay se pinta YA; TikTok muestra "⏳ buscando…"
+          document.getElementById('tkGo').disabled=false;
+          if(j.tiktok_job){
+            document.getElementById('tkMsg').textContent='✅ Foreplay listo · ⏳ TikTok en 2do plano…';
+            tkPollTikTok(j.tiktok_job);
+          } else {
+            document.getElementById('tkMsg').textContent='✅ Listo';
+          }
         }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
+      }
+      // Sondea el JOB de TikTok (2do plano) y lo inyecta en su sección al terminar. Si falla/se pierde,
+      // deja el mensaje honesto ("No salieron por API… ábrelo a mano") que ya pinta tkPaint.
+      async function tkPollTikTok(id){
+        try{
+          const r=await fetch('/api/status/'+id); const j=await r.json();
+          if(r.status===404){
+            tkInjectTikTok({tiktok:{links:[],candidatos:[]}});   // se perdió el job → mensaje honesto
+            document.getElementById('tkMsg').textContent='✅ Foreplay listo · TikTok no se pudo cargar (ábrelo a mano).';
+            return;
+          }
+          if(j.status==='running'){ setTimeout(()=>tkPollTikTok(id),1500); return; }
+          if(j.status==='done' && j.result){
+            tkInjectTikTok(j.result);
+            document.getElementById('tkMsg').textContent='✅ Listo — Foreplay y TikTok';
+          } else {
+            tkInjectTikTok({tiktok:{links:[],candidatos:[]}});   // error → cae al mensaje honesto
+            document.getElementById('tkMsg').textContent='✅ Foreplay listo · TikTok no salió por API (ábrelo a mano).';
+          }
+        }catch(e){
+          tkInjectTikTok({tiktok:{links:[],candidatos:[]}});
+          document.getElementById('tkMsg').textContent='✅ Foreplay listo · TikTok falló ('+e+').';
+        }
+      }
+      // Inyecta el resultado de TikTok (llegó en 2do plano) y re-pinta, sin perder Foreplay.
+      function tkInjectTikTok(tkResult){
+        const j=window._tkJ; if(!j) return;
+        j.tiktok=(tkResult&&tkResult.tiktok)||{links:[],candidatos:[]};   // ya no está 'pendiente'
+        tkRender(j);   // re-arma _tkS con Foreplay (igual) + TikTok (ahora lleno) y pinta
       }
       // Sondea el job de búsqueda: pinta cada resultado PARCIAL (preliminar → final) conforme avanza.
       async function tkPoll(id){
@@ -802,6 +840,7 @@
                      fpMenosVal:(fp.menos_validados?(fp.validacion||'menos validados'):''),
                      tkVerif:!!tk.verificado, fpVerif:!!fp.verificado, busq:tk.busqueda||'',
                      fpOk:!!fp.ok, fpErr:fp.error||'', broll:(tk.broll||[]),
+                     tkPend:!!tk.pendiente,   // TikTok aún cargando en 2do plano (job) → sección "⏳ buscando…"
                      tkMens:tk.mensaje_busqueda||'', masComo:[],
                      // sets de TODO lo mostrado (ids normalizados) → nada se repite al traer más
                      seenTk:new Set(links.map(l=>tkNormId(l,'tiktok'))),
@@ -843,6 +882,11 @@
         }
         // ── grupo 1: TikTok ──────────────────────────────────────────────
         const candIdxTk=S.candIdxTk||new Set(), candIdxFp=S.candIdxFp||new Set();
+        if(S.tkPend){
+          // TikTok cargando en 2do plano (job): sección "⏳ buscando…" — Foreplay ya está pintado arriba
+          h+=`<h3 style="margin:18px 0 4px">🎵 TikTok <span class="s" style="font-weight:400">— ⏳ buscando en 2do plano…</span></h3>`;
+          h+='<div class="autoStep">⏳ Buscando creativos en TikTok… (es lento por su límite de 1 búsqueda/seg). Aparecerán acá apenas terminen, sin recargar — mientras, ya tienes Foreplay arriba.</div>';
+        } else {
         const mainTk=links.map((l,i)=>[l,i]).filter(p=>!clTk.has(p[1])&&!candIdxTk.has(p[1]));
         const candTkIdxs=[...candIdxTk].filter(i=>links[i]&&!clTk.has(i));
         const conf=mainTk.map(p=>p[0]).filter(l=>l.verificado_producto);
@@ -877,6 +921,7 @@
         }
         // mensaje HONESTO cuando los confirmados no llegan al count pedido (con las búsquedas probadas)
         if(S.tkMens){ h+='<div class="autoStep" style="margin-top:8px">💬 '+tkEsc(S.tkMens)+'</div>'; }
+        }  // fin del else de S.tkPend (TikTok ya cargado en 2do plano)
         // ── grupo 2: Foreplay ────────────────────────────────────────────
         const mainFp=ads.map((a,i)=>[a,i]).filter(p=>!clFp.has(p[1])&&!candIdxFp.has(p[1]));
         const candFpIdxs=[...candIdxFp].filter(i=>ads[i]&&!clFp.has(i));

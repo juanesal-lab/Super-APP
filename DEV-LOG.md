@@ -3890,3 +3890,31 @@ modelos devuelve 200 (gratis) pero GENERAR devuelve 429 → la pill decía "conf
 _check_gemini_key ahora genera DE VERDAD (1 token con flash, fracción de centavo, cache 10 min; el 429
 sin créditos es gratis) → la pill pasa a "sin cuota (429)" en este caso. Verificado con la key real:
 {"ok": False, "reason": "cuota"}. Jack DEBE recargar en ai.studio/projects para que la app tenga cerebro.
+
+### 2026-07-12 · agente foreplay-rapido-tiktok-async
+"Buscar creativos" tardaba ~52s porque /api/creative-search ESPERABA a TikTok (tikwm serializa a
+1 req/s). Ahora la respuesta sale RÁPIDA con Foreplay y TikTok corre en 2do plano (job).
+
+BACKEND:
+- pipeline/creative_search.py: 3 funciones NUEVAS (aditivas, reusan las MISMAS internals de
+  buscar_creativos → misma exactitud y mismos fixes: expansión inglés _ES_EN/_terminos_ingles,
+  fallback de nicho en _buscar_foreplay, modo rápido _tiktok_rapido). `analizar_producto` (1 sola
+  llamada de análisis compartida por ambas fases), `buscar_foreplay_rapido` (SOLO Foreplay, reusa el
+  análisis), `buscar_tiktok_solo` (SOLO TikTok, reusa el análisis). buscar_creativos/_progresivo NO
+  se tocaron.
+- app.py /api/creative-search: analiza la foto UNA vez, arranca TikTok como JOB en 2do plano
+  (_run_tiktok_bg_job → JOBS + threading, sondeable por /api/status/{id}) y responde YA con Foreplay
+  + `tiktok_job` + tiktok:{pendiente:true}. Schema Foreplay intacto; tiktok_job es aditivo. TikTok en
+  el job usa tk_deep_max=0 (juez de portada, igual que el endpoint viejo, ~45-52s).
+
+FRONTEND (index.html): tkRun() ahora llama /api/creative-search (rápido), pinta Foreplay al toque y
+sondea el tiktok_job con tkPollTikTok(); tkInjectTikTok() inyecta TikTok al terminar re-usando
+tkRender (Foreplay no se pierde). tkPaint muestra "⏳ buscando en 2do plano…" mientras (S.tkPend);
+si el job falla/se pierde cae al mensaje honesto "No salieron por API… ábrelo a mano". El endpoint
+viejo /api/creative-search-job (2 fases progresivas) y /api/tiktok-search siguen IGUAL.
+
+MEDIDO (real, key real, foto uploads/tksearch/rodillera 3.jpeg): respuesta rápida de
+/api/creative-search = 3.2s (HTTP 200, con tiktok_job y foreplay ya resuelto — Foreplay dio HTTP 402
+por créditos agotados de la cuenta, no es bug); el job de TikTok terminó DESPUÉS en ~45s con
+status "done" (verificado=True). py_compile OK en app.py y creative_search.py; node --check OK del JS;
+1 sola instancia de uvicorn en :8420.

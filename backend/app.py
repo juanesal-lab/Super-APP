@@ -1309,7 +1309,44 @@ def tiktok_search(nombre: str = Form(""), count: int = Form(20),
     return r
 
 
-# ---- BUSCAR CREATIVOS (TikTok + Foreplay a la vez: foto + nombre -> dos grupos) ----
+# ---- BUSCAR CREATIVOS (Foreplay RÁPIDO ya + TikTok en 2do plano: foto + nombre -> dos grupos) ----
+# El dueño quería "resultados lo más rápido posible". TikTok es LENTO (tikwm serializa a 1 req/s →
+# ~52s). Antes esta respuesta ESPERABA a TikTok. Ahora: se analiza la foto UNA vez, se responde YA
+# con Foreplay (~10-15s) + un `tiktok_job`, y TikTok corre en un JOB en 2do plano que el front sondea
+# con /api/status/{job_id} y lo inyecta en su sección al terminar. Aditivo: /api/creative-search-job
+# (2 fases progresivas) y /api/tiktok-search siguen IGUAL.
+
+def _run_tiktok_bg_job(job_id: str, img_path: str | None, img_paths: list[str],
+                       nombre: str, count: int, analisis: dict):
+    """FASE TIKTOK en 2do plano (el cuello de botella). Reusa el `analisis` ya calculado por la fase
+    Foreplay → 0 llamadas extra a Gemini. Vuelca el resultado en JOBS para que el front lo inyecte."""
+    from pipeline.creative_search import buscar_tiktok_solo
+    job = JOBS[job_id]
+    _t0 = time.time()
+    try:
+        # tk_deep_max=0: juez de PORTADA (estricto, marca verificado_producto) SIN bajar videos —
+        # igual que hacía el /api/creative-search bloqueante viejo (~52s). El deep (bajar+juzgar
+        # videos) multiplicaba el tiempo a varios minutos; en 2do plano no compensa la espera.
+        r = buscar_tiktok_solo(image_path=img_path, nombre=nombre, gemini_key=_load_env_key(),
+                               anthropic_key=_load_anthropic_key(), count=count,
+                               image_paths=img_paths or None, analisis=analisis,
+                               rellenar_n=True, tk_deep_max=0)
+        job["result"] = r
+        job["progress"] = 100
+        job["message"] = "✅ TikTok listo"
+        job["status"] = "done"
+        _tk = r.get("tiktok") or {}
+        asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search-tiktok-bg", producto=nombre,
+                        ok=bool(_tk.get("links")), tiktok=len(_tk.get("links") or []),
+                        candidatos_tk=len(_tk.get("candidatos") or []),
+                        error_tiktok=str(_tk.get("error") or "")[:150],
+                        seg=int(time.time() - _t0))
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = "Error TikTok: " + str(e)[:200]
+        asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search-tiktok-bg", producto=nombre,
+                        ok=False, error=str(e)[:200], seg=int(time.time() - _t0))
+
 
 @app.post("/api/creative-search")
 def creative_search(nombre: str = Form(""), count: int = Form(20),
@@ -1318,13 +1355,14 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
                           videos_ref: list[UploadFile] = File([]),
                           fotos_url: str = Form(""),
                           landing: str = Form("")):
-    """Foto + nombre del producto → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
+    """Foto + nombre del producto → Foreplay RÁPIDO ya + TikTok en 2do plano (job).
     /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo.
     `fotos` acepta hasta 3 del MISMO producto (frente/lado/empaque) → ficha y jueces más precisos.
     `fotos_url`: LINKS de fotos pegados (uno por línea; si pegan la PÁGINA se pesca la og:image sola).
     `videos_ref` (máx 2): videos del producto → 2 frames c/u como fotos de referencia extra (tope
-    total 4, fotos primero). `landing`: link de la página de venta → contexto para la ficha."""
-    from pipeline.creative_search import buscar_creativos
+    total 4, fotos primero). `landing`: link de la página de venta → contexto para la ficha.
+    Respuesta: {ok, keywords, desc, variants, foreplay:{...}, tiktok:{pendiente:true}, tiktok_job}."""
+    from pipeline.creative_search import buscar_foreplay_rapido, analizar_producto
     fotos_paths = (_guardar_fotos_busqueda(foto, fotos) + _fotos_desde_urls(fotos_url))[:3]
     frames_video = _frames_de_videos(videos_ref)         # 5 mejores frames del video del producto
     img_paths = (fotos_paths + frames_video)[:6]         # fotos primero, luego frames (tope 6)
@@ -1332,33 +1370,48 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     if not (nombre.strip() or img_path):
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
     _t0 = time.time()
+    landing_text = _texto_landing(landing)
+    tk_job = ""
     try:
-        r = buscar_creativos(image_path=img_path, nombre=nombre.strip(),
-                             gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
-                             anthropic_key=_load_anthropic_key(),
-                             count=int(count), fp_count=int(fp_count),
-                             image_paths=img_paths or None,
-                             landing_text=_texto_landing(landing),
-                             rellenar_n=True)   # devolver los N pedidos (por tiers, mismo producto)
+        # 1 sola llamada de análisis, compartida por Foreplay y TikTok (cero doble costo de Gemini)
+        analisis = analizar_producto(image_path=img_path, nombre=nombre.strip(),
+                                     gemini_key=_load_env_key(), image_paths=img_paths or None,
+                                     landing_text=landing_text)
+        # TikTok (lento por tikwm 1 req/s) arranca YA en 2do plano; el front lo inyecta al terminar
+        tk_job = uuid.uuid4().hex[:12]
+        JOBS[tk_job] = {"tipo": "tiktok_bg", "status": "running", "progress": 0,
+                        "message": "⏳ Buscando en TikTok…", "result": None, "created": time.time()}
+        threading.Thread(target=_run_tiktok_bg_job,
+                         args=(tk_job, img_path, img_paths, nombre.strip(), int(count), analisis),
+                         daemon=True).start()
+        # Foreplay RÁPIDO (reusa el MISMO análisis) → responde en ~10-15s SIN esperar a TikTok
+        fr = buscar_foreplay_rapido(image_path=img_path, nombre=nombre.strip(),
+                                    gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
+                                    anthropic_key=_load_anthropic_key(), fp_count=int(fp_count),
+                                    image_paths=img_paths or None, landing_text=landing_text,
+                                    rellenar_n=True, analisis=analisis)
     except Exception as e:  # noqa: BLE001
         # 🤖 bitácora del asistente: la búsqueda era 100% efímera (ni job ni archivo) → si fallaba,
         # después NADIE (ni la IA) podía decir qué pasó. Ahora queda anotado el error concreto.
         asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search", producto=nombre.strip(),
                         ok=False, error=str(e)[:200], seg=int(time.time() - _t0))
         raise
-    _tk, _fp = r.get("tiktok") or {}, r.get("foreplay") or {}
+    _fp = fr.get("foreplay") or {}
     asst.log_evento(WORK_DIR, "busqueda", fuente="creative-search", producto=nombre.strip(),
-                    ok=bool(r.get("ok")), tiktok=len(_tk.get("links") or []),
-                    foreplay=len(_fp.get("ads") or []),
+                    ok=bool(fr.get("ok")), foreplay=len(_fp.get("ads") or []),
                     # 🟡 candidatos sin confirmar (sección aparte): también quedan anotados
-                    candidatos_tk=len(_tk.get("candidatos") or []),
                     candidatos_fp=len(_fp.get("candidatos") or []),
-                    error_tiktok=str(_tk.get("error") or "")[:150],
                     error_foreplay=str(_fp.get("error") or "")[:150],
-                    seg=int(time.time() - _t0))
-    # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
-    r["foto"] = os.path.basename(img_path) if img_path else ""
-    r["frames_video"] = _thumbs_b64(frames_video)        # miniaturas de los frames usados (para la UI)
+                    tiktok_job=tk_job, seg=int(time.time() - _t0))
+    r = {"ok": bool(fr.get("ok")), "keywords": fr.get("keywords") or nombre.strip(),
+         "desc": fr.get("desc", ""), "variants": fr.get("variants") or [],
+         "foreplay": _fp,
+         # TikTok llega por el job en 2do plano → placeholder para que el front pinte "⏳ Buscando…"
+         "tiktok": {"pendiente": True, "links": [], "candidatos": [], "broll": []},
+         "tiktok_job": tk_job,
+         # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
+         "foto": os.path.basename(img_path) if img_path else "",
+         "frames_video": _thumbs_b64(frames_video)}       # miniaturas de los frames usados (UI)
     return r
 
 

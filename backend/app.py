@@ -211,16 +211,21 @@ _GEMINI_CHECK_CACHE: dict[str, tuple[float, dict]] = {}
 
 
 def _check_gemini_key(key: str) -> dict:
-    """Valida la key de Gemini con una llamada BARATA (listar modelos, NO consume tokens).
-    Devuelve {"ok": True} si sirve, {"ok": False, "reason": "invalida"|"cuota"} si Google
-    la rechaza, y {"ok": None, "reason": "red"} si no hubo respuesta (timeout / sin internet:
-    NO castigamos la key, el estado queda desconocido)."""
+    """Valida la key de Gemini GENERANDO de verdad (1 token con flash — el caso real de Jack:
+    'prepayment credits depleted' devuelve 200 al listar modelos pero 429 al GENERAR, y la pill
+    decía 'ok' mintiendo). Costo: fracción de centavo por chequeo, cacheado 10 min; si no hay
+    créditos, el 429 es gratis. Devuelve {"ok": True} si genera, {"ok": False, "reason":
+    "invalida"|"cuota"}, y {"ok": None, "reason": "red"} si no hubo respuesta (no se castiga)."""
     cacheado = _GEMINI_CHECK_CACHE.get(key)
     if cacheado and time.time() - cacheado[0] < _GEMINI_CHECK_TTL:
         return cacheado[1]
     try:
-        r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
-                         params={"key": key, "pageSize": 1}, timeout=6)
+        r = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+            params={"key": key},
+            json={"contents": [{"parts": [{"text": "ok"}]}],
+                  "generationConfig": {"maxOutputTokens": 1}},
+            timeout=10)
         if r.status_code == 200:
             res = {"ok": True}
         elif r.status_code in (400, 403):

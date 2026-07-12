@@ -3883,3 +3883,10 @@ Juan (/Users/juanes/montador-ads); en la de Jack no hay nada que prender y no es
 📢 **AVISO JUAN (pedido concreto): sube `montador-ads` a GitHub** (o comparte el repo con
 jackingshop1-cell) — Jack quiere usar la pestaña 🎬 Montar ad y hoy es imposible desde su máquina.
 Cuando esté, yo se la clono en ~/montador-ads y el botón "Prender" le funciona tal cual lo hiciste.
+
+### 2026-07-12 · Claude (jackingshop1-cell) · 🔑 Chequeo de Gemini ENDURECIDO: la pill ya no dice "ok" con créditos agotados
+El caso real de Jack: créditos prepago de Gemini en CERO ("prepayment credits are depleted") — listar
+modelos devuelve 200 (gratis) pero GENERAR devuelve 429 → la pill decía "configurada ✓" mintiendo.
+_check_gemini_key ahora genera DE VERDAD (1 token con flash, fracción de centavo, cache 10 min; el 429
+sin créditos es gratis) → la pill pasa a "sin cuota (429)" en este caso. Verificado con la key real:
+{"ok": False, "reason": "cuota"}. Jack DEBE recargar en ai.studio/projects para que la app tenga cerebro.

@@ -78,6 +78,8 @@ while true; do
   fi
 
   if [ "$PENDING" = "1" ] && ! app_busy; then     # reinicia SOLO si toca y NO hay render corriendo
+    sleep 5                                        # ventana de carrera: si Jack le dio a "Buscar/Generar"
+    if app_busy; then continue; fi                 # justo ahora, el 2º chequeo lo ve y NO reinicia
     echo "🔁 Aplicando la actualización (reiniciando el server)..."
     kill "$SRV_PID" 2>/dev/null; kill_port
     start_server

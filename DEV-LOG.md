@@ -3861,3 +3861,12 @@ ni de tiktok_search.py/foreplay_search.py — a esos solo se los lee).
 - py_compile de creative_search.py: OK. app.py NO se tocó (el default ya es el camino rápido).
 - REINICIAR para que aplique: matar el uvicorn de :8420 y relanzar (nohup/supervisor lo levanta con el
   código nuevo). Ya se hizo: server arriba en :8420 con el código final (health 200).
+
+### 2026-07-11 · Claude (jackingshop1-cell) · 🩹 FIX doble: "Error: Trabajo no encontrado" en Buscar creativos
+Jack buscó justo cuando el auto-updater reinició el server → su job murió y el front quedó pidiendo un
+job inexistente ("Trabajo no encontrado" seco, con secciones a medias). Dos arreglos:
+- **run.sh**: el reinicio por update ahora hace DOBLE chequeo de /api/busy con 5s de gap — si Jack
+  arrancó algo justo en la ventana entre el chequeo y el kill, el 2º chequeo lo ve y NO reinicia.
+- **index.html (tkPoll)**: si /api/status devuelve 404, mensaje honesto y accionable: "La app se
+  actualizó y esta búsqueda se perdió — dale otra vez a Buscar" (antes: error críptico + UI a medias).
+Verificado: bash -n OK, JS 17/17. AVISO Juan: solo run.sh (loop) + 5 líneas en tkPoll.

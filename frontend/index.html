@@ -761,6 +761,11 @@
       async function tkPoll(id){
         try{
           const r=await fetch('/api/status/'+id); const j=await r.json();
+          if(r.status===404){   // el server se reinició (auto-update) y el trabajo se perdió → honesto y accionable
+            document.getElementById('tkMsg').textContent='⚠️ La app se actualizó y esta búsqueda se perdió — dale otra vez a 🔍 Buscar creativos (30 segundos).';
+            document.getElementById('tkGo').disabled=false;
+            return;
+          }
           if(!r.ok) throw (j.detail||'Error');
           if(j.message) document.getElementById('tkMsg').textContent=j.message;
           if(j.result) tkRender(j.result);                 // resultado parcial: se re-pinta cada poll

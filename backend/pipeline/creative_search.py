@@ -20,12 +20,80 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import foreplay_search as fp
+from . import tiktok_search as _tks
 from .tiktok_search import _expandir, _verificar, _verificar_video, analizar_foto, buscar
 
 log = logging.getLogger("creative_search")
+
+# ══ CAMINO RÁPIDO de TikTok (sin tocar tiktok_search.py) ═══════════════════════════════════════
+# Lo LENTO de buscar() es la verificación por CONTENIDO del video: baja el mp4 ENTERO de decenas de
+# candidatos y lo juzga con Gemini → minutos. El juez de PORTADA (thumbnail ya descargado) es rápido
+# y basta para marcar "producto exacto" en el camino veloz. Como NO podemos editar tiktok_search.py,
+# se envuelven sus jueces (`_verificar`/`_verificar_video`) con wrappers que, SOLO cuando hay un
+# contexto rápido activo (`_TK_FAST`), (a) cachean el veredicto de PORTADA y (b) en el juez profundo
+# dejan pasar de verdad SOLO los primeros `max` (0 por defecto = deep OFF) y para el resto devuelven
+# el veredicto de portada YA cacheado — sin descargar ningún video. Sin contexto activo (p.ej. el
+# endpoint viejo /api/tiktok-search), los wrappers llaman al original: comportamiento idéntico.
+_TK_FAST_LOCK = threading.Lock()
+_TK_FAST = None                    # dict activo mientras corre un buscar() en modo rápido
+_orig_verificar = _tks._verificar
+_orig_verificar_video = _tks._verificar_video
+
+
+def _cover_key(cand: dict) -> str:
+    c = cand or {}
+    return str(c.get("cover") or c.get("thumbnail") or c.get("play") or c.get("video") or id(c))
+
+
+def _verificar_cached(cand, ref_bytes, ref_desc, api_key):
+    """Juez de PORTADA original + cache del veredicto (para reusarlo en el juez profundo rápido)."""
+    v = _orig_verificar(cand, ref_bytes, ref_desc, api_key)
+    ctx = _TK_FAST
+    if ctx is not None:
+        try:
+            ctx["cover"][_cover_key(cand)] = v
+        except Exception:  # noqa: BLE001
+            pass
+    return v
+
+
+def _verificar_video_fast(cand, ref_bytes, ref_desc, api_key):
+    """Juez profundo ACOTADO: solo los primeros `max` bajan el video de verdad; el resto reusa el
+    veredicto de portada (rápido, sin red). Sin contexto rápido → juez profundo original de siempre."""
+    ctx = _TK_FAST
+    if ctx is None:
+        return _orig_verificar_video(cand, ref_bytes, ref_desc, api_key)
+    allow = False
+    with ctx["lock"]:
+        if ctx["used"] < ctx["max"]:
+            ctx["used"] += 1
+            allow = True
+    if allow:
+        return _orig_verificar_video(cand, ref_bytes, ref_desc, api_key)
+    return ctx["cover"].get(_cover_key(cand))    # veredicto de portada (o None si no se pudo juzgar)
+
+
+# Instalar los wrappers en el módulo tiktok_search (buscar() los resuelve como globals del módulo).
+_tks._verificar = _verificar_cached
+_tks._verificar_video = _verificar_video_fast
+
+
+def _tiktok_rapido(buscar_kwargs: dict, tk_deep_max: int = 0) -> dict:
+    """Corre buscar() de TikTok en modo RÁPIDO (juez de portada confirma; deep de video acotado a
+    `tk_deep_max`, 0 = OFF). El lock serializa búsquedas rápidas concurrentes (herramienta de 1 solo
+    dueño → prácticamente nunca chocan) para que el contexto global no se pise."""
+    global _TK_FAST
+    with _TK_FAST_LOCK:
+        _TK_FAST = {"cover": {}, "used": 0, "max": max(0, int(tk_deep_max)),
+                    "lock": threading.Lock()}
+        try:
+            return buscar(**buscar_kwargs)
+        finally:
+            _TK_FAST = None
 
 # tope de thumbnails de Foreplay verificados con Gemini (costo acotado; flash es barato pero no gratis)
 # Pool más grande (era 24): como ahora SOLO se devuelven matches alta/media (se descarta baja), hace
@@ -140,7 +208,7 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                      gemini_key: str | None, count: int = 20,
                      verify_max: int = _FP_VERIFY_MAX,
                      excluir: set[str] | None = None, solo_confirmados: bool = True,
-                     rellenar_n: bool = False) -> dict:
+                     rellenar_n: bool = False, deep_video_max: int = 0) -> dict:
     """Busca en Foreplay con varios términos (paralelo), deduplica y verifica el MISMO producto.
     Devuelve {ok, ads:[...], n_confirmados, verificado, terminos, error?}."""
     if not foreplay_key:
@@ -223,29 +291,40 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                     a["_cand_prio"] = 0
                     rechazados.append(a)
                 # match=False → nunca confirmado ni candidato, salvo ÚLTIMO RECURSO (abajo)
-        # CONTENIDO: baja el video del ad y lo juzga por DENTRO (exacto = match + confianza no baja).
+        # CONTENIDO (DEEP, OPCIONAL Y ACOTADO): bajar el video ENTERO + juzgarlo por dentro es lo
+        # LENTO (minutos con muchos ads). En el camino RÁPIDO (deep_video_max=0, por defecto) el juez
+        # de PORTADA — que ya pasó el filtro ESTRICTO — confirma. Si se pide deep, se verifica por
+        # dentro SOLO los top `deep_video_max` (los de más días corriendo, los más prometedores) y el
+        # resto queda confirmado por portada. Así la exactitud se mantiene y la respuesta no se cuelga.
         confirmados = []
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            futs = {}
-            for a in cover_ok:
-                cand = {"video": a.get("video") or "", "play": a.get("video") or "",
-                        "title": (a.get("name") or a.get("headline") or "")[:120]}
-                futs[ex.submit(_verificar_video, cand, ref_bytes, ref_desc, gemini_key)] = a
-            for fut in as_completed(futs):
-                v, a = fut.result(), futs[fut]
-                if v is None:                    # no se pudo bajar/juzgar el video → cae al veredicto
-                    a["_conf"] = a.get("_cover_conf") or "media"   # de portada, que ya pasó el filtro
-                    a["verificado_producto"] = True
-                    confirmados.append(a)
-                elif v.get("match") and v.get("confianza") != "baja":
-                    a["_conf"] = v.get("confianza")
-                    a["verificado_producto"] = True
-                    confirmados.append(a)
-                elif v.get("match"):             # match por dentro pero confianza baja: DUDÓ
-                    a["_motivo"] = "el juez dudó (confianza baja en el contenido)"
-                    a["_cand_prio"] = 3          # el más prometedor de los no confirmados
-                    dudosos.append(a)
-                # match=False por contenido → fuera SIEMPRE (no es el mismo producto)
+        cover_ok.sort(key=lambda a: int(a.get("dias", 0) or 0), reverse=True)
+        deep_pool = cover_ok[:max(0, deep_video_max)]
+        for a in cover_ok[len(deep_pool):]:      # confirmados por PORTADA (rápido, sin descargar video)
+            a["_conf"] = a.get("_cover_conf") or "media"
+            a["verificado_producto"] = True
+            confirmados.append(a)
+        if deep_pool:
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                futs = {}
+                for a in deep_pool:
+                    cand = {"video": a.get("video") or "", "play": a.get("video") or "",
+                            "title": (a.get("name") or a.get("headline") or "")[:120]}
+                    futs[ex.submit(_verificar_video, cand, ref_bytes, ref_desc, gemini_key)] = a
+                for fut in as_completed(futs):
+                    v, a = fut.result(), futs[fut]
+                    if v is None:                # no se pudo bajar/juzgar el video → cae al veredicto
+                        a["_conf"] = a.get("_cover_conf") or "media"   # de portada, que ya pasó el filtro
+                        a["verificado_producto"] = True
+                        confirmados.append(a)
+                    elif v.get("match") and v.get("confianza") != "baja":
+                        a["_conf"] = v.get("confianza")
+                        a["verificado_producto"] = True
+                        confirmados.append(a)
+                    elif v.get("match"):         # match por dentro pero confianza baja: DUDÓ
+                        a["_motivo"] = "el juez dudó (confianza baja en el contenido)"
+                        a["_cand_prio"] = 3      # el más prometedor de los no confirmados
+                        dudosos.append(a)
+                    # match=False por contenido → fuera SIEMPRE (no es el mismo producto)
         confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
         if rellenar_n and len(confirmados) < count:
             # 🟡 CANDIDATOS SIN CONFIRMAR: sección APARTE y etiquetada (nunca mezclados con los
@@ -313,7 +392,8 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
                      anthropic_key: str | None = None, count: int = 20,
                      fp_count: int = 20, fp_verify_max: int = _FP_VERIFY_MAX,
                      image_paths: list[str] | None = None,
-                     landing_text: str = "", rellenar_n: bool = False) -> dict:
+                     landing_text: str = "", rellenar_n: bool = False,
+                     tk_deep_max: int = 0, fp_deep_max: int = 0) -> dict:
     """Foto + nombre → creativos del MISMO producto en TikTok Y Foreplay (en paralelo).
 
     `image_paths` (opcional): hasta 6 imágenes del MISMO producto (fotos frente/lado/empaque y/o
@@ -340,12 +420,19 @@ def buscar_creativos(image_path: str | None = None, nombre: str = "",
     else:
         info = {"keywords": nombre, "variants": _expandir(nombre, []), "desc": nombre}
 
+    # CAMINO RÁPIDO: TikTok con juez de portada (deep de video acotado a tk_deep_max, 0 = OFF) y
+    # Foreplay con juez de portada (deep acotado a fp_deep_max, 0 = OFF), EN PARALELO. Antes ambos
+    # bajaban+juzgaban el video ENTERO de decenas de candidatos → minutos. Ahora la respuesta sale
+    # en segundos y la exactitud la marca el juez de portada (estricto). El deep queda como opción.
     with ThreadPoolExecutor(max_workers=2) as ex:
-        tk_fut = ex.submit(buscar, image_path=image_path, nombre=nombre, api_key=gemini_key,
-                           count=count, anthropic_key=anthropic_key, analisis=info,
-                           image_paths=image_paths, rellenar_n=rellenar_n)
+        tk_fut = ex.submit(_tiktok_rapido,
+                           dict(image_path=image_path, nombre=nombre, api_key=gemini_key,
+                                count=count, anthropic_key=anthropic_key, analisis=info,
+                                image_paths=image_paths, rellenar_n=rellenar_n),
+                           tk_deep_max)
         fp_fut = ex.submit(_buscar_foreplay, info, ref_bytes, foreplay_key, gemini_key,
-                           fp_count, fp_verify_max, rellenar_n=rellenar_n)
+                           fp_count, fp_verify_max, rellenar_n=rellenar_n,
+                           deep_video_max=fp_deep_max)
         tk = tk_fut.result()
         fpr = fp_fut.result()
 

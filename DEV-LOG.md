@@ -3756,3 +3756,24 @@ la muestra. Verifiqué que :8440 no manda X-Frame-Options/CSP → se puede embeb
 - Verificado: py_compile, import, status()=up:True (estaba corriendo), JS 17/17, panel/pestaña/iframe OK.
 AVISO Jack: NO toqué montador-ads (es otro repo). En esta app solo: 1 pestaña + 1 panel iframe en
 index.html + 2 endpoints de status/start en app.py. Nada del pipeline existente cambia.
+
+### 2026-07-11 · Claude (jackingshop1-cell) · 📡 Radar configurable DESDE LA APP (key en Claves + botón Escanear, cero terminal)
+Jack vio "Radar Ganadores — sin datos en esta máquina" con instrucciones de terminal y pidió "haz eso".
+El motor (radar/ de Juan, stdlib puro) estaba completo; faltaba la key y los datos en la máquina de Jack.
+Ahora TODO se hace desde la app:
+- **🔑 Claves**: tarjeta nueva "📡 ScrapeCreators · Radar" (provider `scrapecreators` en _KEY_ENV +
+  pill has_scrapecreators_key en /api/config). Al guardar, la key se escribe en el .env principal Y en
+  `radar/.env` (el motor lee SU propio .env — radar.py load_api_key).
+- **radar_api.py**: NUEVO POST /api/radar/scan (corre scan → report → dashboard como subprocesos en
+  background, timeout 30 min, estado en memoria) + GET /api/radar/scan-status. Gasta ~69 créditos →
+  SOLO se dispara con el botón (nunca automático). Sin key → error honesto que apunta a Claves.
+- **Página /radar sin datos** reescrita: pasos claros (key gratis en scrapecreators.com → pegarla en
+  Claves → botón "🛰️ Escanear ahora" con barra de estado y recarga al dashboard al terminar).
+- VERIFICADO ($0): py OK; rutas /api/radar/scan y scan-status registradas; scan sin key → error honesto;
+  save_key con key de PRUEBA escribió ambos .env y _radar_key_ok()=True (revertida limpia, keys reales
+  intactas); JS 17/17. NO corrí un scan real (necesita la key de Jack; él la saca gratis en 2 min).
+- PENDIENTE Jack: registrarse en scrapecreators.com (gratis, 1.000 créditos), pegar la key en Claves y
+  darle "Escanear ahora". PENDIENTE opcional: instalar el escaneo diario automático (run_daily.sh /
+  launchd) — NO lo activé porque gasta 69 créditos/día; decidir cuando Jack tenga la key.
+AVISO Juan: radar_api.py ganó 2 endpoints aditivos + página sin-datos nueva; app.py solo el provider
+nuevo en _KEY_ENV + has_scrapecreators_key + el doble-write a radar/.env. Tu motor radar/ intacto.

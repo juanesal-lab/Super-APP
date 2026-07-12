@@ -515,6 +515,7 @@ def get_config():
         "has_foreplay_key": bool(_load_foreplay_key()),
         "has_pexels_key": bool(_load_pexels_key()),
         "has_pixabay_key": bool(_load_pixabay_key()),
+        "has_scrapecreators_key": bool(_load_key("SCRAPECREATORS_API_KEY")),   # 📡 Radar
         "has_shopify": bool(_load_shopify()[0] and _load_shopify()[1]),
         "voices": [{"key": k, "label": v["label"]} for k, v in VOICES.items()],
         "dub_langs": [{"code": c, "label": n} for c, n in DUB_LANGS.items()],
@@ -595,6 +596,7 @@ def caption_preview(style: str = "hormozi", size: str = "mediano"):
 _KEY_ENV = {"gemini": "GEMINI_API_KEY", "eleven": "ELEVENLABS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY", "foreplay": "FOREPLAY_API_KEY",
             "pexels": "PEXELS_API_KEY", "pixabay": "PIXABAY_API_KEY",   # bancos de video para B-ROLL
+            "scrapecreators": "SCRAPECREATORS_API_KEY",                 # 📡 Radar (Meta Ad Library)
             "shopify_domain": "SHOPIFY_STORE_DOMAIN", "shopify_token": "SHOPIFY_ADMIN_API_TOKEN",
             "shopify_theme": "SHOPIFY_THEME_ID"}
 # Prefijos esperados por proveedor: evita pegar el key equivocado en el campo equivocado
@@ -627,6 +629,18 @@ def save_key(key: str = Form(...), provider: str = Form("gemini")):
     with open(ENV_FILE, "w") as f:
         f.writelines(lines)
     os.environ[env_name] = key
+    # 📡 El motor del Radar lee SU PROPIO radar/.env (radar.py load_api_key) — se escribe también ahí
+    if provider == "scrapecreators":
+        try:
+            renv = os.path.join(BASE, "radar", ".env")
+            rlines = []
+            if os.path.exists(renv):
+                rlines = [l for l in open(renv) if not l.startswith(env_name + "=")]
+            rlines.append(f"{env_name}={key}\n")
+            with open(renv, "w") as f:
+                f.writelines(rlines)
+        except Exception:  # noqa: BLE001
+            pass
     return {"ok": True}
 
 

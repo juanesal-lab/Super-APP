@@ -1455,6 +1455,16 @@
     <p class="pmsg" style="margin:10px 0 0">Con esto el <b>B-roll</b> deja de salir de TikTok (que da memes) y sale de <b>bancos de video reales</b>: clips limpios, verticales y descargables del punto de dolor / la escena que pides. Saca la key GRATIS en <b>pexels.com/api</b> (y opcional <b>pixabay.com/api/docs</b>) — 2 minutos, sin tarjeta. Sin esto, el b-roll cae al modo viejo (TikTok).</p>
   </div>
 
+  <!-- 📡 ScrapeCreators (Radar Ganadores) -->
+  <div class="card" id="radarKeyCard">
+    <h2>📡 ScrapeCreators · Radar <span id="radarKeyPill" class="pill off">sin configurar</span></h2>
+    <div class="keyrow">
+      <input type="password" id="scrapecreatorsInput" placeholder="API key de ScrapeCreators (gratis, 1.000 créditos)">
+      <button class="btn sec" id="scrapecreatorsSave" style="width:auto">Guardar</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Con esto el <b>📡 Radar</b> escanea la Meta Ad Library y te muestra los productos GANADORES (score 0-100, tipo Minea). Saca la key GRATIS en <b>scrapecreators.com</b> (regístrate y copia la API key — 2 minutos). Cada escaneo gasta ~69 créditos; con los 1.000 gratis tienes ~14 escaneos. Luego ve a la pestaña Radar y dale "🛰️ Escanear ahora".</p>
+  </div>
+
   <!-- Shopify (módulo Crear Landings) -->
   <div class="card" id="shopifyCard">
     <h2>🛍️ Shopify · Crear Landings <span id="shopifyPill" class="pill off">sin configurar</span></h2>
@@ -2969,6 +2979,7 @@ async function refreshConfig(){
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);
   setPill("brollPill", j.has_pexels_key || j.has_pixabay_key);
+  setPill("radarKeyPill", j.has_scrapecreators_key);
   setPill("shopifyPill", j.has_shopify);
   // poblar voces (una sola vez)
   const vs=document.getElementById("voice");
@@ -2993,6 +3004,7 @@ document.getElementById("anthropicSave").onclick = ()=>saveKey("anthropic","anth
 document.getElementById("foreplaySave").onclick = ()=>saveKey("foreplay","foreplayInput");
 document.getElementById("pexelsSave").onclick = ()=>saveKey("pexels","pexelsInput");
 document.getElementById("pixabaySave").onclick = ()=>saveKey("pixabay","pixabayInput");
+document.getElementById("scrapecreatorsSave").onclick = ()=>saveKey("scrapecreators","scrapecreatorsInput");
 document.getElementById("shopDomainSave").onclick = ()=>saveKey("shopify_domain","shopDomainInput");
 document.getElementById("shopTokenSave").onclick = ()=>saveKey("shopify_token","shopTokenInput");
 document.getElementById("shopThemeSave").onclick = ()=>saveKey("shopify_theme","shopThemeInput");

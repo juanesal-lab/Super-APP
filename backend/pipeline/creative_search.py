@@ -66,6 +66,55 @@ def _nucleo_producto(info: dict) -> str:
     return pal[0].lower() if pal else ""
 
 
+import unicodedata as _ud
+
+# Nichos de dropshipping cuyos ads GANADORES están indexados en INGLÉS en Foreplay/TikTok.
+# Buscar solo en español da 0 (ej: "rodillera meniscal" → 0; "knee brace" → ganadores reales).
+# Clave = raíz sin tildes; valor = términos de búsqueda en inglés (los más productivos primero).
+_ES_EN = {
+    "rodiller": ["knee brace", "knee support", "knee compression sleeve"],
+    "menisc": ["knee brace", "knee support"],
+    "almohadill": ["incontinence pads", "reusable incontinence pads"],
+    "incontinen": ["incontinence pads", "bladder leak pads"],
+    "panal": ["incontinence pads", "adult diapers"],
+    "veneno": ["bee venom cream", "bee venom"],
+    "abeja": ["bee venom cream", "bee venom"],
+    "repelent": ["ultrasonic pest repeller", "pest repeller"],
+    "plaga": ["ultrasonic pest repeller", "pest control plug"],
+    "cucarach": ["roach repellent", "ultrasonic pest repeller"],
+    "raton": ["ultrasonic pest repeller", "mouse repellent"],
+    "faja": ["shapewear", "waist trainer"],
+    "leggin": ["shaping leggings", "compression leggings"],
+    "linterna": ["tactical flashlight"],
+    "masajead": ["massager", "neck massager"],
+    "cervical": ["neck stretcher", "cervical traction"],
+    "postur": ["posture corrector"],
+    "juanet": ["bunion corrector"],
+    "varice": ["varicose veins cream"],
+    "arrug": ["anti wrinkle cream", "wrinkle serum"],
+    "pestan": ["lash serum", "eyelash growth"],
+    "blanquead": ["teeth whitening"],
+    "ronquid": ["anti snoring device", "snoring solution"],
+    "depilad": ["hair remover", "epilator"],
+}
+
+def _sin_tildes(t: str) -> str:
+    return "".join(c for c in _ud.normalize("NFD", (t or "").lower()) if _ud.category(c) != "Mn")
+
+def _terminos_ingles(info: dict) -> list[str]:
+    """Traduce el producto a términos de búsqueda en INGLÉS si cae en un nicho conocido.
+    Cero llamadas a IA: diccionario. Devuelve [] si no matchea (cae al comportamiento español)."""
+    blob = _sin_tildes(str(info.get("keywords") or "") + " " +
+                       " ".join(str(v) for v in (info.get("variants") or [])))
+    out: list[str] = []
+    for raiz, terms in _ES_EN.items():
+        if raiz in blob:
+            for t in terms:
+                if t not in out:
+                    out.append(t)
+    return out
+
+
 def _terminos_foreplay(info: dict, max_terms: int = _FP_TERMS) -> list[str]:
     """Los mejores términos para Foreplay: el sustantivo NÚCLEO primero (comprobado en vivo: la
     frase entera da 0, "rodillera" sola da resultados validados), luego español (la búsqueda
@@ -77,8 +126,9 @@ def _terminos_foreplay(info: dict, max_terms: int = _FP_TERMS) -> list[str]:
     es = [c for c in cands if _parece_espanol(c)]
     resto = [c for c in cands if c not in es]
     nucleo = _nucleo_producto(info)
+    eng = _terminos_ingles(info)   # inglés: en varios nichos el término español da 0 y el inglés trae ganadores
     out: list[str] = [nucleo] if nucleo else []
-    for t in es + resto:
+    for t in eng + es + resto:
         if t.lower() not in {x.lower() for x in out}:
             out.append(t)
         if len(out) >= max_terms:
@@ -147,7 +197,7 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
     if verificado:
         ref_desc = str(info.get("desc") or "")
         pool = ad_list[:verify_max]
-        cover_ok, dudosos = [], []       # dudosos: el juez de portada DUDÓ o no pudo mirar
+        cover_ok, dudosos, rechazados = [], [], []   # rechazados = otro producto del nicho (último recurso si 0 confirmados)
         with ThreadPoolExecutor(max_workers=8) as ex:
             futs = {}
             for a in pool:
@@ -169,7 +219,10 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                     a["_motivo"] = "no se pudo verificar la portada"
                     a["_cand_prio"] = 1
                     dudosos.append(a)
-                # match=False → otro producto CONFIRMADO por el juez: fuera SIEMPRE (ni candidato)
+                elif v and not v.get("match"):                 # otro producto: lo guardo por si quedan 0 confirmados
+                    a["_cand_prio"] = 0
+                    rechazados.append(a)
+                # match=False → nunca confirmado ni candidato, salvo ÚLTIMO RECURSO (abajo)
         # CONTENIDO: baja el video del ad y lo juzga por DENTRO (exacto = match + confianza no baja).
         confirmados = []
         with ThreadPoolExecutor(max_workers=4) as ex:
@@ -204,6 +257,16 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                 a["verificado_producto"] = False
                 a["motivo_candidato"] = a.get("_motivo") or "sin verificar"
                 candidatos.append(a)
+            # ÚLTIMO RECURSO: 0 confirmados exactos Y 0 dudosos, pero SÍ hay ads del nicho (el juez
+            # los dio "otro producto"). En vez de mostrar 0, los devuelvo en la sección "sin confirmar"
+            # etiquetados claro → el dueño saca ÁNGULOS. Nunca mezclados con los ✅.
+            if not confirmados and not candidatos and rechazados:
+                rechazados.sort(key=lambda a: int(a.get("dias", 0) or 0), reverse=True)
+                for a in rechazados[:count]:
+                    a["candidato"] = True
+                    a["verificado_producto"] = False
+                    a["motivo_candidato"] = "otro producto del MISMO nicho (para ángulos/inspiración, no es tu producto exacto)"
+                    candidatos.append(a)
         if rellenar_n:
             # TIERED (flujo "buscar creativos"): SOLO confianza ALTA (tier 1) o MEDIA (tier 2). Ya no
             # hay confianza baja aquí (se filtró arriba); tier 3 nunca se devuelve. Ordena tier→días

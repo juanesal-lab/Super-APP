@@ -21,15 +21,40 @@ sys.path.insert(0, RADAR_DIR)
 router = APIRouter()
 
 SIN_DATOS = """<!doctype html><meta charset="utf-8">
-<body style="background:#0d0d0d;color:#fff;font-family:system-ui;padding:40px">
-<h2>📡 Radar Ganadores — sin datos en esta máquina</h2>
-<p>El motor está en <code>radar/</code> pero falta configurarlo:</p>
+<body style="background:#0d0d0d;color:#fff;font-family:system-ui;padding:40px;line-height:1.6">
+<h2>📡 Radar Ganadores — todo se hace desde aquí</h2>
 <ol>
- <li>Crea <code>radar/.env</code> con tu <code>SCRAPECREATORS_API_KEY</code>
-     (gratis en scrapecreators.com, 1.000 créditos)</li>
- <li>Corre <code>python3 radar/radar.py scan</code> y luego <code>python3 radar/dashboard.py</code></li>
- <li>Guía completa: <code>radar/HANDOFF.md</code></li>
-</ol></body>"""
+ <li>Saca tu key GRATIS en <a href="https://scrapecreators.com" target="_blank"
+     style="color:#e8b820">scrapecreators.com</a> (regístrate y copia la API key — 1.000 créditos
+     gratis; cada escaneo gasta ~69).</li>
+ <li>Pégala en la pestaña <b>🔑 Claves</b> de la app (tarjeta "📡 ScrapeCreators — Radar").</li>
+ <li>Dale al botón: <button id="scanBtn" onclick="lanzarScan()" style="background:#e8b820;color:#1a1610;
+     border:0;border-radius:10px;padding:10px 18px;font-weight:800;cursor:pointer;font-size:14px">
+     🛰️ Escanear ahora</button></li>
+</ol>
+<p id="scanMsg" style="color:#9a927f"></p>
+<script>
+async function lanzarScan(){
+  const b=document.getElementById('scanBtn'), m=document.getElementById('scanMsg');
+  b.disabled=true; m.textContent='⏳ Escaneando la Meta Ad Library (2-5 min, gasta ~69 créditos)...';
+  try{
+    const r=await fetch('/api/radar/scan',{method:'POST'});
+    const j=await r.json();
+    if(!r.ok||!j.ok){ throw new Error(j.detail||j.error||'no se pudo'); }
+    poll();
+  }catch(e){ m.textContent='⚠️ '+(e.message||e); b.disabled=false; }
+}
+async function poll(){
+  const m=document.getElementById('scanMsg');
+  try{
+    const j=await (await fetch('/api/radar/scan-status')).json();
+    if(j.status==='running'){ m.textContent='⏳ '+(j.message||'Escaneando...'); setTimeout(poll,4000); return; }
+    if(j.status==='done'){ m.textContent='✅ Listo — cargando el dashboard...'; setTimeout(()=>location.reload(),1200); return; }
+    m.textContent='⚠️ '+(j.message||'Falló el escaneo'); document.getElementById('scanBtn').disabled=false;
+  }catch(e){ setTimeout(poll,4000); }
+}
+</script>
+</body>"""
 
 
 def _motor():
@@ -66,6 +91,66 @@ def radar_dashboard():
     if os.path.exists(html):
         return FileResponse(html, media_type="text/html")
     return HTMLResponse(SIN_DATOS)
+
+
+# ── 🛰️ Escaneo DESDE LA APP (pedido de Jack: cero terminal) ──────────────────────────────
+# Corre scan → report → dashboard como subprocesos (el motor es stdlib puro). Estado en
+# memoria; el botón de la página /radar (SIN_DATOS) lo dispara y sondea /api/radar/scan-status.
+_SCAN = {"status": "idle", "message": ""}
+
+
+def _radar_key_ok() -> bool:
+    """¿Hay SCRAPECREATORS_API_KEY en radar/.env? (el motor lee SU propio .env)."""
+    try:
+        renv = os.path.join(RADAR_DIR, ".env")
+        return os.path.exists(renv) and any(
+            l.startswith("SCRAPECREATORS_API_KEY=") and l.split("=", 1)[1].strip()
+            for l in open(renv))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _run_scan():
+    import subprocess
+    pasos = [("Escaneando la Meta Ad Library (~69 créditos)...", [sys.executable, "radar.py", "scan"]),
+             ("Armando el reporte del día...", [sys.executable, "radar.py", "report"]),
+             ("Generando el dashboard...", [sys.executable, "dashboard.py"])]
+    try:
+        for msg, cmd in pasos:
+            _SCAN["message"] = msg
+            r = subprocess.run(cmd, cwd=RADAR_DIR, capture_output=True, text=True, timeout=1800)
+            if r.returncode != 0:
+                err = (r.stderr or r.stdout or "").strip()[-400:]
+                _SCAN["status"] = "error"
+                _SCAN["message"] = f"Falló '{' '.join(cmd[1:])}': {err or 'sin detalle'}"
+                return
+        _SCAN["status"] = "done"
+        _SCAN["message"] = "Radar listo"
+    except Exception as e:  # noqa: BLE001
+        _SCAN["status"] = "error"
+        _SCAN["message"] = f"Error del escaneo: {e}"
+
+
+@router.post("/api/radar/scan")
+def radar_scan():
+    """Dispara el ciclo scan+report+dashboard en background. Gasta ~69 créditos de ScrapeCreators
+    → SOLO se corre cuando el usuario le da al botón (nunca automático)."""
+    if _SCAN["status"] == "running":
+        return {"ok": True, "ya_corriendo": True}
+    if not _radar_key_ok():
+        return {"ok": False,
+                "error": "Falta la key de ScrapeCreators — pégala en 🔑 Claves (tarjeta 📡 Radar) "
+                         "y vuelve a intentar."}
+    _SCAN["status"] = "running"
+    _SCAN["message"] = "Arrancando el escaneo..."
+    import threading
+    threading.Thread(target=_run_scan, daemon=True).start()
+    return {"ok": True}
+
+
+@router.get("/api/radar/scan-status")
+def radar_scan_status():
+    return dict(_SCAN)
 
 
 @router.get("/api/radar/resumen")

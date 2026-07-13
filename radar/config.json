@@ -10,7 +10,11 @@
     "GT",
     "IT",
     "FR",
-    "DE"
+    "DE",
+    "US",
+    "DK",
+    "BE",
+    "RO"
   ],
   "paginas_por_keyword": 1,
   "nichos": {
@@ -129,6 +133,27 @@
       "ES": [
         "cuidado de la piel",
         "crecimiento cabello"
+      ],
+      "US": [
+        "skincare",
+        "hair growth",
+        "anti aging",
+        "collagen"
+      ],
+      "DE": [
+        "hautpflege",
+        "haarwuchs",
+        "kollagen"
+      ],
+      "FR": [
+        "soin de la peau",
+        "pousse cheveux",
+        "collagène"
+      ],
+      "IT": [
+        "cura della pelle",
+        "crescita capelli",
+        "collagene"
       ]
     },
     "salud_bienestar": {
@@ -164,6 +189,13 @@
       ],
       "DE": [
         "rückenschmerzen"
+      ],
+      "US": [
+        "back pain",
+        "posture corrector",
+        "knee pain",
+        "magnesium sleep",
+        "joint pain"
       ]
     },
     "fitness_deporte": {
@@ -210,6 +242,38 @@
         "smartwatch",
         "proyector",
         "gadget"
+      ],
+      "DE": [
+        "gadget",
+        "technik gadget",
+        "smartwatch",
+        "mini projektor"
+      ],
+      "DK": [
+        "gadget",
+        "smartwatch",
+        "mini projektor"
+      ],
+      "FR": [
+        "gadget",
+        "montre connectée",
+        "mini projecteur"
+      ],
+      "BE": [
+        "gadget",
+        "smartwatch",
+        "mini projecteur"
+      ],
+      "RO": [
+        "gadget",
+        "ceas smart",
+        "mini proiector"
+      ],
+      "US": [
+        "gadget",
+        "smart gadget",
+        "tiktok made me buy it",
+        "mini projector"
       ]
     },
     "moda_accesorios": {
@@ -275,5 +339,17 @@
     "ES": []
   },
   "max_competidores_co": 2,
-  "paises_eu": ["ES", "IT", "FR", "DE"]
+  "paises_eu": ["ES", "IT", "FR", "DE", "DK", "BE", "RO"],
+  "verticales": {
+    "gadgets": {
+      "nichos": ["tecnologia_gadgets", "automotriz", "hogar_decoracion", "cocina"],
+      "paises_prioridad": ["DE", "DK", "FR", "BE", "RO"],
+      "paises_respaldo": ["US", "IT", "ES"]
+    },
+    "nutra": {
+      "nichos": ["belleza_cuidado", "salud_bienestar"],
+      "paises_prioridad": ["US", "ES", "DE", "FR", "IT"],
+      "paises_respaldo": ["MX", "CL"]
+    }
+  }
 }

@@ -360,13 +360,23 @@ PLAN_SYS = (
 FASES = {"hook","dolor","solucion","prueba","deseo","precio","cta"}
 
 def plan_montaje(pid, beats, catalogo, clips_info, instrucciones=None, plan_anterior=None,
-                 con_emojis=False):
+                 con_emojis=False, brolls=None):
     client = _claude()
     dur_map = {c["id"]: c["dur"] for c in clips_info}
     user = {"beats":[{"n":b["n"],"t0":b["t0"],"t1":b["t1"],"dur":b["dur"],"dice":b["texto"]} for b in beats],
             "catalogo":catalogo,
             "duraciones_clips":dur_map}
+    # 🎞️ agente b-roll: clips de apoyo bajados de bancos de stock (ids "B1","B2"…)
+    broll_beat = {br["id"]: br["beat"] for br in (brolls or [])}
     sistema = PLAN_SYS
+    if broll_beat:
+        sistema += (
+            "\nCLIPS B-ROLL DE APOYO (bajados de bancos de stock): "
+            + "; ".join(f"{br['id']}={br['concepto']} (para el beat {br['beat']})"
+                        for br in brolls)
+            + ". Úsalos SOLO en su beat sugerido y SOLO si mejoran la ilustración; el "
+              "PRODUCTO se muestra únicamente con los clips del usuario; si dudas, no los uses."
+        )
     if con_emojis:
         sistema += (
             "\n- 'emoji': UN emoji por beat que refuerce el caption (o \"\" si no aporta). "
@@ -389,6 +399,9 @@ def plan_montaje(pid, beats, catalogo, clips_info, instrucciones=None, plan_ante
     # Regla del cliente: JAMÁS la misma toma dos veces. Si hay más beats que clips,
     # se reusa el clip MENOS usado y con una ventana de tiempo que no pise las anteriores.
     disponibles = [c["id"] for c in clips_info]
+    # los b-rolls jamás entran a los pools de relleno: solo si Claude los eligió,
+    # y solo en SU beat sugerido (regla del agente b-roll)
+    normales = [cid for cid in disponibles if cid not in broll_beat]
     ventanas = {cid: [] for cid in disponibles}   # cid -> [(in, out)] ya usados
     limpio = []
 
@@ -415,21 +428,25 @@ def plan_montaje(pid, beats, catalogo, clips_info, instrucciones=None, plan_ante
         inp_sug = float(item.get("in", 0.5))
         if cid not in disponibles:
             cid = None
+        # b-roll fuera de su beat sugerido → se descarta y decide el pool normal
+        if cid in broll_beat and broll_beat[cid] != b["n"]:
+            cid = None
         # preferir clips vírgenes; si el sugerido ya se usó y hay libres, cambiar
-        libres = [x for x in disponibles if not ventanas[x]]
-        if cid is None or (ventanas[cid] and libres):
+        # (los b-rolls elegidos por Claude en su beat se respetan tal cual)
+        libres = [x for x in normales if not ventanas[x]]
+        if cid is None or (cid not in broll_beat and ventanas[cid] and libres):
             cid = cid if (cid in libres) else (libres[0] if libres else
-                  min(disponibles, key=lambda x: len(ventanas[x])))
+                  min(normales, key=lambda x: len(ventanas[x])))
         # anti-spoiler: antes de la revelación, jamás un clip con el producto visible
         pre_reveal = primer_reveal is not None and b["n"] < primer_reveal
         if pre_reveal and cid in producto_clips:
-            alt = next((x for x in disponibles if x not in producto_clips and not ventanas[x]),
-                       None) or next((x for x in disponibles if x not in producto_clips), None)
+            alt = next((x for x in normales if x not in producto_clips and not ventanas[x]),
+                       None) or next((x for x in normales if x not in producto_clips), None)
             if alt:
                 cid = alt
         inp = _sin_pisar(cid, inp_sug, b["dur"])
         if inp is None:  # clip lleno: usar el menos usado con espacio
-            for alt in sorted(disponibles, key=lambda x: len(ventanas[x])):
+            for alt in sorted(normales, key=lambda x: len(ventanas[x])):
                 inp = _sin_pisar(alt, 0.5, b["dur"])
                 if inp is not None:
                     cid = alt; break
@@ -591,12 +608,64 @@ def _procesar(pid, instrucciones=None):
         catalogo = json.load(open(cpath))
         log(pid, f"📚 Catálogo listo: {len(catalogo)} clips entendidos", progreso=55)
 
+        # 2.5 🎞️ agente b-roll: busca en bancos de stock (Pexels/Pixabay) clips de apoyo
+        # para metáforas/menciones visuales de la voz ajenas al producto. Con try/except
+        # TOTAL: si CUALQUIER cosa falla, log honesto y el montaje sigue SIN b-rolls.
+        # Se apaga por proyecto (usar_broll=False) o global (MONTADOR_BROLL=0 en el .env).
+        brolls = []
+        usar_broll = bool(e.get("usar_broll", True)) and \
+            os.environ.get("MONTADOR_BROLL", "1") != "0"
+        if usar_broll:
+            try:
+                from backend.agentes import cargar
+                mod_br = cargar("broll")
+                if mod_br is None:
+                    log(pid, "🎞️ Agente b-roll no disponible (el módulo no carga) — sigo sin b-rolls")
+                else:
+                    # el "producto" se describe con lo que Claude VIO en los clips del usuario
+                    _prod = [c.get("desc", "") for c in catalogo if c.get("producto_visible")]
+                    product_desc = "; ".join(_prod[:4]) or transcript["texto"][:200]
+                    nec_path = workdir / "brolls" / "necesidades.json"
+                    if nec_path.exists():   # cache: ajustes/reintentos no re-pagan la llamada
+                        necesidades = json.load(open(nec_path))
+                    else:
+                        log(pid, "🎞️ Agente b-roll: buscando conceptos visuales en la voz…")
+                        necesidades = mod_br.detectar_necesidades(beats, product_desc,
+                                                                  _claude(), _model())
+                        nec_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(nec_path, "w") as f:
+                            json.dump(necesidades, f, ensure_ascii=False, indent=2)
+                    if necesidades:
+                        bajadas = mod_br.buscar_y_bajar(necesidades, workdir,
+                                                        log=lambda m: log(pid, m))
+                        brolls = mod_br.integrar(beats, clips_map, catalogo, bajadas)
+                        for br in brolls:
+                            clips_info.append({"id": br["id"], "path": br["path"],
+                                               "dur": br["dur"], "w": br["w"], "h": br["h"]})
+                    else:
+                        log(pid, "🎞️ Agente b-roll: la voz no pide b-rolls — sigo solo con tus clips")
+                    # visibles para el usuario en estado.json (aprobación pasiva en la UI)
+                    with _lock(pid):
+                        e_br = leer_estado(pid)
+                        e_br["brolls"] = [{k: br[k] for k in
+                                           ("id", "beat", "concepto", "query", "file", "fuente")}
+                                          for br in brolls]
+                        _guardar(pid, e_br)
+            except Exception as _bex:  # noqa: BLE001 — jamás rompe el flujo de Juan
+                log(pid, f"🎞️ Agente b-roll falló ({_bex}) — el montaje sigue SIN b-rolls")
+                brolls = []
+                # deshacer cualquier integración a medias (ids B* fuera de todo)
+                clips_info = [c for c in clips_info if not str(c.get("id", "")).startswith("B")]
+                catalogo = [c for c in catalogo if not str(c.get("id", "")).startswith("B")]
+                clips_map = {k: v for k, v in clips_map.items() if not k.startswith("B")}
+
         # 3. plan
         plan_prev = e.get("plan")
         log(pid,"🧠 Armando el plan de montaje…", fase="planeando", progreso=60)
         plan = plan_montaje(pid, beats, catalogo, clips_info,
                             instrucciones=instrucciones, plan_anterior=plan_prev,
-                            con_emojis=agentes.get("emojis", False))
+                            con_emojis=agentes.get("emojis", False),
+                            brolls=brolls)
         with _lock(pid):
             e2 = leer_estado(pid); e2["plan"] = plan; e2["beats"] = beats; _guardar(pid, e2)
 
@@ -675,6 +744,11 @@ def _otra_version(pid):
         transcript = json.load(open(pdir / "work" / "transcript.json"))
         clips_map = {f"{i:02d}": pdir / "clips" / fn
                      for i, fn in enumerate(sorted(e["clips"]), 1)}
+        # 🎞️ b-rolls del agente: el plan cacheado puede referenciarlos (ids "B1"…)
+        for br in e.get("brolls", []):
+            p_br = pdir / br["file"]
+            if p_br.exists():
+                clips_map[br["id"]] = p_br
         outdir = pdir / "resultado" / f"version-{n}"
         workdir = pdir / "work" / f"version-{n}"
         musica_path = (pdir / e["musica"]) if e.get("musica") else None
@@ -981,6 +1055,7 @@ def crear_hijo(padre, pid_hijo, nombre, audio_src, transcript_src=None):
               "estilo_subs": padre.get("estilo_subs", "karaoke"),
               "plataforma": padre.get("plataforma", "meta"), "versiones": [],
               "agentes": padre.get("agentes") or {},
+              "usar_broll": padre.get("usar_broll", True),
               "fase": "en cola", "progreso": 0, "done": False, "error": None, "log": []}
     with open(pdir / "estado.json", "w") as f:
         json.dump(estado, f, ensure_ascii=False, indent=2)

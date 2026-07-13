@@ -48,6 +48,9 @@ Sube un **ad ganador** (tuyo o de la competencia) + tus clips → la app:
 ## Config (`.env`)
 - `ANTHROPIC_API_KEY` — la key de Claude (ya configurada).
 - `MONTADOR_MODEL` — modelo para ver/planear (default `claude-sonnet-5`).
+- `PEXELS_API_KEY` / `PIXABAY_API_KEY` — bancos de video para el agente 🎞️ B-rolls (gratis en
+  pexels.com/api y pixabay.com/api/docs). Si no están aquí, se leen del `.env` de la Super-APP.
+  Apagar el agente global: `MONTADOR_BROLL=0` (o desmarca su checkbox por proyecto).
 
 ## Estructura
 ```

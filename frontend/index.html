@@ -1225,8 +1225,25 @@
       <input type="file" id="ldImgs" accept="image/*" multiple class="hidden">
       <label class="autoDrop" for="ldImgs"><b id="ldImgsName">🖼️ Fotos del producto (las de la landing)</b>
         <div class="s">Se optimizan de peso automáticamente antes de subir</div></label>
-      <button class="autoBtn" id="ldGo" disabled title="Pendiente: cargar tus estructuras validadas">🚧 Generar (esperando tus estructuras validadas)</button>
-      <p class="pmsg" style="margin-top:10px">⏳ Falta que me pases las <b>estructuras validadas</b> (ejemplos de landing y advertorial). Cuando las cargue como plantillas maestras, este botón se activa.</p>
+      <button class="autoBtn" id="ldGo" onclick="ldGenerar()">🚀 Generar página completa (verás el preview ANTES de subir nada)</button>
+      <p class="pmsg" style="margin-top:10px">🛡️ El motor usa <b>tu estructura validada</b> (16 bloques el advertorial / 11 la landing), tu precio y oferta <b>EXACTOS</b>, y tus fotos reales. Nada se sube a Shopify sin tu ✅.</p>
+
+      <div id="ldProg" class="hidden" style="margin-top:14px">
+        <div style="background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;height:10px">
+          <div id="ldBar" style="height:100%;width:0%;background:var(--accent);transition:width .5s"></div>
+        </div>
+        <p class="pmsg" id="ldMsg" style="margin-top:8px">Iniciando…</p>
+      </div>
+
+      <div id="ldResult" class="hidden" style="margin-top:16px">
+        <div id="ldAvisos"></div>
+        <iframe id="ldFrame" style="width:100%;height:640px;border:1px solid rgba(255,255,255,.15);border-radius:14px;background:#fff"></iframe>
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+          <button class="autoBtn" id="ldAprobar" style="flex:1;min-width:220px" onclick="ldPublicar(this)">✅ Aprobar y subir a Shopify</button>
+          <button class="btn sec" style="flex:1;min-width:160px" onclick="ldGenerar()">🔄 Regenerar</button>
+        </div>
+        <div id="ldPubMsg" class="pmsg" style="margin-top:10px"></div>
+      </div>
     </div>
   </div>
 
@@ -1236,6 +1253,88 @@
       el.style.borderColor='var(--accent)'; el.style.boxShadow='0 0 0 2px var(--accent) inset';
       window._ldTipo=el.dataset.tipo;
       document.getElementById('ldForm').classList.remove('hidden');
+    }
+    // Genera la página entera en segundo plano (patrón JOBS + polling) — el gate de subida es aparte
+    async function ldGenerar(){
+      const msg=document.getElementById('ldMsg');
+      if(!window._ldTipo){ alert('Elige el tipo: Landing Page o Advertorial'); return; }
+      const producto=document.getElementById('ldProducto').value.trim();
+      const link=document.getElementById('ldLink').value.trim();
+      const precio=document.getElementById('ldPrecio').value.trim();
+      if(!producto && !link){ alert('Escribe tu producto (o pega el link)'); return; }
+      if(!precio){ alert('Escribe el precio EXACTO (se usa tal cual, jamás se inventa)'); return; }
+      if(!window._ldImgs || !window._ldImgs.length){ alert('Sube al menos una foto REAL del producto'); return; }
+      const fd=new FormData();
+      fd.append('tipo', window._ldTipo);
+      fd.append('producto', producto);
+      fd.append('link', link);
+      fd.append('precio', precio);
+      fd.append('oferta', document.getElementById('ldOferta').value.trim());
+      window._ldImgs.forEach(f=>fd.append('fotos', f));
+      document.getElementById('ldGo').disabled=true;
+      document.getElementById('ldResult').classList.add('hidden');
+      document.getElementById('ldProg').classList.remove('hidden');
+      document.getElementById('ldBar').style.width='0%'; msg.textContent='Enviando…';
+      try{
+        const r=await fetch('/api/landing-generate',{method:'POST',body:fd});
+        if(!r.ok){ throw new Error((await r.json().catch(()=>({}))).detail || ('HTTP '+r.status)); }
+        const j=await r.json();
+        window._ldJob=j.job_id;
+        ldPoll(j.job_id);
+      }catch(e){
+        msg.innerHTML='<span class="err">'+e.message+'</span>';
+        document.getElementById('ldGo').disabled=false;
+      }
+    }
+    async function ldPoll(id){
+      try{
+        const j=await (await fetch('/api/status/'+id)).json();
+        document.getElementById('ldBar').style.width=(j.progress||0)+'%';
+        document.getElementById('ldMsg').textContent=j.message||'';
+        if(j.status==='running'){ setTimeout(()=>ldPoll(id),1500); return; }
+        document.getElementById('ldGo').disabled=false;
+        if(j.status==='error'){
+          document.getElementById('ldMsg').innerHTML='<span class="err">'+(j.message||'Error')+'</span>';
+          return;
+        }
+        document.getElementById('ldProg').classList.add('hidden');
+        ldRender(id, j.result||{});
+      }catch(e){ setTimeout(()=>ldPoll(id),3000); }
+    }
+    function ldRender(id, m){
+      window._ldJob=id;
+      const av=document.getElementById('ldAvisos');
+      av.innerHTML=(m.avisos&&m.avisos.length)
+        ? '<div class="pmsg" style="border:1px dashed var(--warn);border-radius:10px;padding:10px;margin-bottom:10px">'
+          + m.avisos.map(a=>'⚠️ '+a).join('<br>')+'</div>' : '';
+      document.getElementById('ldFrame').src='/api/file?path='+encodeURIComponent(m.preview_html||'');
+      document.getElementById('ldPubMsg').textContent='';
+      document.getElementById('ldAprobar').disabled=false;
+      document.getElementById('ldResult').classList.remove('hidden');
+    }
+    // GATE OBLIGATORIO: solo este clic sube a Shopify (recursos NUEVOS cm-*, jamás toca lo existente)
+    async function ldPublicar(btn){
+      if(!window._ldJob){ return; }
+      const out=document.getElementById('ldPubMsg');
+      const t=btn.textContent; btn.textContent='⏳ Subiendo a Shopify…'; btn.disabled=true;
+      try{
+        const fd=new FormData(); fd.append('job_id', window._ldJob);
+        const j=await (await fetch('/api/landing-publicar',{method:'POST',body:fd})).json();
+        if(j.ok){
+          let h='✅ <b>Publicado como recursos nuevos</b> (plantilla <code>'+j.template+'</code> en el tema '+(j.tema||'')+').';
+          if(j.url_pagina){ h+='<br>🌐 Página: <a href="'+j.url_pagina+'" target="_blank">'+j.url_pagina+'</a>'; }
+          if(j.url_admin){ h+='<br>🛠️ Admin: <a href="'+j.url_admin+'" target="_blank">'+j.url_admin+'</a>'; }
+          if(j.avisos&&j.avisos.length){ h+='<br>'+j.avisos.map(a=>'⚠️ '+a).join('<br>'); }
+          out.innerHTML=h;
+          btn.textContent='✅ Subido';
+        }else{
+          out.innerHTML='<span class="err">'+(j.error||'No se pudo publicar')+'</span>';
+          btn.textContent=t; btn.disabled=false;
+        }
+      }catch(e){
+        out.innerHTML='<span class="err">Error publicando: '+e.message+'</span>';
+        btn.textContent=t; btn.disabled=false;
+      }
     }
     async function ldCheckShopify(btn){
       const t=btn.textContent; btn.textContent='⏳ Verificando…'; btn.disabled=true;

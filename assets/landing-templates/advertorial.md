@@ -75,3 +75,45 @@ alternativa natural antes de considerar procedimientos más invasivos."
 - CERO lenguaje de anuncio ("increíble oferta", "compra ya") hasta la sección 8.
 - Cifras específicas > adjetivos: años de experiencia, días, número de compras.
 - Español colombiano neutro-culto (es un "informe", no un post).
+
+---
+
+# ANEXO — ESTRUCTURA VALIDADA DE LAS PÁGINAS REALES DE JACK (destilada 2026-07-13)
+
+> Destilada de las 4 páginas reales en buenatienda.com.co. **ES LA LEY para el motor automático
+> (`backend/pipeline/landing_agent.py`)**: mismo orden, mismos 16 bloques, jamás se reordena.
+> Convive con la plantilla de arriba (no la reemplaza); el motor usa ESTA versión porque incorpora
+> las reglas innegociables del dueño (sin personas inventadas, precio exacto, placeholders).
+
+## Los 16 bloques (orden fijo)
+1. **Headline editorial**: "Por qué [expertos] en Colombia están recomendando [producto/ingrediente]
+   en vez de [alternativa cara] — y cómo está cambiando [rutina] después de los [edad]".
+2. **Subgancho conspirativo**: "Lo que [industria] nunca te contó...".
+3. **Meta editorial**: categoría + "Actualizado [fecha]" (lo arma el código con la fecha real).
+4. **Agitación del problema** (empatía): "Si tienes más de X, ya conoces la frustración...".
+5. **Problema raíz + costo del dolor** (cualitativo: "una fortuna al año en..." — SIN cifras $ inventadas).
+6. **Solución/origen** con anclaje de prestigio.
+7. **Comparativa tabla ❌/✔** (2-3 alternativas vs el producto).
+8. **Mecanismo de acción** (ciencia simplificada creíble, expectativa honesta).
+9. **Bloque de autoridad experta** — framing GENÉRICO ("dermatólogos recomiendan...") SIN nombres
+   ni credenciales inventadas (regla innegociable).
+10. **Proceso por etapas** (Día 1-3 → Semana 2-3 → Mes 1+).
+11. **1-2 testimonios puente** → PLACEHOLDERS `[[EDITAR: pega aquí tu reseña real]]` (Jack pone
+    su prueba social real; el motor solo arma diseño y estructura).
+12. **CTA oferta con justificación** ("uno para usar, otro de respaldo") — precio/oferta EXACTOS de Jack.
+13. **Garantía / risk-reversal** (🛡️ 30 días · 🚚 envío gratis · ✅ oferta exacta).
+14. **Urgencia** (⏳ termina hoy).
+15. **FAQ** (5-6 objeciones reales).
+16. **Reviews masivas**: métrica agregada + reviews con nombre/ciudad/✓ → TODO placeholder
+    `[[EDITAR: ...]]` (nada de "compra verificada" inventada).
+
+## Imágenes (5-6 de apoyo, foto real del producto SIEMPRE como referencia)
+uso en contexto (4:5), lifestyle (4:5), antes/después CONSERVADOR policy-safe (1:1),
+detalle del producto (1:1), pack de la oferta (4:5), hero editorial (4:5). Sin texto dentro.
+
+## Reglas innegociables (bakeadas en el motor)
+- PRECIO y OFERTA: los EXACTOS que escribió Jack — prohibido inventar cifras/descuentos/ahorros.
+- SIN personas inventadas: nada de expertos con nombre ni reviews falsas "verificadas".
+- Salud policy-safe: sin curas milagro.
+- Producto SIEMPRE con las fotos reales que sube Jack.
+- Nada se publica sin el clic de aprobación de Jack en el preview.

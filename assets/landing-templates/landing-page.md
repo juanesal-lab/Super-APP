@@ -108,3 +108,36 @@ la sección + las fotos reales del producto nuevo.
   llevan botón dibujado.
 - Reseñas adicionales estilo AliExpress: van en el bloque HTML de la página (no en imágenes) —
   pendiente detalle en secciones 3-7 del superprompt de Juan.
+
+---
+
+# ANEXO — ESTRUCTURA VALIDADA DE LAS PÁGINAS REALES DE JACK (destilada 2026-07-13)
+
+> Destilada de las 4 páginas reales en buenatienda.com.co. **ES LA LEY para el motor automático
+> (`backend/pipeline/landing_agent.py`)**: página corta, visual, venta directa, MAYÚSCULAS+emojis,
+> precio ARRIBA. Convive con el stack de 9 imágenes de arriba (no lo borra); el motor usa ESTA
+> versión de 11 bloques porque es la de las páginas vivas de Jack.
+
+## Los 11 bloques (orden fijo)
+1. **Hero**: imagen producto + título "[PRODUCTO] 2X1 | [Beneficio] en [plazo] [emoji]"
+   (la oferta del título es la EXACTA de Jack, jamás inventada).
+2. **Precio arriba**: el precio EXACTO de Jack + su oferta EXACTA. PROHIBIDO inventar
+   "ANTES $X → $Y -50% · Ahorra $Z" si Jack no dio esas cifras.
+3. **Prueba social en vivo** → cifra PLACEHOLDER `[[EDITAR: ...]]`.
+4. **Aviso anti-imitaciones**.
+5. **Métrica de masa** → cifra PLACEHOLDER `[[EDITAR: ...]]`.
+6. **Video "Míralo en acción"** (slot opcional, Jack pega su video).
+7. **Bloque OFERTA** (la oferta exacta, ej. 2X1) + CTA.
+8. **Urgencia repetida entre bloques** ("🚨 MENOS DE 3 UNIDADES 🚨").
+9. **Beneficios como INFOGRÁFICOS**: cada imagen = 1 beneficio con ícono + frase corta
+   (estas son las imágenes que genera Nano Banana, 5-7).
+10. **"ENVÍO GRATIS 🚚 · PAGAS AL RECIBIR 📦"** repetido.
+11. **CTA final**.
+
+## Imágenes (7-10 — acá las imágenes SON el contenido)
+hero con el producto (2:3) + 5-7 infográficos de beneficio (1:1, ícono + frase corta en español
+COL bien escrita) + pack de la oferta (2:3). Foto real de Jack SIEMPRE como referencia.
+
+## Reglas innegociables (bakeadas en el motor)
+Las mismas del anexo del advertorial: precio/oferta exactos, sin personas inventadas
+(prueba social = placeholders), salud policy-safe, fotos reales, gate de aprobación obligatorio.

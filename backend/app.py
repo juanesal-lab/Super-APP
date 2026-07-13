@@ -2616,6 +2616,109 @@ def shopify_check():
             "tema": {"id": t.get("id"), "nombre": t.get("nombre"), "rol": t.get("rol")}}
 
 
+# ─────────────────────  🛍️ CREAR LANDINGS (motor: pipeline/landing_agent)  ─────────────────────
+
+def _persist_landing(job_id: str):
+    """Persiste el job de landing a work/<id>/job.json (mismo patrón que _persist_disruptive):
+    el gate de aprobación + publicar siguen funcionando aunque el server se reinicie."""
+    import json as _json
+    job = JOBS.get(job_id)
+    if not job:
+        return
+    data = {k: job.get(k) for k in ("tipo", "status", "progress", "message", "result", "created")}
+    try:
+        d = os.path.join(WORK_DIR, job_id)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "job.json"), "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _run_landing_job(job_id: str, tipo: str, producto: str, link: str, precio: str, oferta: str,
+                     fotos: list[str]):
+    from pipeline.landing_agent import generar_landing
+    job = JOBS[job_id]
+
+    def progress(msg, pct):
+        job["message"] = msg
+        job["progress"] = pct
+
+    try:
+        page_text = ""
+        if (link or "").strip():
+            progress("Leyendo la página real del producto…", 3)
+            try:
+                page_text = fetch_page_text(link.strip(), max_chars=3000)
+            except Exception:  # noqa: BLE001
+                page_text = ""
+        r = generar_landing(tipo, producto, page_text, precio, oferta, fotos,
+                            gemini_key=_load_env_key() or "", anthropic_key=_load_anthropic_key() or "",
+                            work_dir=os.path.join(WORK_DIR, job_id), progress=progress)
+        job["result"] = r
+        job["status"] = "done" if r.get("ok") else "error"
+        if not r.get("ok"):
+            job["message"] = r.get("error", "Error desconocido")
+    except Exception as e:  # noqa: BLE001
+        job["status"] = "error"
+        job["message"] = f"Error: {e}"
+    _persist_landing(job_id)
+
+
+@app.post("/api/landing-generate")
+def landing_generate(tipo: str = Form(...), producto: str = Form(""), link: str = Form(""),
+                     precio: str = Form(""), oferta: str = Form(""),
+                     fotos: list[UploadFile] = File(default=[])):
+    """Genera la landing/advertorial ENTERA (copy + imágenes + preview) en segundo plano.
+    NADA se sube a Shopify aquí: el preview se aprueba con /api/landing-publicar (gate obligatorio)."""
+    tipo = "advertorial" if str(tipo).lower().startswith("advert") else "landing"
+    if not producto.strip() and not link.strip():
+        raise HTTPException(400, "Escribe tu producto o pega el link de la página")
+    if not precio.strip():
+        raise HTTPException(400, "Escribe el precio EXACTO (se usa tal cual, jamás se inventa)")
+    fotos = [f for f in (fotos or []) if f and f.filename]
+    if not fotos:
+        raise HTTPException(400, "Sube al menos una foto REAL del producto (regla: el producto "
+                                 "siempre con tus fotos)")
+    if not _load_anthropic_key():
+        raise HTTPException(400, "Falta la API key de Claude (ANTHROPIC_API_KEY) en 🔑 Claves — "
+                                 "es la que escribe el copy")
+    job_id = uuid.uuid4().hex[:12]
+    up = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(up, exist_ok=True)
+    paths = []
+    for i, f in enumerate(fotos[:6]):
+        p = os.path.join(up, f"foto_{i}_" + os.path.basename(f.filename))
+        with open(p, "wb") as out:
+            shutil.copyfileobj(f.file, out)
+        paths.append(p)
+    JOBS[job_id] = {"tipo": "landing", "status": "running", "progress": 0, "message": "Iniciando…",
+                    "result": None, "created": time.time()}
+    threading.Thread(target=_run_landing_job,
+                     args=(job_id, tipo, producto.strip(), link.strip(), precio.strip(),
+                           oferta.strip(), paths), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/landing-publicar")
+def landing_publicar(job_id: str = Form(...)):
+    """GATE de aprobación: solo se llama cuando Jack hace clic en '✅ Aprobar y subir a Shopify'.
+    Sube imágenes al CDN y crea SOLO recursos nuevos cm-* (jamás toca lo existente)."""
+    from pipeline.landing_agent import publicar_en_shopify
+    job = _get_job(job_id)
+    manifest = (job or {}).get("result")
+    if not manifest:
+        raise HTTPException(404, "No encuentro esa landing generada (¿expiró el trabajo?)")
+    if not manifest.get("ok"):
+        return {"ok": False, "error": "Esa generación terminó con error — regenera antes de publicar."}
+    dom, tok, theme = _load_shopify()
+    if not (dom and tok):
+        return {"ok": False, "error": "Faltan las credenciales de Shopify en 🔑 Claves "
+                                       "(dominio + Admin API token) — no se publicó nada."}
+    return publicar_en_shopify(manifest, dom, tok, theme,
+                               manifest.get("tipo", "landing"), manifest.get("producto", ""))
+
+
 @app.get("/api/foreplay-thumb")
 def foreplay_thumb(url: str):
     """Proxy de miniaturas de Foreplay (su CDN bloquea el hotlink desde el navegador)."""
@@ -3221,7 +3324,8 @@ def _safe_path(path: str) -> str:
 
 
 _MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-         ".webp": "image/webp", ".gif": "image/gif", ".mp3": "audio/mpeg", ".webm": "video/webm"}
+         ".webp": "image/webp", ".gif": "image/gif", ".mp3": "audio/mpeg", ".webm": "video/webm",
+         ".html": "text/html"}  # .html: el preview del módulo Crear Landings (iframe)
 
 
 @app.get("/api/file")

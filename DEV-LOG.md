@@ -3958,3 +3958,13 @@ AVISO Jack: en tu Mac, tras `git pull`, abre la pestaña "🎬 Montar ad" y dale
 1ª vez tarda 1-2 min instalando faster-whisper/pillow/anthropic). Pon TUS claves en `montador/.env`
 (ANTHROPIC_API_KEY + ELEVENLABS_API_KEY). Es una app aparte que solo VIVE en la carpeta montador/ —
 no la mezcles con el pipeline de Super-APP.
+
+### 2026-07-12 · Claude (jackingshop1-cell) · 🚧 AVISO PREVIO: construyendo "Agente Buscador de B-ROLLS" en montador/ (pedido de Jack)
+Jack pidió extender los agentes editores del Montador con un agente que LEE el guion (beats con
+timestamps), detecta frases que piden ilustración ("inflamada como un hipopótamo" → b-roll de
+hipopótamo), las BUSCA solo en Pexels/Pixabay (gratis — TU decisión previa de NO TikTok para b-roll se
+respeta), las baja y se las entrega al plan de montaje para el beat exacto. Reglas de Jack: el PRODUCTO
+siempre con las tomas del usuario (jamás b-roll genérico); si no hay b-roll bueno, no mete nada.
+AVISO Juan: voy a tocar montador/backend/pipeline.py (hook entre catálogo y plan) + nuevo
+montador/backend/agentes/broll.py. Trabajo en worktree y fusiono verificado. Si estás editando el
+pipeline AHORA, avisa aquí.

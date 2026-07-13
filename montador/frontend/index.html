@@ -124,6 +124,8 @@
     <input type="text" id="agHookbannerTexto" class="hide" placeholder="texto del banner (ej. 🚚 Envío GRATIS hoy)" maxlength="60" style="margin-top:8px">
     <label class="ag"><input type="checkbox" id="agMomentos">
       <b>Momentos</b> <span>detecta el mejor instante de cada clip antes de elegir</span></label>
+    <label class="ag"><input type="checkbox" id="agBroll" checked>
+      <b>B-rolls</b> <span>baja clips de apoyo de bancos de video (Pexels/Pixabay) para metáforas de la voz — el producto siempre sale de TUS clips</span></label>
   </div>
   <button id="btnCrear" disabled>🎬 Montar mi ad</button>
   <span id="subiendo" class="badge hide"> subiendo archivos…</span>
@@ -323,6 +325,7 @@ $('btnGanador').onclick=async()=>{
   fd.append('ag_hookbanner',$('agHookbanner').checked);
   fd.append('ag_hookbanner_texto',$('agHookbannerTexto').value||'');
   fd.append('ag_momentos',$('agMomentos').checked);
+  fd.append('usar_broll',$('agBroll').checked);
   try{
     const r=await fetch('/api/ganador',{method:'POST',body:fd});
     if(!r.ok){alert('Error: '+(await r.text()));$('btnGanador').disabled=false;$('gSubiendo').classList.add('hide');return}
@@ -351,6 +354,7 @@ $('btnCrear').onclick=async()=>{
   fd.append('ag_hookbanner',$('agHookbanner').checked);
   fd.append('ag_hookbanner_texto',$('agHookbannerTexto').value||'');
   fd.append('ag_momentos',$('agMomentos').checked);
+  fd.append('usar_broll',$('agBroll').checked);
   try{
     const r=await fetch('/api/proyectos',{method:'POST',body:fd});
     if(!r.ok){alert('Error: '+(await r.text()));$('btnCrear').disabled=false;$('subiendo').classList.add('hide');return}

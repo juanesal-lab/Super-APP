@@ -39,3 +39,13 @@ Promesa → prueba social masiva → mecanismo + transformación → prueba soci
 caso individual con fechas → OFERTA anclada en bundles → bonos que inflan valor →
 comparativa que justifica el precio → instrucciones + ingredientes (mata objeciones finales).
 El advertorial sigue su propio arco editorial (ver su plantilla).
+
+---
+
+## Motor automático (2026-07-13)
+El módulo 🛍️ Crear Landings ya tiene motor: `backend/pipeline/landing_agent.py` arma la página
+ENTERA (Claude escribe el copy por bloque, Nano Banana genera las imágenes con la foto real de
+Jack como referencia, y se ensambla un preview HTML). Usa los **ANEXOS** al final de
+`advertorial.md` (16 bloques) y `landing-page.md` (11 bloques) — estructuras destiladas de las
+páginas reales de Jack en buenatienda.com.co. Nada se sube a Shopify sin el clic de aprobación
+en el preview (gate obligatorio).

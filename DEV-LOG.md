@@ -3980,3 +3980,62 @@ PENDIENTE (fase 2, avisado): necesita datos del Radar (correr el escaneo). Falta
 especializados extra que pidió Juan: agente experto en Dropi (estudiar catálogo), 2 revisores dedicados,
 y afinar el "solucionador" con más contexto. AVISO Jack: NO toqué radar/ ni el pipeline existente; solo
 descubridor.py nuevo + 1 endpoint + 1 pestaña.
+### 2026-07-12 · Claude (jackingshop1-cell) · 🚧 AVISO PREVIO: construyendo "Agente Buscador de B-ROLLS" en montador/ (pedido de Jack)
+Jack pidió extender los agentes editores del Montador con un agente que LEE el guion (beats con
+timestamps), detecta frases que piden ilustración ("inflamada como un hipopótamo" → b-roll de
+hipopótamo), las BUSCA solo en Pexels/Pixabay (gratis — TU decisión previa de NO TikTok para b-roll se
+respeta), las baja y se las entrega al plan de montaje para el beat exacto. Reglas de Jack: el PRODUCTO
+siempre con las tomas del usuario (jamás b-roll genérico); si no hay b-roll bueno, no mete nada.
+AVISO Juan: voy a tocar montador/backend/pipeline.py (hook entre catálogo y plan) + nuevo
+montador/backend/agentes/broll.py. Trabajo en worktree y fusiono verificado. Si estás editando el
+pipeline AHORA, avisa aquí.
+
+### 2026-07-12 · Claude (jackingshop1-cell) · 🎞️ AGENTE B-ROLL del Montador — TERMINADO y fusionado
+Cierre del aviso previo: montador/backend/agentes/broll.py NUEVO (detección con Claude + Pexels/Pixabay
+portado de tu stock_broll, cache, sin key → aviso honesto) + hook 2.5 en pipeline.py (entre catálogo y
+plan, try/except total, rollback, B* SOLO en su beat y jamás de relleno; _otra_version repone B* del
+estado; validado apagado = pipeline idéntico). usar_broll en /api/proyectos y /api/ganador (default ON,
+MONTADOR_BROLL=0 global) + checkbox en su frontend. 36/36 tests + 1 llamada real a Claude: "inflamada
+como hipopótamo"→hippopotamus ✅, "cucarachas"→cockroach kitchen ✅, la rodillera (producto) JAMÁS ✅.
+PENDIENTE: key gratis de Pexels de Jack (pexels.com/api) para verlo bajar b-rolls en vivo.
+AVISO Juan: tu pipeline.py del montador ganó el paso 2.5 y plan_montaje(brolls=) opcional — apagado es
+idéntico a antes. broll.py sigue el contrato de tus agentes/.
+
+### 2026-07-13 · Claude (jackingshop1-cell) · 🚧 AVISO PREVIO: construyendo el MOTOR de Crear Landings (pedido de Jack)
+Jack pidió arrancar la ejecución de Crear Landings: agente que arma la página COMPLETA en automático.
+Analizamos sus 4 referencias reales de buenatienda.com.co → plantilla ADVERTORIAL (16 bloques,
+editorial, oferta tardía, la tuya de advertorial.md coincide — la enriquezco, no la reemplazo) y
+plantilla LANDING (11 bloques, precio arriba, badges repetidos). Voy a construir: orquestador
+(pipeline/landing_agent.py NUEVO) + copy con Claude (precio/oferta EXACTOS, cero inventos) + imágenes
+por sección con Nano Banana (reusa disruptive_images) + preview con GATE de aprobación ANTES de subir +
+subida con TU shopify_admin (cm-*, jamás toca lo existente) + endpoints + conectar el botón ldGo.
+AVISO Juan: toco assets/landing-templates/ (enriquecer), app.py (endpoints nuevos) e index.html
+(p-landings). Tu shopify_admin.py NO se modifica — solo se usa. Trabajo en worktree.
+
+### 2026-07-13 · Claude (jackingshop1-cell) · 🛍️ MOTOR de Crear Landings TERMINADO — el botón "Generar" por fin vive
+Cierre del aviso previo. El agente arma la página COMPLETA con las estructuras VALIDADAS de las 4
+referencias reales de Jack (buenatienda.com.co), con gate de aprobación antes de subir:
+- **NUEVO pipeline/landing_agent.py (~600 líneas)**: generar_landing() — 1 llamada a Claude (tool_use
+  JSON por bloque) llena la plantilla del tipo (📰 ADVERTORIAL 16 bloques editoriales / 🛍️ LANDING 11
+  bloques visuales — anexadas a assets/landing-templates/*.md SIN borrar lo de Juan) → _limpiar_cifras()
+  BORRA cualquier precio/descuento/ahorro que la IA invente (solo los EXACTOS de Jack) → imágenes por
+  sección con Nano Banana draft + foto real del producto como referencia (falla → foto original + aviso
+  con error_amigable) → preview HTML autocontenido mobile-first. Testimonios/reviews/métricas =
+  placeholders [[EDITAR: pega tus reseñas reales]] y autoridad SIN nombres inventados (protege con
+  Meta/Shopify, decisión de producto). publicar_en_shopify(): vía principal = theme assets
+  (sections/cm-*.liquid + templates/page.cm-*.json con crear_asset — scopes garantizados por el
+  README-LANDINGS) + página REST best-effort si el token tiene write_content; si falta, instrucciones
+  de 2 clics. Si UNA imagen no sube al CDN → aborta con error claro (nada de páginas rotas).
+- **app.py**: POST /api/landing-generate (job en background, valida producto/precio/fotos/key, lee el
+  link con fetch_page_text) + POST /api/landing-publicar (gate — jamás publica sin el clic) + .html en
+  _MIME. **index.html**: #ldGo habilitado, submit real con fotos, progreso, IFRAME del preview,
+  botones "✅ Aprobar y subir a Shopify" y "🔄 Regenerar".
+- VERIFICADO: 30/30 checks offline (bloques en orden, precio $79.900 tal cual, cifras inventadas
+  borradas con aviso, placeholders presentes, degradación honesta con Gemini caído probada — imágenes
+  caen a la foto real avisando); publicación mockeada (keys cm-* correctas, se niega a sobreescribir y
+  sin credenciales); 1 llamada real a Claude validó el copy del advertorial (editorial, 0 cifras
+  inventadas, 0 doctores con nombre, policy-safe). Post-merge: py 100%, 65 rutas, JS 17/17.
+- PENDIENTE Jack: (1) la key de Gemini sigue sin créditos → las imágenes degradarán a la foto original
+  hasta pegar la key nueva (ya creada en su AI Studio, falta copiarla); (2) probar el flujo E2E real.
+AVISO Juan: tu shopify_admin.py NO se modificó (solo se usa); tus plantillas en landing-templates
+ganaron anexos al final; la sección quedó operativa punta a punta.

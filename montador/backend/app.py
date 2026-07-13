@@ -72,7 +72,8 @@ async def crear(nombre: str = Form("mi ad"),
                 ag_endcard: bool = Form(False),
                 ag_hookbanner: bool = Form(False),
                 ag_hookbanner_texto: str = Form(""),
-                ag_momentos: bool = Form(False)):
+                ag_momentos: bool = Form(False),
+                usar_broll: bool = Form(True)):
     """Acepta VARIAS voces en off: se crea un proyecto por voz (mismo paquete de clips,
     enlazado en disco sin duplicar) y se montan en cola. El catálogo visual se calcula
     una sola vez y los hermanos del grupo lo heredan."""
@@ -187,7 +188,7 @@ async def crear(nombre: str = Form("mi ad"),
                       "grupo": grupo, "voz": a.filename, "paquete": pkg_puro,
                       "audio": audio_name, "clips": clip_names, "musica": musica_name,
                       "estilo_subs": estilo_subs, "plataforma": plataforma, "versiones": [],
-                      "agentes": agentes,
+                      "agentes": agentes, "usar_broll": usar_broll,
                       "fase": "en cola", "progreso": 0, "done": False, "error": None, "log": []}
             with open(pdir / "estado.json", "w") as f:
                 json.dump(estado, f, ensure_ascii=False, indent=2)
@@ -342,7 +343,8 @@ async def clonar_ganador(nombre: str = Form("ganador"),
                          ag_endcard: bool = Form(False),
                          ag_hookbanner: bool = Form(False),
                          ag_hookbanner_texto: str = Form(""),
-                         ag_momentos: bool = Form(False)):
+                         ag_momentos: bool = Form(False),
+                         usar_broll: bool = Form(True)):
     """🏆 Sube un ad GANADOR + tus clips → la app lo analiza y genera variaciones
     (guiones nuevos beat a beat + voz ElevenLabs + una versión con el audio original)."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -435,6 +437,7 @@ async def clonar_ganador(nombre: str = Form("ganador"),
               "n_variaciones": n_variaciones, "incluir_original": incluir_original, "voz": voz,
               "modo_audio": modo_audio,
               "estilo_subs": estilo_subs, "plataforma": plataforma, "agentes": agentes,
+              "usar_broll": usar_broll,
               "hijos": [], "versiones": [],
               "fase": "en cola", "progreso": 0, "done": False, "error": None, "log": []}
     with open(pdir / "estado.json", "w") as f:

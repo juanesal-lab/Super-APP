@@ -3958,3 +3958,25 @@ AVISO Jack: en tu Mac, tras `git pull`, abre la pestaña "🎬 Montar ad" y dale
 1ª vez tarda 1-2 min instalando faster-whisper/pillow/anthropic). Pon TUS claves en `montador/.env`
 (ANTHROPIC_API_KEY + ELEVENLABS_API_KEY). Es una app aparte que solo VIVE en la carpeta montador/ —
 no la mezcles con el pipeline de Super-APP.
+
+### 2026-07-13 · Claude (juanesal-lab) · 🧭 DESCUBRIDOR de productos ganadores (fase 1) — sobre Radar, por segmentos, no quemados en CO
+Pedido de Juan: la Búsqueda de Productos = función estrella, multi-agente, multi-país, por segmentos,
+validando que no estén quemados en Colombia, mín. 20 días en Meta. Hallazgo clave: casi todo ya tenía
+base en **Radar** (escaneo Meta Ad Library por país vía ScrapeCreators + sourcing Dropi/importación/maquila
++ saturación CO en oportunidad.py). Fase 1 construida ENCIMA de eso:
+- **radar/config.json**: +países US/DK/BE/RO; keywords gadgets (DE/DK/FR/BE/RO/US) y nutra (US+EU);
+  nuevo bloque `verticales` (gadgets→DE/DK/FR/BE/RO prioridad, US/IT/ES respaldo · nutra→US/ES/DE/FR/IT).
+- **backend/pipeline/descubridor.py** (NUEVO): `descubrir(vertical, segmento)` lee los candidatos del
+  Radar (radar_api._candidatos_completos = winners + sourcing + competencia CO ya fusionados), filtra por
+  vertical/países/≥20 días, separa los QUEMADOS en CO (saturado o >2 competidores), agrupa por SEGMENTO
+  (gadgets: Dropi/Importación · nutra: Dropi/Maquila-marca-propia), y una llamada Gemini da veredicto
+  fresco/entrando/quemado + "cambiá el vehículo" (nutra). Mín. 5 por segmento (o aviso honesto). Degrada
+  sin IA (heurística) y sin escaneo (mensaje honesto → correr Radar).
+- **app.py**: `/api/descubrir` (vertical/segmento/min_dias). **index.html**: pestaña "🧭 Descubrir
+  productos" (grupo Buscar creativos) con selector de vertical, tarjetas por segmento con país/días/
+  veredicto/competidores CO/vehículo, y sección aparte de QUEMADOS.
+- Verificado: py_compile, ruta, JS 18/18, caso sin-escaneo honesto sin crash.
+PENDIENTE (fase 2, avisado): necesita datos del Radar (correr el escaneo). Faltan por sumar los agentes
+especializados extra que pidió Juan: agente experto en Dropi (estudiar catálogo), 2 revisores dedicados,
+y afinar el "solucionador" con más contexto. AVISO Jack: NO toqué radar/ ni el pipeline existente; solo
+descubridor.py nuevo + 1 endpoint + 1 pestaña.

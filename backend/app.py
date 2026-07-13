@@ -498,6 +498,17 @@ from radar_api import router as radar_router
 app.include_router(radar_router)
 
 
+@app.post("/api/descubrir")
+def api_descubrir(vertical: str = Form("gadgets"), segmento: str = Form(""),
+                  min_dias: int = Form(20)):
+    """🧭 Descubrir productos ganadores — vista segmentada SOBRE los datos del Radar (no escanea,
+    no gasta créditos). Devuelve ganadores de otros mercados por vertical/segmento, validados NO
+    quemados en Colombia. Si no hay escaneo del Radar, error honesto (sin_datos)."""
+    from pipeline.descubridor import descubrir
+    return descubrir(vertical, segmento or None, gemini_key=_load_env_key(),
+                     anthropic_key=_load_anthropic_key(), min_dias=min_dias)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     # Sin cache: el navegador siempre carga la version mas reciente de la app

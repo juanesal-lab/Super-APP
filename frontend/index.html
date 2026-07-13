@@ -454,6 +454,7 @@
     <button data-p="p-buscar">🔍 Buscar creativos</button>
     <button data-p="p-foreplay">🔥 Foreplay</button>
     <button data-p="p-radar">📡 Radar</button>
+    <button data-p="p-descubrir">🧭 Descubrir productos</button>
 
     <div class="navgroup">🎬 Crear videos</div>
     <button data-p="p-crear" class="active">✂️ Cortar clips</button>
@@ -1487,6 +1488,149 @@
     <a href="/radar" target="_blank" style="color:var(--gold);font-weight:600">Abrir en pestaña completa ↗</a></p>
   <iframe id="radarFrame" title="Radar Ganadores"
     style="width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#0d0d0d"></iframe>
+  </div>
+
+  <!-- 🧭 DESCUBRIR PRODUCTOS GANADORES (segmentado, sobre datos del Radar) -->
+  <div class="panel" id="p-descubrir" style="display:none">
+  <style>
+    #p-descubrir .dscHero{border-radius:16px;padding:20px 22px;margin:0 0 18px;
+      background:linear-gradient(135deg,#1c1922,#221d14);border:1px solid var(--line)}
+    #p-descubrir .dscHero h2{font-size:20px;margin:0 0 6px;font-weight:800;letter-spacing:-.3px}
+    #p-descubrir .dscHero p{color:var(--muted);font-size:13px;margin:0;line-height:1.55}
+    #p-descubrir .dscCtl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:16px 0 6px}
+    #p-descubrir .dscSeg{display:inline-flex;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+    #p-descubrir .dscSeg button{background:var(--card2);color:var(--muted);border:0;padding:10px 16px;
+      cursor:pointer;font-size:13.5px;font-weight:700}
+    #p-descubrir .dscSeg button.on{background:var(--gold);color:var(--ink)}
+    #p-descubrir .dscGo{background:var(--gold);color:var(--ink);border:0;border-radius:11px;
+      padding:11px 20px;font-size:14.5px;font-weight:800;cursor:pointer}
+    #p-descubrir .dscGo:disabled{opacity:.5;cursor:default}
+    #p-descubrir .dscMsg{color:var(--muted);font-size:13px;margin:10px 0}
+    #p-descubrir .dscSegBlk{margin:22px 0 6px}
+    #p-descubrir .dscSegBlk h3{font-size:15.5px;margin:0 0 4px;font-weight:800}
+    #p-descubrir .dscNote{font-size:12.5px;color:var(--warn);margin:0 0 12px}
+    #p-descubrir .dscGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+    #p-descubrir .dscCard{background:var(--card2);border:1px solid var(--line);border-radius:14px;
+      overflow:hidden;display:flex;flex-direction:column}
+    #p-descubrir .dscCard img{width:100%;height:150px;object-fit:cover;background:#0d0d0d;display:block}
+    #p-descubrir .dscBody{padding:12px 13px;display:flex;flex-direction:column;gap:7px}
+    #p-descubrir .dscName{font-weight:800;font-size:14px;line-height:1.3}
+    #p-descubrir .dscBadges{display:flex;gap:6px;flex-wrap:wrap}
+    #p-descubrir .dscB{font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:99px;
+      background:rgba(255,255,255,.07);color:var(--txt)}
+    #p-descubrir .dscB.ver-fresco{background:rgba(46,204,113,.18);color:#5fe19a}
+    #p-descubrir .dscB.ver-entrando{background:rgba(241,196,15,.18);color:#f4d24a}
+    #p-descubrir .dscB.ver-quemado{background:rgba(231,76,60,.18);color:#ff8a7a}
+    #p-descubrir .dscWhy{font-size:12.5px;color:var(--muted);line-height:1.5}
+    #p-descubrir .dscVeh{font-size:12.5px;color:var(--txt);background:rgba(155,89,182,.14);
+      border-radius:8px;padding:6px 9px}
+    #p-descubrir .dscLink{font-size:12.5px;color:var(--gold);font-weight:700;text-decoration:none}
+    #p-descubrir .dscEmpty{background:var(--card2);border:1px dashed var(--line);border-radius:14px;
+      padding:26px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
+    #p-descubrir .dscEmpty button{margin-top:12px;background:var(--gold);color:var(--ink);border:0;
+      border-radius:10px;padding:10px 18px;font-weight:800;cursor:pointer;font-size:13.5px}
+    #p-descubrir details.dscQ{margin-top:26px;border:1px solid rgba(231,76,60,.35);border-radius:12px;
+      padding:2px 14px;background:rgba(231,76,60,.05)}
+    #p-descubrir details.dscQ summary{cursor:pointer;font-weight:800;font-size:14px;padding:12px 0;color:#ff8a7a}
+  </style>
+  <div class="dscHero">
+    <h2>🧭 Descubrir productos ganadores</h2>
+    <p>Encuentra productos que YA están ganando (20+ días activos en la Meta Ad Library) en OTROS
+      mercados, agrupados por cómo conseguirlos, y validados de que NO estén quemados en Colombia.
+      No subes foto: esto lee los datos que el 📡 Radar ya escaneó. Elegí la vertical y buscá.</p>
+  </div>
+  <div class="dscCtl">
+    <div class="dscSeg" id="dscVert">
+      <button data-v="gadgets" class="on">📦 Gadgets</button>
+      <button data-v="nutra">💊 Nutra</button>
+    </div>
+    <button class="dscGo" id="dscGo">🔎 Buscar ganadores</button>
+  </div>
+  <div class="dscMsg" id="dscMsg"></div>
+  <div id="dscOut"></div>
+  <script>
+  (function(){
+    let vertical='gadgets';
+    const $=s=>document.querySelector(s);
+    const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const verMeta={fresco:'🟢 fresco',entrando:'🟡 entrando',quemado:'🔴 quemado'};
+
+    document.querySelectorAll('#dscVert button').forEach(b=>{
+      b.onclick=()=>{
+        vertical=b.dataset.v;
+        document.querySelectorAll('#dscVert button').forEach(x=>x.classList.toggle('on',x===b));
+      };
+    });
+
+    function card(it){
+      const ver=verMeta[it.veredicto]||('⚪ '+(it.veredicto||'?'));
+      const img=it.media_img?`<img src="${esc(it.media_img)}" alt="" loading="lazy" onerror="this.style.display='none'">`:'';
+      const veh=it.vehiculo?`<div class="dscVeh">🔄 Idea de marca propia: ${esc(it.vehiculo)}</div>`:'';
+      const pend=it.sourcing_pendiente?`<span class="dscB">⏳ sourcing pendiente</span>`:'';
+      const co=(it.competidores_co!=null)?`<span class="dscB">CO: ${it.competidores_co} competidores</span>`:'';
+      const link=it.link?`<a class="dscLink" href="${esc(it.link)}" target="_blank" rel="noopener">Ver anuncio ↗</a>`:'';
+      return `<div class="dscCard">${img}<div class="dscBody">
+        <div class="dscName">${esc(it.nombre)}</div>
+        <div class="dscBadges">
+          <span class="dscB">🌎 ${esc(it.pais)}</span>
+          <span class="dscB">🔥 ${it.dias} días</span>
+          <span class="dscB ver-${esc(it.veredicto)}">${ver}</span>
+          ${co}${pend}
+        </div>
+        <div class="dscWhy">${esc(it.por_que||'')}</div>
+        ${veh}${link}
+      </div></div>`;
+    }
+
+    function render(r){
+      const out=$('#dscOut');
+      if(!r||!r.ok){
+        if(r&&r.sin_datos){
+          out.innerHTML=`<div class="dscEmpty">${esc(r.error||'Todavía no hay datos del Radar.')}
+            <br><button id="dscToRadar">📡 Ir al Radar y escanear</button></div>`;
+          const g=$('#dscToRadar'); if(g) g.onclick=()=>{const b=document.querySelector('#tabs button[data-p="p-radar"]'); if(b) b.click();};
+          return;
+        }
+        out.innerHTML=`<div class="dscEmpty">⚠️ ${esc((r&&r.error)||'No se pudo buscar.')}</div>`;
+        return;
+      }
+      let html='';
+      if(r.aviso) html+=`<div class="dscMsg">ℹ️ ${esc(r.aviso)}</div>`;
+      const segs=r.segmentos||{};
+      const keys=Object.keys(segs);
+      if(!keys.length) html+=`<div class="dscEmpty">No hay productos que pasen el filtro todavía. Corré el Radar seguido para acumular ganadores.</div>`;
+      keys.forEach(k=>{
+        const s=segs[k];
+        html+=`<div class="dscSegBlk"><h3>${esc(s.label)}</h3>`;
+        if(s.pocos) html+=`<p class="dscNote">${esc(s.mensaje||'Pocos productos en este segmento — no inventamos.')}</p>`;
+        if((s.items||[]).length) html+=`<div class="dscGrid">${s.items.map(card).join('')}</div>`;
+        else if(!s.pocos) html+=`<p class="dscNote">Sin productos en este segmento.</p>`;
+        html+=`</div>`;
+      });
+      const q=r.quemados||[];
+      if(q.length){
+        html+=`<details class="dscQ"><summary>⚠️ Parecen ganadores pero están QUEMADOS en Colombia (${q.length})</summary>
+          <div class="dscGrid" style="margin:8px 0 16px">${q.map(card).join('')}</div></details>`;
+      }
+      out.innerHTML=html;
+    }
+
+    $('#dscGo').onclick=async ()=>{
+      const btn=$('#dscGo'), msg=$('#dscMsg');
+      btn.disabled=true; msg.textContent='⏳ Buscando ganadores en los datos del Radar...';
+      $('#dscOut').innerHTML='';
+      try{
+        const fd=new FormData(); fd.append('vertical',vertical);
+        const r=await fetch('/api/descubrir',{method:'POST',body:fd});
+        const j=await r.json();
+        msg.textContent='';
+        render(j);
+      }catch(e){
+        msg.textContent='⚠️ '+((e&&e.message)||e);
+      }finally{ btn.disabled=false; }
+    };
+  })();
+  </script>
   </div>
 
   <div class="panel" id="p-config" style="display:none">

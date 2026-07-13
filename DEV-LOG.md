@@ -3968,3 +3968,25 @@ siempre con las tomas del usuario (jamás b-roll genérico); si no hay b-roll bu
 AVISO Juan: voy a tocar montador/backend/pipeline.py (hook entre catálogo y plan) + nuevo
 montador/backend/agentes/broll.py. Trabajo en worktree y fusiono verificado. Si estás editando el
 pipeline AHORA, avisa aquí.
+
+### 2026-07-12 · Claude (jackingshop1-cell) · 🎞️ AGENTE B-ROLL del Montador — TERMINADO y fusionado
+Cierre del aviso previo: montador/backend/agentes/broll.py NUEVO (detección con Claude + Pexels/Pixabay
+portado de tu stock_broll, cache, sin key → aviso honesto) + hook 2.5 en pipeline.py (entre catálogo y
+plan, try/except total, rollback, B* SOLO en su beat y jamás de relleno; _otra_version repone B* del
+estado; validado apagado = pipeline idéntico). usar_broll en /api/proyectos y /api/ganador (default ON,
+MONTADOR_BROLL=0 global) + checkbox en su frontend. 36/36 tests + 1 llamada real a Claude: "inflamada
+como hipopótamo"→hippopotamus ✅, "cucarachas"→cockroach kitchen ✅, la rodillera (producto) JAMÁS ✅.
+PENDIENTE: key gratis de Pexels de Jack (pexels.com/api) para verlo bajar b-rolls en vivo.
+AVISO Juan: tu pipeline.py del montador ganó el paso 2.5 y plan_montaje(brolls=) opcional — apagado es
+idéntico a antes. broll.py sigue el contrato de tus agentes/.
+
+### 2026-07-13 · Claude (jackingshop1-cell) · 🚧 AVISO PREVIO: construyendo el MOTOR de Crear Landings (pedido de Jack)
+Jack pidió arrancar la ejecución de Crear Landings: agente que arma la página COMPLETA en automático.
+Analizamos sus 4 referencias reales de buenatienda.com.co → plantilla ADVERTORIAL (16 bloques,
+editorial, oferta tardía, la tuya de advertorial.md coincide — la enriquezco, no la reemplazo) y
+plantilla LANDING (11 bloques, precio arriba, badges repetidos). Voy a construir: orquestador
+(pipeline/landing_agent.py NUEVO) + copy con Claude (precio/oferta EXACTOS, cero inventos) + imágenes
+por sección con Nano Banana (reusa disruptive_images) + preview con GATE de aprobación ANTES de subir +
+subida con TU shopify_admin (cm-*, jamás toca lo existente) + endpoints + conectar el botón ldGo.
+AVISO Juan: toco assets/landing-templates/ (enriquecer), app.py (endpoints nuevos) e index.html
+(p-landings). Tu shopify_admin.py NO se modifica — solo se usa. Trabajo en worktree.

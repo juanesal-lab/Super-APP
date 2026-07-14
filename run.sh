@@ -87,3 +87,14 @@ while true; do
     echo "✅ App actualizada y corriendo (PID $SRV_PID)."
   fi
 done
+
+# ── 🔥 SUITE DE HUMO (opcional) ─────────────────────────────────────────────────────────────
+# Chequeo rápido de que un merge no rompió nada crítico (offline, ~1s, $0 de APIs).
+# Para activarlo: descomenta estas líneas y MUÉVELAS arriba, justo ANTES de start_server
+# (aquí abajo nunca se ejecutan: el while de arriba no retorna).
+#   echo "🔥 Corriendo la suite de humo (tests/smoke.py)..."
+#   if ! ./venv/bin/python tests/smoke.py; then
+#     echo "❌ La suite de humo FALLÓ — un merge/cambio rompió algo crítico. Revisa arriba."
+#     echo "   (La app arranca igual, pero arregla eso antes de seguir.)"
+#   fi
+# Detalle y convención para agregar checks: tests/README.md

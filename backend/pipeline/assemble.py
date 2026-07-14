@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import os
 import subprocess
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -169,25 +170,64 @@ def _normalized_clip(seg: Segment, out_path: str, dims: tuple[int, int],
     return out_path
 
 
+# PERF (medido): los mismos clips normalizados se re-sondeaban con ffprobe en CADA versión
+# (8 versiones × ~10 clips ≈ 90 subprocesos ffprobe, ~3s en el camino crítico del concat).
+# Los clips son de un solo uso (nombre único por combinación, nunca se reescriben): la clave
+# (ruta, mtime, tamaño) invalida sola si un archivo cambiara. El lock por-ruta también evita
+# la CARRERA de _ensure_audio al paralelizar los concat (dos versiones escribiendo el mismo _sil_).
+_FKEY_CACHE: dict[tuple, object] = {}
+_FKEY_LOCK = threading.Lock()
+_PATH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _fkey(path: str):
+    """Clave de cache que identifica el CONTENIDO del archivo (ruta + mtime + tamaño)."""
+    try:
+        st = os.stat(path)
+        return (path, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return (path, 0, 0)
+
+
+def _path_lock(path: str) -> threading.Lock:
+    with _FKEY_LOCK:
+        lk = _PATH_LOCKS.get(path)
+        if lk is None:
+            lk = _PATH_LOCKS[path] = threading.Lock()
+        return lk
+
+
 def _ensure_audio(path: str, work_dir: str) -> str:
     """Garantiza que el clip tenga pista de audio (agrega silencio si la fuente no tiene).
 
     Sin esto, un clip de un video FUENTE sin audio se renderiza con `-an` (sin pista) y rompe
-    el concat/acrossfade con "[i:a] matches no streams". Devuelve la ruta lista para concatenar."""
+    el concat/acrossfade con "[i:a] matches no streams". Devuelve la ruta lista para concatenar.
+    Con cache por archivo (los concat de las 8 versiones comparten clips) y lock por ruta
+    (varias versiones en paralelo no escriben el mismo _sil_ a la vez)."""
     from .ffmpeg_utils import probe
-    info = probe(path)
-    if info.has_audio:
-        return path
-    out = os.path.join(work_dir, "_sil_" + os.path.basename(path))
-    dur = max(0.4, info.duration)
-    run([
-        "ffmpeg", "-y", "-i", path,
-        "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-        "-map", "0:v:0", "-map", "1:a:0", "-shortest",
-        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
-        out,
-    ])
-    return out
+    with _path_lock(path):
+        key = ("audio",) + _fkey(path)
+        with _FKEY_LOCK:
+            hit = _FKEY_CACHE.get(key)
+        if hit is not None:
+            return hit
+        info = probe(path)
+        if info.has_audio:
+            out = path
+        else:
+            out = os.path.join(work_dir, "_sil_" + os.path.basename(path))
+            dur = max(0.4, info.duration)
+            run([
+                "ffmpeg", "-y", "-i", path,
+                "-f", "lavfi", "-t", f"{dur:.3f}", "-i",
+                "anullsrc=channel_layout=stereo:sample_rate=48000",
+                "-map", "0:v:0", "-map", "1:a:0", "-shortest",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+                out,
+            ])
+        with _FKEY_LOCK:
+            _FKEY_CACHE[key] = out
+        return out
 
 
 def concat_clips(clip_paths: list[str], out_path: str, work_dir: str) -> str:
@@ -221,14 +261,24 @@ _XFADE_D_HARD = 0.034    # "corte duro" (1 frame de mezcla: evita el salto entre
 
 def _video_stream_dur(path: str) -> float:
     """Duración del STREAM de video (no del contenedor: el contenedor toma el máximo de
-    video/audio y esconde streams de video cortos — causa real de un congelón de 24s)."""
+    video/audio y esconde streams de video cortos — causa real de un congelón de 24s).
+    Con cache por (ruta, mtime, tamaño): los concat de las 8 versiones re-preguntaban la
+    duración de los MISMOS clips compartidos (~50 ffprobe repetidos por lote)."""
+    key = ("vdur",) + _fkey(path)
+    with _FKEY_LOCK:
+        hit = _FKEY_CACHE.get(key)
+    if hit is not None:
+        return hit
     try:
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v",
                               "-show_entries", "stream=duration", "-of", "csv=p=0", path],
                              capture_output=True, text=True, timeout=20)
-        return float((out.stdout or "").strip().splitlines()[0])
+        d = float((out.stdout or "").strip().splitlines()[0])
     except Exception:  # noqa: BLE001
-        return 0.0
+        return 0.0     # el fallo NO se cachea (el archivo puede estar a medio escribir)
+    with _FKEY_LOCK:
+        _FKEY_CACHE[key] = d
+    return d
 
 
 def concat_clips_xfade(clip_paths: list[str], out_path: str, work_dir: str,
@@ -497,11 +547,15 @@ def build_variations(selected: list[Segment], work_dir: str,
         for combo, p in ex.map(_mk, combos):
             norm_paths[combo] = p
 
-    out_versions = []
-    for name, order in version_orders:
+    # PERF (medido 2026-07-14): el concat de las 8 versiones iba EN SERIE (~13s de los ~17s de
+    # esta etapa). Cada versión escribe archivos propios (version_X.mp4, lista de concat con su
+    # nombre) y los clips compartidos ya están renderizados → paralelizar es seguro (la carrera
+    # del _sil_ de _ensure_audio quedó cubierta con lock por ruta). Mismo plan, mismos outputs.
+    def _build_one(item):
+        name, order = item
         clip_list = [norm_paths[c] for c in slot_plans[name] if c in norm_paths]
         if not clip_list:
-            continue
+            return None
         out_path = os.path.join(work_dir, f"version_{name}.mp4")
         # SIEMPRE dissolve corto (el pegamento pro del mashup) — antes solo con fx, y con
         # transiciones tipo PowerPoint que se veían amateur.
@@ -521,12 +575,15 @@ def build_variations(selected: list[Segment], work_dir: str,
                     cuts.append(round(_acc, 3))
         except Exception:  # noqa: BLE001
             pass
-        out_versions.append({
+        return {
             "name": name,
             "path": out_path,
             "segments": [selected[i].to_dict() for i in order],
             "cut_times": cuts,      # tiempos REALES de transición (para alinear los SFX)
-        })
+        }
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(version_orders)))) as ex:
+        out_versions = [v for v in ex.map(_build_one, version_orders) if v]
 
     return {"clips": list(norm_paths.values()), "versions": out_versions}
 

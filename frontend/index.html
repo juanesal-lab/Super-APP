@@ -1620,6 +1620,12 @@
     #p-descubrir .dscB.ver-fresco{background:rgba(46,204,113,.18);color:#5fe19a}
     #p-descubrir .dscB.ver-entrando{background:rgba(241,196,15,.18);color:#f4d24a}
     #p-descubrir .dscB.ver-quemado{background:rgba(231,76,60,.18);color:#ff8a7a}
+    #p-descubrir .dscB.acc-testear_ya{background:rgba(46,204,113,.18);color:#5fe19a}
+    #p-descubrir .dscB.acc-importar{background:rgba(52,152,219,.18);color:#6fc0f2}
+    #p-descubrir .dscB.acc-fabricar_marca{background:rgba(155,89,182,.18);color:#c690e0}
+    #p-descubrir .dscB.acc-vigilar{background:rgba(241,196,15,.18);color:#f4d24a}
+    #p-descubrir .dscB.acc-descartar_quemado{background:rgba(231,76,60,.18);color:#ff8a7a}
+    #p-descubrir .dscNota{font-size:12.5px;color:var(--txt);line-height:1.5}
     #p-descubrir .dscWhy{font-size:12.5px;color:var(--muted);line-height:1.5}
     #p-descubrir .dscVeh{font-size:12.5px;color:var(--txt);background:rgba(155,89,182,.14);
       border-radius:8px;padding:6px 9px}
@@ -1653,6 +1659,7 @@
     const $=s=>document.querySelector(s);
     const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const verMeta={fresco:'🟢 fresco',entrando:'🟡 entrando',quemado:'🔴 quemado'};
+    const accMeta={testear_ya:'✅ Testear ya',importar:'📦 Importar',fabricar_marca:'🏭 Marca propia',vigilar:'👀 Vigilar',descartar_quemado:'🔴 Descartar (quemado)'};
 
     document.querySelectorAll('#dscVert button').forEach(b=>{
       b.onclick=()=>{
@@ -1665,6 +1672,8 @@
       const ver=verMeta[it.veredicto]||('⚪ '+(it.veredicto||'?'));
       const img=it.media_img?`<img src="${esc(it.media_img)}" alt="" loading="lazy" onerror="this.style.display='none'">`:'';
       const veh=it.vehiculo?`<div class="dscVeh">🔄 Idea de marca propia: ${esc(it.vehiculo)}</div>`:'';
+      const acc=it.accion?`<div class="dscBadges"><span class="dscB acc-${esc(it.accion)}">${accMeta[it.accion]||esc(it.accion)}</span></div>`:'';
+      const nota=it.nota?`<div class="dscNota">💡 ${esc(it.nota)}</div>`:'';
       const pend=it.sourcing_pendiente?`<span class="dscB">⏳ sourcing pendiente</span>`:'';
       const co=(it.competidores_co!=null)?`<span class="dscB">CO: ${it.competidores_co} competidores</span>`:'';
       const link=it.link?`<a class="dscLink" href="${esc(it.link)}" target="_blank" rel="noopener">Ver anuncio ↗</a>`:'';
@@ -1677,7 +1686,7 @@
           ${co}${pend}
         </div>
         <div class="dscWhy">${esc(it.por_que||'')}</div>
-        ${veh}${link}
+        ${acc}${nota}${veh}${link}
       </div></div>`;
     }
 

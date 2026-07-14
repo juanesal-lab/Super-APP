@@ -30,6 +30,10 @@ from . import gemini_fast
 from .ia_errors import error_amigable
 
 _MODEL = "gemini-2.5-flash"
+_CLAUDE = "claude-opus-4-8"
+
+# Etiquetas amables por acción (el front las pinta; duplicadas allá, aquí solo de referencia).
+_ACCIONES = ("testear_ya", "importar", "fabricar_marca", "vigilar", "descartar_quemado")
 
 # Rutas: este archivo vive en backend/pipeline/ ; la raíz del repo está 2 niveles arriba.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -121,6 +125,9 @@ def _item_base(c: dict, vertical: str) -> dict:
         "estado_co": (c.get("comp_estado") or "").strip().lower(),
         "veredicto": "",
         "por_que": "",
+        # El solucionador (Claude) rellena estos dos; sin anthropic_key quedan vacíos (compatibilidad).
+        "accion": "",
+        "nota": "",
         # calcular_candidatos expone la media como img/video (no media_img/media_video):
         "media_img": c.get("img") or c.get("media_img") or "",
         "media_video": c.get("video") or c.get("media_video") or "",
@@ -215,6 +222,103 @@ def _aplicar_ia(items: list[dict], vertical: str, gemini_key: str | None) -> str
     return None
 
 
+_SOLUCIONADOR_TOOL = {
+    "name": "resolver",
+    "description": "Decisión final de sourcing/acción para cada producto descubierto (mercado Colombia).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "productos": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "i": {"type": "integer", "description": "índice del producto en la lista"},
+                        "accion": {"type": "string",
+                                   "enum": list(_ACCIONES),
+                                   "description": "qué hacer con el producto"},
+                        "nota": {"type": "string",
+                                 "description": "1 frase accionable en español (por qué esa acción)"},
+                        "es_falso_ganador": {"type": "boolean",
+                                             "description": "true si PARECE ganador pero en realidad está quemado/saturado en Colombia o es un espejismo (muchos competidores CO, muy viejo con señales cayendo, o marca grande)"},
+                    },
+                    "required": ["i", "accion", "nota", "es_falso_ganador"],
+                },
+            },
+        },
+        "required": ["productos"],
+    },
+}
+
+
+def _solucionador_claude(items: list[dict], vertical: str, anthropic_key: str | None) -> dict:
+    """SEGUNDO agente (Claude Opus, más fuerte): revisa TODO el lote con todas sus señales y da la
+    decisión final por producto: `accion` ∈ _ACCIONES, `nota` accionable y `es_falso_ganador` (parece
+    ganador pero está quemado/saturado o es un espejismo).
+
+    UNA sola llamada sobre todo el lote (forced tool-use, mismo patrón que tiktok_search._verificar_claude).
+    Devuelve {index: {accion, nota, es_falso_ganador}}. Ante CUALQUIER fallo o sin key → {} (nunca lanza)."""
+    if not (items and anthropic_key):
+        return {}
+    try:
+        lineas = []
+        for i, it in enumerate(items):
+            veh = f" | vehículo alterno sugerido: {it['vehiculo']}" if it.get("vehiculo") else ""
+            lineas.append(
+                f"{i}. \"{it.get('nombre', '')}\" | segmento sourcing: {it.get('segmento', '')} | "
+                f"nicho {it.get('nicho', '')} | país origen {it.get('pais', '')} | "
+                f"{it.get('dias', 0)} días activo en Meta | {it.get('variaciones', 0)} variaciones del creativo | "
+                f"{it.get('competidores_co', 0)} competidores en Colombia | "
+                f"estado Colombia: {it.get('estado_co', '') or 'sin dato'} | "
+                f"veredicto previo (Gemini): {it.get('veredicto', '') or 'sin dato'}{veh}")
+        prompt = (
+            "Eres un analista EXPERTO en sourcing de productos para dropshipping COD en el mercado de "
+            "COLOMBIA. Tienes enfrente una lista de productos que YA corren anuncios en la Meta Ad Library "
+            "de otros mercados, con TODAS sus señales. Tu trabajo es el de un revisor DURO que le pone "
+            "precio a cada decisión: detectar el que PARECE ganador pero en realidad está quemado/saturado "
+            "en Colombia (muchos competidores CO, o muy viejo con señales cayendo, o una marca grande "
+            "difícil de pelear) y decir claro qué hacer con cada uno.\n\n"
+            f"PRODUCTOS (vertical: {vertical}):\n" + "\n".join(lineas) + "\n\n"
+            "Para CADA producto (por su número) decide:\n"
+            '  - "accion": una de: "testear_ya" (ganador fresco, hay ventana, lánzalo ya), '
+            '"importar" (vale la pena pero toca traerlo de importación), "fabricar_marca" (mejor marca '
+            'propia / maquila para diferenciarte), "vigilar" (aún no, obsérvalo) o "descartar_quemado" '
+            "(quemado/saturado, no entres).\n"
+            '  - "nota": 1 frase corta, concreta y ACCIONABLE en español (el porqué de la acción).\n'
+            '  - "es_falso_ganador": true si PARECE ganador pero realmente está quemado/saturado en '
+            "Colombia o es un espejismo (muchos competidores CO, o muy viejo con señales cayendo, o marca "
+            "grande); false si es una oportunidad real.\n"
+            "Devuelve TODOS los productos, en orden, por la herramienta."
+        )
+        from anthropic import Anthropic
+        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
+        resp = client.messages.create(
+            model=_CLAUDE, max_tokens=2000,
+            tools=[_SOLUCIONADOR_TOOL], tool_choice={"type": "tool", "name": "resolver"},
+            messages=[{"role": "user", "content": prompt}])
+        out: dict[int, dict] = {}
+        for b in resp.content:
+            if getattr(b, "type", None) == "tool_use" and b.name == "resolver":
+                for j, d in enumerate((b.input or {}).get("productos") or []):
+                    if not isinstance(d, dict):
+                        continue
+                    try:
+                        idx = int(d.get("i", j))
+                    except (TypeError, ValueError):
+                        idx = j
+                    accion = str(d.get("accion", "")).strip().lower()
+                    if accion not in _ACCIONES:
+                        accion = "vigilar"
+                    out[idx] = {
+                        "accion": accion,
+                        "nota": str(d.get("nota", "")).strip()[:200],
+                        "es_falso_ganador": bool(d.get("es_falso_ganador")),
+                    }
+        return out
+    except Exception:  # noqa: BLE001 — nunca romper el descubridor por el solucionador
+        return {}
+
+
 def descubrir(vertical: str, segmento: str | None = None, *, gemini_key: str | None = None,
               anthropic_key: str | None = None, min_dias: int = 20, min_por_segmento: int = 5,
               progress=None) -> dict:
@@ -296,8 +400,32 @@ def descubrir(vertical: str, segmento: str | None = None, *, gemini_key: str | N
             por_seg[s].sort(key=lambda x: -x["score"])
         quemados_items.sort(key=lambda x: -x["score"])
 
-        # 5) Agente estudio + solucionador (UNA llamada sobre todo el lote, quemados incluidos).
+        # 5) Agente estudio + solucionador Gemini (UNA llamada sobre todo el lote, quemados incluidos).
         aviso = _aplicar_ia(todos_items + quemados_items, vertical, gemini_key)
+
+        # 5b) SEGUNDO agente (Claude Opus, opcional/key-gated): revisor/solucionador fuerte que da la
+        #     acción final por producto y detecta "falsos ganadores" (parecen ganadores pero están
+        #     quemados). Aditivo: sin anthropic_key todo queda EXACTAMENTE igual (sin accion/nota).
+        if anthropic_key:
+            combinado = todos_items + quemados_items
+            sol = _solucionador_claude(combinado, vertical, anthropic_key)
+            if sol:
+                falsos_ganadores = []
+                for i, it in enumerate(combinado):
+                    d = sol.get(i)
+                    if not d:
+                        continue
+                    it["accion"] = d["accion"]
+                    it["nota"] = d["nota"]
+                    # Falso ganador que aún está en un segmento → moverlo a quemados (con su accion/nota).
+                    if d["es_falso_ganador"] and i < len(todos_items):
+                        falsos_ganadores.append(it)
+                if falsos_ganadores:
+                    fg_ids = {id(x) for x in falsos_ganadores}
+                    for s in por_seg:
+                        por_seg[s] = [x for x in por_seg[s] if id(x) not in fg_ids]
+                    quemados_items.extend(falsos_ganadores)
+                    quemados_items.sort(key=lambda x: -x["score"])
 
         # 6) Armar segmentos con la garantía de min_por_segmento.
         segmentos = {}

@@ -4039,3 +4039,18 @@ referencias reales de Jack (buenatienda.com.co), con gate de aprobación antes d
   hasta pegar la key nueva (ya creada en su AI Studio, falta copiarla); (2) probar el flujo E2E real.
 AVISO Juan: tu shopify_admin.py NO se modificó (solo se usa); tus plantillas en landing-templates
 ganaron anexos al final; la sección quedó operativa punta a punta.
+
+### 2026-07-13 · Claude (juanesal-lab) · 🧭 Descubridor fase 2a: agente REVISOR/SOLUCIONADOR (Claude) + realidad de Dropi
+- **descubridor.py**: nuevo `_solucionador_claude` — 1 llamada Claude (opus-4-8, forced tool-use) sobre TODO
+  el lote con toda la info (días/variaciones/competidores CO/segmento/veredicto Gemini). Da por producto:
+  `accion` (testear_ya/importar/fabricar_marca/vigilar/descartar_quemado) + `nota` accionable +
+  `es_falso_ganador` (parece ganador pero está quemado → se mueve a la sección QUEMADOS). Opcional
+  (gate por anthropic_key); sin key, idéntico a antes. Front: badge de acción + nota en cada tarjeta.
+- **Dropi (aclaración técnica, radar/docs/dropi_api.md)**: Dropi tiene API real (api.dropi.co/products/v4/index
+  → precio proveedor, sugerido, stock por bodega = margen + ventas COD) PERO el token JWT solo vive en el
+  navegador (Cloudflare bloquea el login por servidor → 403). Por eso el "agente experto en Dropi" debe
+  correr en la sesión autenticada del navegador (Claude-in-Chrome/javascript_tool), como ya hace
+  sourcing.py/stock.py. El descubridor YA consume la tabla `sourcing`, así que el segmento Dropi se
+  llena cuando esa consulta corre. PENDIENTE fase 2b: rutina de navegador que consulta Dropi por nombre
+  de los candidatos del descubridor y refresca sourcing on-demand.
+- Verificado: py_compile, import, solucionador degrada sin key, sin-escaneo honesto, JS 18/18.

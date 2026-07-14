@@ -423,6 +423,42 @@ def _normalizar_audio(versions: list[dict], work_dir: str, progress) -> None:
         list(ex.map(_norm_one, versions))
 
 
+def _crop_45(src: str, dst: str) -> bool:
+    """Re-corta el master 9:16 FINAL a 4:5 (mismo crop central que el _mk45 del orchestrator)."""
+    from pipeline.ffmpeg_utils import run as _ffrun
+    from pipeline.assemble import venc
+    try:
+        _ffrun(["ffmpeg", "-y", "-i", src, "-vf", "crop=iw:iw*5/4:0:(ih-iw*5/4)/2,setsar=1",
+                *venc(), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "copy", dst])
+        return os.path.exists(dst)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _sincronizar_path_45(versions: list[dict], paths_previos: dict[int, str], progress) -> None:
+    """FIX de desincronía del cut 4:5 (Meta): el path_45 se genera DENTRO de process_job /
+    render_versions, pero los post-pasos de aquí (música → banner → end-card → hooks) solo
+    re-escriben v['path'] → el 4:5 salía SIN música/banner/cierre/hook (distinto del 9:16 que
+    Jack aprueba). Si el path principal CAMBIÓ tras los post-pasos y hay path_45, se re-corta
+    el 4:5 desde el master FINAL. Se llama ANTES de _normalizar_audio (así el 4:5 nuevo también
+    queda a -14 LUFS). Best-effort: si el crop falla, queda el 4:5 viejo (no rompe el job)."""
+    pend = [v for v in (versions or [])
+            if v.get("path_45") and v.get("path") and v["path"] != paths_previos.get(id(v))]
+    if not pend:
+        return
+    progress("Re-generando el cut 4:5 (Meta) con los pasos finales...", 99)
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _s45_one(v):
+        out = v["path"][:-4] + "_45.mp4"
+        if _crop_45(v["path"], out):
+            v["path_45"] = out
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, len(pend))) as ex:
+        list(ex.map(_s45_one, pend))
+
+
 def _run_job(job_id: str, paths: list[str], settings: dict):
     job = JOBS[job_id]
 
@@ -462,6 +498,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         )
         # cuántas versiones se han generado de ESTE origen (para el "N más": arranca donde quedó)
         job["_generated"] = int(settings.get("start_version", 0)) + len((result or {}).get("versions") or [])
+        # foto de los paths ANTES de los post-pasos → para re-cortar el 4:5 si el master cambia
+        _prev45 = {id(v): v.get("path") for v in ((result or {}).get("versions") or [])
+                   if isinstance(v, dict)} if isinstance(result, dict) else {}
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
                 and settings.get("musica", True):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
@@ -476,6 +515,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         if result.get("ok") and result.get("versions") and settings.get("hooks_por_version"):
             _agregar_hooks_por_version(result, os.path.join(WORK_DIR, job_id),
                                        settings.get("product_desc", ""), progress)
+        # cut 4:5 (Meta): si los post-pasos cambiaron el master, re-cortarlo del path FINAL
+        if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+            _sincronizar_path_45(result["versions"], _prev45, progress)
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(result, dict) and result.get("ok") and result.get("versions"):
             _normalizar_audio(result["versions"], os.path.join(WORK_DIR, job_id), progress)
@@ -815,11 +857,22 @@ def reaplicar_hook(job_id: str = Form(...), i: int = Form(...), texto: str = For
     base = v.get("_prehook") or v.get("path")
     if not base or not os.path.exists(base):
         raise HTTPException(400, "No se puede re-aplicar el hook en esta versión.")
+
+    def _norm14(p: str) -> str:
+        # FIX: v['_prehook'] se guarda ANTES del último post-paso (-14 LUFS), así que todo lo
+        # que salga de aquí (hook nuevo O quitar el hook) debe RE-normalizarse — si no, esta
+        # versión vuelve con el volumen dispar que la normalización ya había corregido.
+        from pipeline.ffmpeg_utils import normalize_loudness
+        try:
+            return normalize_loudness(p, p[:-4] + "_ln.mp4")   # si falla/sin audio devuelve p
+        except Exception:  # noqa: BLE001
+            return p
+
     txt = (texto or "").strip()
-    if not txt:                       # quitar el hook: volver a la base sin pastilla
-        v["path"] = base
+    if not txt:                       # quitar el hook: volver a la base sin pastilla (normalizada)
+        v["path"] = _norm14(base)
         v["hook_text"] = ""
-        return {"ok": True, "path": base, "hook_text": ""}
+        return {"ok": True, "path": v["path"], "hook_text": ""}
     from pipeline.text_overlay import burn_hook_pill
     c = int(v.get("_hk_n", 0)) + 1    # contador → nombre único (el navegador no cachea el viejo)
     v["_hk_n"] = c
@@ -827,6 +880,7 @@ def reaplicar_hook(job_id: str = Form(...), i: int = Form(...), texto: str = For
     new, ok = burn_hook_pill(base, out, os.path.dirname(base), txt, seconds=3.0, uid=f"re{i}_{c}")
     if not ok:
         raise HTTPException(500, "No se pudo aplicar el hook (revisa que el video exista).")
+    new = _norm14(new)                # volumen parejo también en el hook re-aplicado
     v["path"] = new
     v["hook_text"] = txt.upper()[:50]
     return {"ok": True, "path": new, "hook_text": v["hook_text"]}
@@ -880,6 +934,9 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
             broll_fases=s.get("broll_fases"),
             n_versions=n, start_version=start_version,
             blur_strength=s.get("blur_strength", "medio"), progress=progress)
+        # foto de los paths ANTES de los post-pasos → para re-cortar el 4:5 si el master cambia
+        _prev45 = {id(v): v.get("path") for v in ((result or {}).get("versions") or [])
+                   if isinstance(v, dict)} if isinstance(result, dict) else {}
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
                 and s.get("musica", True):
             _agregar_musica_sfx(result["versions"], wd, s.get("product_desc", ""), progress)
@@ -891,6 +948,9 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
             _agregar_end_card(result["versions"], wd, progress)
         if result.get("ok") and result.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(result, wd, s.get("product_desc", ""), progress)
+        # cut 4:5 (Meta): si los post-pasos cambiaron el master, re-cortarlo del path FINAL
+        if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+            _sincronizar_path_45(result["versions"], _prev45, progress)
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(result, dict) and result.get("ok") and result.get("versions"):
             _normalizar_audio(result["versions"], wd, progress)
@@ -1021,9 +1081,17 @@ def _gc_jobs(keep: int = 80):
 @app.get("/api/busy")
 def busy():
     """¿Hay algún trabajo (render/guiones/etc.) en curso ahora mismo? Lo usa el auto-actualizador
-    (run.sh) para NO reiniciar la app a mitad de un render cuando baja cambios de Juan."""
+    (run.sh) para NO reiniciar la app a mitad de un render cuando baja cambios de Juan.
+    FIX: también cuenta el escaneo del 📡 Radar — vive en radar_api._SCAN (no en JOBS) y corre
+    subprocesos hijos: un reinicio a mitad de escaneo lo mataba y quemaba ~69 créditos."""
     activo = any(j.get("status") == "running" for j in JOBS.values())
-    return {"busy": activo, "jobs": sum(1 for j in JOBS.values() if j.get("status") == "running")}
+    try:
+        import radar_api as _ra
+        radar_activo = _ra._SCAN.get("status") == "running"
+    except Exception:  # noqa: BLE001
+        radar_activo = False
+    n = sum(1 for j in JOBS.values() if j.get("status") == "running") + (1 if radar_activo else 0)
+    return {"busy": activo or radar_activo, "jobs": n}
 
 
 @app.get("/api/status/{job_id}")
@@ -1953,6 +2021,9 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             broll_fases=s.get("broll_fases"), n_versions=nv, start_version=sv,
             stages=(stages if stage_mode else None),
             blur_strength=s.get("blur_strength", "medio"), progress=progress)
+        # foto de los paths ANTES de los post-pasos → para re-cortar el 4:5 si el master cambia
+        _prev45 = {id(v): v.get("path") for v in ((manifest or {}).get("versions") or [])
+                   if isinstance(v, dict)} if isinstance(manifest, dict) else {}
         # Banner "Oferta 2x1 · envío gratis" arriba — mismo paso que en _run_job (sin voz);
         # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1").
         # FIX 2026-07-08: ahora respeta el "aparece al seg N · dura M" (antes iba full-video desde
@@ -1965,6 +2036,9 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
             _agregar_end_card(manifest["versions"], wd, progress)
         if manifest.get("ok") and manifest.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(manifest, wd, s.get("product_desc", ""), progress)
+        # cut 4:5 (Meta): si los post-pasos cambiaron el master, re-cortarlo del path FINAL
+        if isinstance(manifest, dict) and manifest.get("ok") and manifest.get("versions"):
+            _sincronizar_path_45(manifest["versions"], _prev45, progress)
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(manifest, dict) and manifest.get("ok") and manifest.get("versions"):
             _normalizar_audio(manifest["versions"], wd, progress)
@@ -1981,7 +2055,10 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
                         _v["estructura"] = str(_m["estructura"])[:80]
         if music_warning and isinstance(manifest, dict):
             manifest["music_warning"] = music_warning
-        _stash_regen(job, manifest, job_id, {"voz": s.get("voz")})
+        # FIX: `s` son los settings de /api/scripts y NUNCA traen "voz" (siempre daba None →
+        # regenerar "otro guion" narraba con juan_carlos aunque Jack eligiera kate). La voz
+        # elegida llega en `voice_key` (el parámetro `voice` de /api/render).
+        _stash_regen(job, manifest, job_id, {"voz": voice_key})
         job["result"] = manifest
         job["status"] = "done" if manifest.get("ok") else "error"
         if not manifest.get("ok"):

@@ -1015,7 +1015,8 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
            analisis: dict | None = None, foreplay_key: str | None = None,
            image_paths: list[str] | None = None, explorar_cuentas: bool = True,
            landing_text: str = "", solo_confirmados: bool = True,
-           rellenar_n: bool = False) -> dict:
+           rellenar_n: bool = False, deep_video_max: int | None = None,
+           incluir_broll: bool = True) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -1036,7 +1037,13 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     se afloja: para llegar al count se agranda el POOL de candidatos (más términos multilingües, más
     páginas), no se bajan los estándares. Si hay menos de `count` matches verdaderos, devuelve MENOS
     honestamente. Cada link lleva `tier`/`confianza` y `verificado_producto=True`. Default False =
-    comportamiento estricto de siempre para otros llamadores."""
+    comportamiento estricto de siempre para otros llamadores.
+    `deep_video_max` (camino RÁPIDO de creative_search): tope de videos que se bajan+juzgan por
+    CONTENIDO; el resto usa su veredicto de PORTADA ya calculado (mismo criterio estricto, cero
+    descargas). None (default) = juez profundo completo de siempre. 0 = solo portada.
+    `incluir_broll`: False = sin el panel de b-roll (el camino rápido lo omite para no bloquear).
+    Estos dos modos vivían como MONKEYPATCH global en creative_search (_TK_FAST) y contaminaban
+    cualquier búsqueda/b-roll CONCURRENTE de otros flujos — ahora viajan por parámetros."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     ref_bytes = None
     ref_desc = nombre
@@ -1131,13 +1138,34 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         # confirmar" (el juez dudó / no se pudo verificar) de los rechazados DEFINITIVOS (match=false).
         deep_res: dict[int, dict | None] = {}
 
+        # presupuesto COMPARTIDO del juez profundo (camino rápido): mutable para que las dos
+        # tandas (a_deep y las cuentas vendedoras) no se pasen del tope entre ambas.
+        _deep_restante = [max(0, int(deep_video_max))] if deep_video_max is not None else None
+
         def _confirmar_contenido(cands):
             """DEEP: baja el video y lo juzga por DENTRO. EXACTO = match + confianza NO baja.
             SIEMPRE (también con `rellenar_n`) se DESCARTA la confianza baja: el flujo "buscar
             creativos" solo devuelve el MISMO producto confirmado (alta/media), nunca match=false ni
-            baja. Cada match queda etiquetado con `_conf` (alta/media) para el tier."""
+            baja. Cada match queda etiquetado con `_conf` (alta/media) para el tier.
+            Con `deep_video_max` acotado: solo los primeros N (ya vienen por prioridad) bajan el
+            video de verdad; el RESTO reusa su veredicto de PORTADA (cover_res) — mismo criterio
+            estricto, sin descargas (el camino rápido de creative_search)."""
             out = []
             cands = [c for c in cands if (c.get("play") or c.get("video"))]
+            if _deep_restante is not None:
+                n_deep = max(0, min(len(cands), _deep_restante[0]))
+                _deep_restante[0] -= n_deep
+                for c in cands[n_deep:]:          # sin presupuesto → veredicto de PORTADA
+                    v = cover_res.get(id(c))
+                    deep_res[id(c)] = v
+                    if v and v.get("match") and v.get("confianza") != "baja":
+                        c["_conf"] = v.get("confianza")
+                        c["_rank"] = (_CONF.get(v.get("confianza"), 0), v.get("muestra", False),
+                                      v.get("overlay", 1), v.get("es", False), c.get("plays", 0))
+                        out.append(c)
+                cands = cands[:n_deep]
+            if not cands:
+                return out
             with ThreadPoolExecutor(max_workers=4) as ex:
                 futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
                 for fut in as_completed(futs):
@@ -1284,9 +1312,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                    "Dame la marca, un hashtag o el país para ampliar.")
 
     # B-ROLL de apoyo (escenas adaptadas al ángulo, para un video más dopamínico) — manual:
-    # se muestran aparte y el usuario elige cuáles usar.
+    # se muestran aparte y el usuario elige cuáles usar. El camino rápido lo omite
+    # (incluir_broll=False): es secundario y bloqueaba la respuesta de los creativos.
     broll = []
-    if api_key or anthropic_key:
+    if incluir_broll and (api_key or anthropic_key):
         try:
             broll = buscar_broll(ref_desc, nombre or kw, api_key, n=10,
                                  anthropic_key=anthropic_key)

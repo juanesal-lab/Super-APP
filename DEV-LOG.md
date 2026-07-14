@@ -4084,3 +4084,25 @@ se marcaron — las marqué ✅ hecho con el detalle de cada fix. Corrí tests/s
 incluyendo los checks de landings (_limpiar_cifras, gate de publicación). Cero código tocado.
 AVISO Jack: el motor de Crear Landings quedó verificado vivo tras tus merges; sigue pendiente de tu
 lado la key de Gemini con créditos y la prueba E2E real del flujo landing→Shopify.
+
+### 2026-07-14 · Claude (jackingshop1-cell) · 🐛 FLOTA DE MEJORA (2/2): 5 bugs REALES cazados y arreglados (con test cada uno)
+Cierre de la flota (el agente de perf sigue midiendo, llegará aparte). Cazador adversarial sobre el
+código nuevo de la semana — 5 confirmados, cada uno reproducido en ROJO antes del fix (suite NUEVA
+tests/test_caza_bugs_post_merge.py, corre offline):
+1. **/api/reaplicar-hook perdía el -14 LUFS**: _prehook se guarda antes de normalizar → re-aplicar/quitar
+   hook devolvía audio con volumen dispar. Fix: _norm14 re-normaliza en ambos caminos (app.py:861-884).
+2. **path_45 (cut 4:5 Meta) desincronizado**: música/banner/end-card/hooks solo tocaban v["path"] → el
+   4:5 salía PELADO (sin música ni banner ni hook). Fix: _sincronizar_path_45 re-corta del master final
+   en los 3 runners, antes de normalizar (el 4:5 también queda a -14).
+3. **Carrera del camino rápido de TikTok** (interacción de los 2 cambios paralelos): el monkeypatch
+   global _TK_FAST contaminaba flujos concurrentes (broll-dolor devolvía [] en silencio; el search
+   clásico perdía su juez profundo). Fix: el modo rápido viaja por PARÁMETROS (buscar(deep_video_max=,
+   incluir_broll=)), monkeypatch eliminado. Misma semántica, cero estado global.
+4. **/api/busy no veía el escaneo del Radar** → el auto-update podía reiniciar a mitad de scan quemando
+   ~69 créditos de ScrapeCreators. Fix: busy consulta también radar_api._SCAN.
+5. **Regenerar "otro guion" ignoraba la voz elegida** (siempre juan_carlos aunque eligieras kate):
+   _stash_regen guardaba s.get("voz") de settings que no traen voz. Fix: guarda voice_key real.
+Descartadas con análisis (documentado): doblar 2 pasos, metas_json en N más, cut_times tras re-encodes,
+contratos del landing, hooks vs _regen, front del camino rápido. Verificado post-merge: smoke 28/28 +
+suite del cazador completa ✅. AVISO Juan: tu creative_search perdió el monkeypatch global (ahora params
+explícitos — misma semántica, más seguro con concurrencia); tu Descubridor fue revisado sin hallazgos.

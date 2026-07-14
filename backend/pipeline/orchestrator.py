@@ -569,7 +569,11 @@ def render_versions(
                 pass
             return idx, None
 
-        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        # PERF (medido 2026-07-14): este camino es 100% CPU (EAST + libx264, cero GPU) —
+        # WORKERS=3 es el tope de sesiones de la GPU y aquí capaba de más. Pool según núcleos
+        # (mismo cálculo que WORKERS en máquinas sin GPU). Mismo tapado, mismos archivos.
+        _mask_workers = min(8, max(2, (os.cpu_count() or 4) - 2))
+        with ThreadPoolExecutor(max_workers=_mask_workers) as ex:
             for idx, masked in ex.map(_mask_seg,
                                       [(pos, i, selected[i]) for pos, i in enumerate(used_all)]):
                 if masked:
@@ -594,29 +598,40 @@ def render_versions(
         list(ex.map(_render_one, zip(loose_set, outs)))
 
     # "GIFs" (en formato WebM 1:1, ≤500KB) de cada clip suelto — ADEMÁS del .mp4.
+    # PERF (medido 2026-07-14): libvpx es CPU puro (WORKERS=3 es el tope de la GPU y aquí capaba
+    # de más) y NO depende del montaje → los GIFs se lanzan EN FONDO y corren SOLAPADOS con
+    # build_variations (que satura la GPU, no la CPU). Mismos archivos de salida.
     gifs = [None] * len(outs)
+    gif_pool = None
+    gif_futs = []
     if gif_export.webm_available():
         report("Generando los GIFs (WebM 1:1) de los clips...", 68)
-
-        def _gif_one(item):
-            i, mp4 = item
-            return i, gif_export.to_webm(mp4, os.path.splitext(mp4)[0] + ".webm")
-
-        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            for i, g in ex.map(_gif_one, list(enumerate(outs))):
-                gifs[i] = g
-
-    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución", "funcionamiento": "⚙️ Cómo funciona",
-                 "producto": "📦 Producto", "caracteristicas": "🔎 Características", "resultado": "✨ Resultado"}
-    loose_clips = [{"path": o, "gif": g, "segment": s.to_dict(),
-                    "fase": f, "fase_label": _FASE_LBL.get(f, "")}
-                   for s, f, o, g in zip(loose_set, loose_fases, outs, gifs)]
+        gif_pool = ThreadPoolExecutor(
+            max_workers=min(8, max(2, (os.cpu_count() or 4) - 2)))
+        gif_futs = [(i, gif_pool.submit(gif_export.to_webm, mp4,
+                                        os.path.splitext(mp4)[0] + ".webm"))
+                    for i, mp4 in enumerate(outs)]
 
     report("Armando las versiones del video..." + (" (con efectos)" if effects else ""), 72)
     built = build_variations(selected, work_dir, dims, enhance, fx=effects,
                              target_seconds=target_seconds, version_orders=version_orders,
                              version_caps=version_caps)
     versions = built["versions"]
+
+    # join de los GIFs de fondo (ya corrieron en paralelo con el montaje de las versiones)
+    if gif_pool is not None:
+        for i, fut in gif_futs:
+            try:
+                gifs[i] = fut.result()
+            except Exception:  # noqa: BLE001 — igual que antes: sin gif no se rompe nada
+                gifs[i] = None
+        gif_pool.shutdown(wait=False)
+
+    _FASE_LBL = {"problema": "🔴 Problema", "solucion": "🟢 Solución", "funcionamiento": "⚙️ Cómo funciona",
+                 "producto": "📦 Producto", "caracteristicas": "🔎 Características", "resultado": "✨ Resultado"}
+    loose_clips = [{"path": o, "gif": g, "segment": s.to_dict(),
+                    "fase": f, "fase_label": _FASE_LBL.get(f, "")}
+                   for s, f, o, g in zip(loose_set, loose_fases, outs, gifs)]
 
     # ACENTO DINÁMICO de captions: el color de resalte CONTRASTA con el color dominante del
     # producto/video (se calcula 1 vez sobre el primer montaje). Si falla → colores clásicos.

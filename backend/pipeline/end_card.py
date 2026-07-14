@@ -7,7 +7,9 @@ offer_banner (Poppins bold vía caption_styles._fontpath + _NARANJA).
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import threading
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -101,6 +103,33 @@ def render_end_card(W: int, H: int,
     return img
 
 
+# cache del CLIP de la end-card (es igual para todas las versiones del lote)
+_CARD_LOCK = threading.Lock()
+_CARD_KEY_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _card_clip_cached(work_dir: str, W: int, H: int, fps: float, dur: float,
+                      line1: str, line2: str, cta: str) -> str:
+    """Devuelve la ruta del clip de la tarjeta (PNG→mp4 con audio silencioso), construyéndolo
+    solo la PRIMERA vez por combinación (WxH/fps/dur/textos) dentro de work_dir."""
+    key = hashlib.md5("|".join([str(W), str(H), f"{fps:.3f}", f"{dur:.2f}",
+                                line1, line2, cta]).encode()).hexdigest()[:12]
+    clip = os.path.join(work_dir, f"_endcard_{key}.mp4")
+    with _CARD_LOCK:
+        klk = _CARD_KEY_LOCKS.setdefault(clip, threading.Lock())
+    with klk:
+        if os.path.exists(clip) and os.path.getsize(clip) > 1000:
+            return clip
+        png = clip[:-4] + ".png"
+        render_end_card(W, H, line1=line1, line2=line2, cta=cta).save(png)
+        # clip de `dur`s desde el PNG, mismo WxH/fps, CON audio silencioso (anullsrc)
+        run(["ffmpeg", "-y", "-loop", "1", "-t", f"{dur:.2f}", "-i", png,
+             "-f", "lavfi", "-t", f"{dur:.2f}", "-i", "anullsrc=r=44100:cl=stereo",
+             "-r", f"{fps:.3f}", *venc(), "-c:a", "aac", "-ar", "44100",
+             "-pix_fmt", "yuv420p", "-shortest", clip])
+    return clip
+
+
 def append_end_card(video_path: str, out_path: str, work_dir: str, dur: float = 1.5,
                     line1: str = "PAGAS AL RECIBIR",
                     line2: str = "ENVÍO GRATIS A TODA COLOMBIA",
@@ -111,16 +140,10 @@ def append_end_card(video_path: str, out_path: str, work_dir: str, dur: float = 
     try:
         info = probe(video_path)
         W, H, fps = info.width, info.height, (info.fps or 30.0)
-        base = os.path.basename(out_path)       # nombres ÚNICOS por versión (van en paralelo)
-        png = os.path.join(work_dir, base + ".endcard.png")
-        render_end_card(W, H, line1=line1, line2=line2, cta=cta).save(png)
-
-        # 1) clip de `dur`s desde el PNG, mismo WxH/fps, CON audio silencioso (anullsrc)
-        clip = os.path.join(work_dir, base + ".endcard.mp4")
-        run(["ffmpeg", "-y", "-loop", "1", "-t", f"{float(dur):.2f}", "-i", png,
-             "-f", "lavfi", "-t", f"{float(dur):.2f}", "-i", "anullsrc=r=44100:cl=stereo",
-             "-r", f"{fps:.3f}", *venc(), "-c:a", "aac", "-ar", "44100",
-             "-pix_fmt", "yuv420p", "-shortest", clip])
+        # PERF (medido): la tarjeta es IDÉNTICA para las 8 versiones del lote (mismo WxH/fps/
+        # textos) pero se renderizaba y encodeaba una vez POR versión. Ahora se construye UNA
+        # vez por combinación (lock por clave: la primera versión la encodea, el resto la reusa).
+        clip = _card_clip_cached(work_dir, W, H, fps, float(dur), line1, line2, cta)
 
         # 2) concat (filter): normalizo fps/SAR (y audio si hay) para que no se rompa
         vf = (f"[0:v]fps={fps:.3f},setsar=1[v0];[1:v]fps={fps:.3f},setsar=1[v1];")

@@ -26,8 +26,11 @@ Este repo lo construyen **dos personas con Claude Code**: Juan (`juanesal-lab`) 
 
 ## 🧩 Qué es la app (rápido)
 Editor de ads con IA para dropshipping. Backend Python (FastAPI) + FFmpeg + OpenCV,
-frontend en `frontend/index.html`. Usa **Gemini** y **ElevenLabs** (NO Anthropic).
-Se prende con `./run.sh` en http://127.0.0.1:8420
+frontend en `frontend/index.html`. Usa **Gemini** + **ElevenLabs** + **Claude/Anthropic**
+(guiones, landings, ads imagen, juez de búsquedas) + Foreplay/Pexels/Pixabay/ScrapeCreators.
+Se prende con `./run.sh` en http://127.0.0.1:8420 (supervisor con auto-pull de GitHub cada
+30s — nunca reinicia a mitad de un render). Sub-apps que viajan en el repo: `montador/`
+(:8440, de Juan) y `radar/`.
 
 📄 **Detalle técnico completo:** ver `RESUMEN-TECNICO.md`.
 

@@ -4054,3 +4054,25 @@ ganaron anexos al final; la sección quedó operativa punta a punta.
   llena cuando esa consulta corre. PENDIENTE fase 2b: rutina de navegador que consulta Dropi por nombre
   de los candidatos del descubridor y refresca sourcing on-demand.
 - Verificado: py_compile, import, solucionador degrada sin key, sin-escaneo honesto, JS 18/18.
+
+### 2026-07-14 · Claude (jackingshop1-cell) · 🚀 FLOTA DE MEJORA (1/2): suite de humo + UX honesto + docs al día
+Jack pidió "mejora TODO". 5 agentes en paralelo; van 3 fusionados y verificados (bugs y perf en camino):
+- **🧪 tests/smoke.py (NUEVO)**: 28 checks offline en <1s — /api/config completo (el bug del null nunca
+  más), 60+ rutas, jobs de TODOS los flujos (process/guiones/doblaje/landings/variar/radar/montador),
+  unidades críticas (video_ok, loudness, 2x1, estructuras, _limpiar_cifras, hooks fallback) y los
+  <script> del front con node --check. GUARDIA ANTI-RED que explota si algo intenta salir a internet.
+  Correr: ./venv/bin/python tests/smoke.py (convención en tests/README.md). HOY: 28/28 ✅.
+- **✨ UX honesto en TODO el front** (index.html, +256/−85): los 17 polls manejan 404 con el mensaje
+  estándar "⚠️ la app se actualizó y este trabajo se perdió" + botón re-habilitado (antes solo tkPoll;
+  varios ni try/catch tenían → botón muerto para siempre con un hiccup); kickoffs con r.ok y re-habilitación
+  garantizada; errMsg() legible en ~25 sitios (adiós "[object Object]"); BANNER GLOBAL dismissible
+  arriba de toda la app cuando la key de Gemini está sin cuota/inválida (Jack no mira Claves); barra de
+  Landings unificada. Cero lógica de negocio tocada.
+- **📚 Docs sincronizados**: PROMPT-ONBOARDING (pestañas al estado real, flujo ganador de 7 pasos,
+  reglas de oro nuevas: precio/oferta exactos, reviews jamás inventadas, clips sin texto), RESUMEN-TECNICO
+  reescrito como mapa real (~48 módulos, post-proceso en orden, sub-apps montador/radar, ~65 rutas),
+  pestaña 📚 Guía con el flujo ganador en lenguaje de Jack, CLAUDE.md corregido ("NO Anthropic" era
+  falso — la app SÍ usa Claude en guiones/landings/jueces).
+- NOTA operativa: dos agentes trabajaron directo en main (sus worktrees se auto-limpiaron al caerse la
+  sesión por límite) — commits secuenciales limpios, verificados con la suite. AVISO Juan: vi tu pestaña
+  nueva 🧭 Descubrir — el agente de UX le aplicó el mismo patrón de 404 honesto sin tocar tu lógica.

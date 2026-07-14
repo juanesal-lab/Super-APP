@@ -400,25 +400,36 @@ def descubrir(vertical: str, segmento: str | None = None, *, gemini_key: str | N
             por_seg[s].sort(key=lambda x: -x["score"])
         quemados_items.sort(key=lambda x: -x["score"])
 
-        # 5) Agente estudio + solucionador Gemini (UNA llamada sobre todo el lote, quemados incluidos).
-        aviso = _aplicar_ia(todos_items + quemados_items, vertical, gemini_key)
+        # 5) Agentes de IA — SOLO sobre los MEJORES por score (tope de costo/tiempo): con 40-50
+        #    candidatos, mandar todos a Gemini+Claude tardaba 2-3 min y el server se reiniciaba en
+        #    medio. El resto recibe el veredicto HEURÍSTICO (rápido, sin API). Los top-N sí llevan el
+        #    veredicto de IA + la acción del solucionador.
+        _MAX_IA = 18
+        if progress:
+            progress("Analizando los ganadores con IA...", 45)
+        orden_ia = sorted(todos_items + quemados_items, key=lambda x: -x["score"])
+        ia_batch, resto = orden_ia[:_MAX_IA], orden_ia[_MAX_IA:]
+        aviso = _aplicar_ia(ia_batch, vertical, gemini_key)     # Gemini (veredicto + vehículo) sobre el top-N
+        if resto:
+            _aplicar_ia(resto, vertical, None)                  # heurística rápida (gemini_key=None) para el resto
 
-        # 5b) SEGUNDO agente (Claude Opus, opcional/key-gated): revisor/solucionador fuerte que da la
-        #     acción final por producto y detecta "falsos ganadores" (parecen ganadores pero están
-        #     quemados). Aditivo: sin anthropic_key todo queda EXACTAMENTE igual (sin accion/nota).
-        if anthropic_key:
-            combinado = todos_items + quemados_items
-            sol = _solucionador_claude(combinado, vertical, anthropic_key)
+        # 5b) SEGUNDO agente (Claude Opus, opcional/key-gated): revisor/solucionador fuerte sobre el
+        #     top-N — da la acción final y detecta "falsos ganadores". Aditivo: sin key, todo igual.
+        if anthropic_key and ia_batch:
+            if progress:
+                progress("Revisor final (Claude): acción y falsos ganadores...", 72)
+            sol = _solucionador_claude(ia_batch, vertical, anthropic_key)
             if sol:
+                todos_ids = {id(x) for x in todos_items}
                 falsos_ganadores = []
-                for i, it in enumerate(combinado):
+                for i, it in enumerate(ia_batch):
                     d = sol.get(i)
                     if not d:
                         continue
                     it["accion"] = d["accion"]
                     it["nota"] = d["nota"]
                     # Falso ganador que aún está en un segmento → moverlo a quemados (con su accion/nota).
-                    if d["es_falso_ganador"] and i < len(todos_items):
+                    if d["es_falso_ganador"] and id(it) in todos_ids:
                         falsos_ganadores.append(it)
                 if falsos_ganadores:
                     fg_ids = {id(x) for x in falsos_ganadores}

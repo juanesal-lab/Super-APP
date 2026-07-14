@@ -502,11 +502,32 @@ app.include_router(radar_router)
 def api_descubrir(vertical: str = Form("gadgets"), segmento: str = Form(""),
                   min_dias: int = Form(20)):
     """🧭 Descubrir productos ganadores — vista segmentada SOBRE los datos del Radar (no escanea,
-    no gasta créditos). Devuelve ganadores de otros mercados por vertical/segmento, validados NO
-    quemados en Colombia. Si no hay escaneo del Radar, error honesto (sin_datos)."""
-    from pipeline.descubridor import descubrir
-    return descubrir(vertical, segmento or None, gemini_key=_load_env_key(),
-                     anthropic_key=_load_anthropic_key(), min_dias=min_dias)
+    no gasta créditos de scraping). Corre EN SEGUNDO PLANO porque los agentes de IA (veredicto +
+    solucionador) tardan; el front sondea /api/status. Si no hay escaneo del Radar, sin_datos honesto."""
+    job_id = uuid.uuid4().hex[:12]
+    JOBS[job_id] = {"status": "running", "progress": 5, "message": "Leyendo el Radar...",
+                    "result": None, "created": time.time()}
+
+    def _run():
+        job = JOBS[job_id]
+
+        def progress(m, p):
+            job["message"] = m
+            job["progress"] = int(p)
+
+        try:
+            from pipeline.descubridor import descubrir
+            job["result"] = descubrir(vertical, segmento or None, gemini_key=_load_env_key(),
+                                      anthropic_key=_load_anthropic_key(), min_dias=min_dias,
+                                      progress=progress)
+            job["status"] = "done"
+            job["progress"] = 100
+        except Exception as e:  # noqa: BLE001
+            job["status"] = "error"
+            job["message"] = f"Error: {e}"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id}
 
 
 @app.get("/", response_class=HTMLResponse)

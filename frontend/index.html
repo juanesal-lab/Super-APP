@@ -1725,17 +1725,27 @@
 
     $('#dscGo').onclick=async ()=>{
       const btn=$('#dscGo'), msg=$('#dscMsg');
-      btn.disabled=true; msg.textContent='⏳ Buscando ganadores en los datos del Radar...';
+      btn.disabled=true; msg.textContent='⏳ Leyendo el Radar...';
       $('#dscOut').innerHTML='';
       try{
         const fd=new FormData(); fd.append('vertical',vertical);
-        const r=await fetch('/api/descubrir',{method:'POST',body:fd});
-        const j=await r.json();
-        msg.textContent='';
-        render(j);
+        const j0=await (await fetch('/api/descubrir',{method:'POST',body:fd})).json();
+        if(!j0.job_id){ msg.textContent=''; render(j0); btn.disabled=false; return; }   // compat: respuesta directa
+        const jid=j0.job_id;
+        const poll=async ()=>{
+          try{
+            const s=await (await fetch('/api/status/'+jid,{cache:'no-store'})).json();
+            if(s.status==='running'){ msg.textContent='⏳ '+(s.message||'Buscando ganadores...'); setTimeout(poll,1500); return; }
+            msg.textContent='';
+            if(s.status==='error'){ $('#dscOut').innerHTML=`<div class="dscEmpty">⚠️ ${esc(s.message||'No se pudo buscar.')}</div>`; }
+            else { render(s.result); }
+            btn.disabled=false;
+          }catch(e){ msg.textContent='⚠️ '+((e&&e.message)||e); btn.disabled=false; }
+        };
+        poll();
       }catch(e){
-        msg.textContent='⚠️ '+((e&&e.message)||e);
-      }finally{ btn.disabled=false; }
+        msg.textContent='⚠️ '+((e&&e.message)||e); btn.disabled=false;
+      }
     };
   })();
   </script>

@@ -4106,3 +4106,21 @@ Descartadas con análisis (documentado): doblar 2 pasos, metas_json en N más, c
 contratos del landing, hooks vs _regen, front del camino rápido. Verificado post-merge: smoke 28/28 +
 suite del cazador completa ✅. AVISO Juan: tu creative_search perdió el monkeypatch global (ahora params
 explícitos — misma semántica, más seguro con concurrencia); tu Descubridor fue revisado sin hallazgos.
+
+### 2026-07-14 · Claude (jackingshop1-cell) · ⚡ FLOTA DE MEJORA (cierre): render -15% MEDIDO con salida idéntica
+Último agente de la flota. Metodología A/B seria (fixtures locales $0, orden alternado para controlar
+deriva térmica del M5, salida verificada IDÉNTICA por ffprobe/video_ok en las 8 versiones):
+- **Lote estándar: 160.9s → 136.8s (-15%)** · lote con tapado EAST: 181.7 → 169.2 (-7%).
+- Aplicado (con números): (1) concat de las 8 versiones EN PARALELO + cache de ffprobe por (ruta,mtime)
+  con lock (build_variations 45.5→38.7s); (2) end-card se encodea 1 VEZ por lote (antes 8 veces, cache
+  con lock por clave WxH/fps/textos); (3) GIFs WebM con pool por núcleos Y SOLAPADOS con el build
+  (desaparecen del camino crítico); (4) pool del tapado EAST por núcleos (el tope 3 era de la GPU y ese
+  camino es 100% CPU).
+- Descartado con números (revertido): fusionar pools de firmas (peor), setNumThreads(1) (ruido), subir
+  WORKERS GPU (VideoToolbox se satura solo), -hwaccel en overlays (peor).
+- 💡 SIGUIENTE VICTORIA documentada (~12% más, requiere coordinación): banner→end_card→hook son 3
+  re-encodes GPU completos por versión (~67s/lote) — fusionables en 1 pasada ffmpeg manteniendo el
+  orden. No se tocó por el protocolo (otro agente cazaba bugs en esos pasos).
+- Verificado post-merge: smoke 28/28 + suite del cazador ✅. AVISO Juan: assemble/orchestrator/end_card
+  ganaron paralelismo y caches internos — firmas públicas y orden del post-proceso INTACTOS.
+🏁 FLOTA COMPLETA (5/5): suite de humo · UX honesto · docs al día · 5 bugs cazados · render -15%.

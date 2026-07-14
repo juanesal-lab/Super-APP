@@ -166,6 +166,48 @@
 </head>
 <body>
 
+<script>
+  // ── Helpers GLOBALES de feedback (los usan TODAS las pestañas) ──
+  // Convierte cualquier error (Error, string, {detail:...} de FastAPI, array de validación)
+  // en texto legible — se acabó el "Error: [object Object]".
+  function errMsg(e){
+    if(e==null) return 'Error desconocido';
+    if(typeof e==='string') return e;
+    if(Array.isArray(e)) return e.map(errMsg).join(' · ');
+    if(e.message) return errMsg(e.message);
+    if(e.detail!==undefined) return errMsg(e.detail);
+    if(e.msg) return errMsg(e.msg);
+    try{ const s=JSON.stringify(e); if(s && s!=='{}') return s.slice(0,300); }catch(_){}
+    return String(e);
+  }
+  // Mensaje honesto ESTÁNDAR cuando un poll da 404 (el server se reinició y el job se perdió).
+  // Mismo patrón que ya usaba tkPoll — ahora lo comparten todos los polls.
+  function jobPerdido(accion){
+    return '⚠️ La app se actualizó y este trabajo se perdió — dale otra vez a '+(accion||'el botón')+'.';
+  }
+  // ⚠️ Banner arriba de TODA la app cuando la key de Gemini está sin cuota o inválida
+  // (la app entera depende de Gemini y la pill de 🔑 Claves no se ve desde otras pestañas).
+  function gemBanner(status){
+    const prev=document.getElementById('gemBanner');
+    if(status!=='cuota' && status!=='invalida'){ if(prev) prev.remove(); return; }
+    let cerrado=false; try{ cerrado=sessionStorage.getItem('gem_banner_off')==='1'; }catch(_){}
+    if(cerrado) return;
+    const txt = status==='cuota'
+      ? '⚠️ <b>Gemini sin créditos (429)</b> — los flujos de IA van a fallar. Recarga créditos o pega otra key en <b>🔑 Claves</b>.'
+      : '⚠️ <b>La key de Gemini es INVÁLIDA</b> — los flujos de IA van a fallar. Pega otra key en <b>🔑 Claves</b>.';
+    let b=prev;
+    if(!b){
+      b=document.createElement('div'); b.id='gemBanner';
+      b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9600;background:#3a2505;color:#ffd766;'+
+        'border-bottom:1px solid #e0a53a;padding:10px 44px;font-size:13.5px;text-align:center;'+
+        'box-shadow:0 6px 18px rgba(0,0,0,.45)';
+      document.body.prepend(b);
+    }
+    b.innerHTML=txt+'<span onclick="try{sessionStorage.setItem(\'gem_banner_off\',\'1\')}catch(e){};this.parentElement.remove()" '+
+      'style="position:absolute;right:14px;top:8px;cursor:pointer;font-size:16px;color:#e8cf9a" title="Cerrar este aviso">✕</span>';
+  }
+</script>
+
 <!-- ═══════════════════ HOME PREMIUM — "no parece una app común" ═══════════════════ -->
 <section id="home">
   <style>
@@ -630,11 +672,19 @@
       document.getElementById('autoBar').style.width='0%';
       try{
         const r=await fetch('/api/auto',{method:'POST',body:fd});
-        const j=await r.json(); autoPoll(j.job_id);
-      }catch(e){ document.getElementById('autoMsg').textContent='Error: '+e; document.getElementById('autoGo').disabled=false; }
+        const j=await r.json();
+        if(!r.ok||!j.job_id) throw new Error(errMsg((j&&j.detail)?j.detail:'No se pudo iniciar'));
+        autoPoll(j.job_id);
+      }catch(e){ document.getElementById('autoMsg').textContent='Error: '+errMsg(e); document.getElementById('autoGo').disabled=false; }
     }
     async function autoPoll(id){
-      const r=await fetch('/api/status/'+id); const j=await r.json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>autoPoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('autoMsg').textContent=jobPerdido('✨ Generar Creativo');
+        document.getElementById('autoGo').disabled=false; return;
+      }
       document.getElementById('autoBar').style.width=(j.progress||0)+'%';
       document.getElementById('autoMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>autoPoll(id),1200); return; }
@@ -765,7 +815,7 @@
           } else {
             document.getElementById('tkMsg').textContent='✅ Listo';
           }
-        }catch(e){ document.getElementById('tkMsg').textContent='Error: '+e; document.getElementById('tkGo').disabled=false; }
+        }catch(e){ document.getElementById('tkMsg').textContent='Error: '+errMsg(e); document.getElementById('tkGo').disabled=false; }
       }
       // Sondea el JOB de TikTok (2do plano) y lo inyecta en su sección al terminar. Si falla/se pierde,
       // deja el mensaje honesto ("No salieron por API… ábrelo a mano") que ya pinta tkPaint.
@@ -787,7 +837,7 @@
           }
         }catch(e){
           tkInjectTikTok({tiktok:{links:[],candidatos:[]}});
-          document.getElementById('tkMsg').textContent='✅ Foreplay listo · TikTok falló ('+e+').';
+          document.getElementById('tkMsg').textContent='✅ Foreplay listo · TikTok falló ('+errMsg(e)+').';
         }
       }
       // Inyecta el resultado de TikTok (llegó en 2do plano) y re-pinta, sin perder Foreplay.
@@ -812,7 +862,7 @@
           document.getElementById('tkGo').disabled=false;
           if(j.status==='error'){ document.getElementById('tkMsg').textContent=j.message||'Error'; }
         }catch(e){
-          document.getElementById('tkMsg').textContent='Error: '+e;
+          document.getElementById('tkMsg').textContent='Error: '+errMsg(e);
           document.getElementById('tkGo').disabled=false;
         }
       }
@@ -1229,10 +1279,8 @@
       <button class="autoBtn" id="ldGo" onclick="ldGenerar()">🚀 Generar página completa (verás el preview ANTES de subir nada)</button>
       <p class="pmsg" style="margin-top:10px">🛡️ El motor usa <b>tu estructura validada</b> (16 bloques el advertorial / 11 la landing), tu precio y oferta <b>EXACTOS</b>, y tus fotos reales. Nada se sube a Shopify sin tu ✅.</p>
 
-      <div id="ldProg" class="hidden" style="margin-top:14px">
-        <div style="background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;height:10px">
-          <div id="ldBar" style="height:100%;width:0%;background:var(--accent);transition:width .5s"></div>
-        </div>
+      <div id="ldProg" class="autoProg hidden" style="margin-top:14px">
+        <div class="autoBarWrap"><div class="autoBar" id="ldBar"></div></div>
         <p class="pmsg" id="ldMsg" style="margin-top:8px">Iniciando…</p>
       </div>
 
@@ -1278,18 +1326,23 @@
       document.getElementById('ldBar').style.width='0%'; msg.textContent='Enviando…';
       try{
         const r=await fetch('/api/landing-generate',{method:'POST',body:fd});
-        if(!r.ok){ throw new Error((await r.json().catch(()=>({}))).detail || ('HTTP '+r.status)); }
+        if(!r.ok){ const jj=await r.json().catch(()=>({})); throw new Error(jj.detail?errMsg(jj.detail):('HTTP '+r.status)); }
         const j=await r.json();
         window._ldJob=j.job_id;
         ldPoll(j.job_id);
       }catch(e){
-        msg.innerHTML='<span class="err">'+e.message+'</span>';
+        msg.innerHTML='<span class="err">'+errMsg(e)+'</span>';
         document.getElementById('ldGo').disabled=false;
       }
     }
     async function ldPoll(id){
       try{
-        const j=await (await fetch('/api/status/'+id)).json();
+        const r=await fetch('/api/status/'+id);
+        const j=await r.json();
+        if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+          document.getElementById('ldMsg').innerHTML='<span class="err">'+jobPerdido('🚀 Generar página completa')+'</span>';
+          document.getElementById('ldGo').disabled=false; return;
+        }
         document.getElementById('ldBar').style.width=(j.progress||0)+'%';
         document.getElementById('ldMsg').textContent=j.message||'';
         if(j.status==='running'){ setTimeout(()=>ldPoll(id),1500); return; }
@@ -1344,7 +1397,7 @@
         document.getElementById('ldShopTxt').innerHTML = j.ok
           ? `✅ <b>${j.shop}</b> (${j.moneda}) · tema: <b>${j.tema.nombre}</b>${j.tema.rol==='main'?' (publicado)':''}`
           : `<span style="color:var(--warn)">${j.error||'Error'}</span>`;
-      }catch(e){ document.getElementById('ldShopTxt').innerHTML='<span style="color:var(--warn)">Error: '+e+'</span>'; }
+      }catch(e){ document.getElementById('ldShopTxt').innerHTML='<span style="color:var(--warn)">Error: '+errMsg(e)+'</span>'; }
       btn.textContent=t; btn.disabled=false;
     }
     document.getElementById('ldImgs').addEventListener('change',e=>{
@@ -1432,11 +1485,19 @@
       document.getElementById('clResult').innerHTML='';
       document.getElementById('clProg').classList.remove('hidden');
       document.getElementById('clBar').style.width='0%';
-      try{ const r=await fetch('/api/clone',{method:'POST',body:fd}); const j=await r.json(); clonePoll(j.job_id); }
-      catch(e){ document.getElementById('clMsg').textContent='Error: '+e; document.getElementById('clGo').disabled=false; }
+      try{ const r=await fetch('/api/clone',{method:'POST',body:fd}); const j=await r.json();
+        if(!r.ok||!j.job_id) throw new Error(errMsg((j&&j.detail)?j.detail:'No se pudo iniciar'));
+        clonePoll(j.job_id); }
+      catch(e){ document.getElementById('clMsg').textContent='Error: '+errMsg(e); document.getElementById('clGo').disabled=false; }
     }
     async function clonePoll(id){
-      const r=await fetch('/api/status/'+id); const j=await r.json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>clonePoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('clMsg').textContent=jobPerdido('🎯 Clonar con mi producto');
+        document.getElementById('clGo').disabled=false; return;
+      }
       document.getElementById('clBar').style.width=(j.progress||0)+'%';
       document.getElementById('clMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>clonePoll(id),1300); return; }
@@ -1523,7 +1584,7 @@
       try{
         const r=await fetch('/api/variar-hook',{method:'POST',body:fd});
         const j=await r.json();
-        if(!r.ok||!j.job_id) throw new Error(j.detail||'No se pudo iniciar');
+        if(!r.ok||!j.job_id) throw new Error(j.detail?errMsg(j.detail):'No se pudo iniciar');
         vhPoll(j.job_id);
       }catch(e){
         msg.innerHTML='<span style="color:var(--warn)">'+vhEsc(e.message)+'</span>';
@@ -1531,7 +1592,13 @@
       }
     }
     async function vhPoll(id){
-      const r=await fetch('/api/status/'+id); const j=await r.json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>vhPoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('vhMsg').innerHTML='<span style="color:var(--warn)">'+jobPerdido('🔁 Variar el hook')+'</span>';
+        document.getElementById('vhGo').disabled=false; return;
+      }
       document.getElementById('vhBar').style.width=(j.progress||0)+'%';
       document.getElementById('vhMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>vhPoll(id),1600); return; }
@@ -1568,7 +1635,7 @@
         const fd=new FormData(); fd.append('job_id',window._vhJob); fd.append('index',i);
         const r=await fetch('/api/variar-hook-otro',{method:'POST',body:fd});
         const j=await r.json();
-        if(!r.ok||!j.variacion) throw new Error(j.detail||'No se pudo regenerar');
+        if(!r.ok||!j.variacion) throw new Error(j.detail?errMsg(j.detail):'No se pudo regenerar');
         window._vhBust=Date.now();
         const s=await fetch('/api/status/'+window._vhJob); const sj=await s.json();
         vhRender(sj.result);
@@ -1734,7 +1801,12 @@
         const jid=j0.job_id;
         const poll=async ()=>{
           try{
-            const s=await (await fetch('/api/status/'+jid,{cache:'no-store'})).json();
+            const rr=await fetch('/api/status/'+jid,{cache:'no-store'});
+            const s=await rr.json();
+            if(rr.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+              msg.textContent=''; $('#dscOut').innerHTML=`<div class="dscEmpty">${esc(jobPerdido('🔎 Buscar ganadores'))}</div>`;
+              btn.disabled=false; return;
+            }
             if(s.status==='running'){ msg.textContent='⏳ '+(s.message||'Buscando ganadores...'); setTimeout(poll,1500); return; }
             msg.textContent='';
             if(s.status==='error'){ $('#dscOut').innerHTML=`<div class="dscEmpty">⚠️ ${esc(s.message||'No se pudo buscar.')}</div>`; }
@@ -2197,6 +2269,7 @@
           if(img) sf.append('foto',img);
           const sr=await fetch('/api/tiktok-search',{method:'POST',body:sf});
           const sj=await sr.json();
+          if(!sr.ok) throw new Error(errMsg((sj&&sj.detail)?sj.detail:'La búsqueda en TikTok falló'));
           const found=(sj.links||[]).map(l=>l.url).filter(Boolean);
           if(!found.length){
             msg.innerHTML='<span style="color:var(--warn)">No encontré creativos en TikTok para eso. Prueba otro nombre, o pega links a mano en «Avanzado».</span>';
@@ -2239,12 +2312,18 @@
         const r=await fetch('/api/producto-clips',{method:'POST',body:fd});
         const j=await r.json();
         if(j.job_id){ prodPoll(j.job_id); }
-        else{ msg.textContent=j.detail||'Error'; go.disabled=false; }
-      }catch(e){ msg.textContent='Error: '+e; go.disabled=false; }
+        else{ msg.textContent=j.detail?errMsg(j.detail):'Error'; go.disabled=false; }
+      }catch(e){ msg.textContent='Error: '+errMsg(e); go.disabled=false; }
     }
     async function prodPoll(id){
       window._prodJob = id;
-      const r=await fetch('/api/status/'+id); const j=await r.json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>prodPoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('prodMsg').textContent=jobPerdido('🚀 Buscar en TikTok y crear mis clips');
+        document.getElementById('prodGo').disabled=false; return;
+      }
       document.getElementById('prodBar').style.width=(j.progress||0)+'%';
       document.getElementById('prodMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>prodPoll(id),1400); return; }
@@ -2383,10 +2462,10 @@
       try{
         const r=await fetch('/api/disruptive-angles',{method:'POST',body:fd}); const j=await r.json();
         document.getElementById('disGo').disabled=false;
-        if(!j.ctx_id){ msg.innerHTML='<span style="color:var(--warn)">'+(j.detail||'Error')+'</span>'; return; }
+        if(!j.ctx_id){ msg.innerHTML='<span style="color:var(--warn)">'+errMsg(j.detail||'Error')+'</span>'; return; }
         document.getElementById('disBar').style.width='100%'; msg.textContent='';
         window._disCtx=j.ctx_id; disConceptos=j.conceptos||[]; disRenderConceptos();
-      }catch(e){ document.getElementById('disGo').disabled=false; msg.textContent='Error: '+e; }
+      }catch(e){ document.getElementById('disGo').disabled=false; msg.textContent='Error: '+errMsg(e); }
     }
     function disRenderConceptos(){
       const box=document.getElementById('disAngulos');
@@ -2408,7 +2487,7 @@
           <label><input type="radio" name="disModelo" value="rapida" checked> ⚡ Nano Banana 1 · rápida y barata (~$0.04)</label>
           <label><input type="radio" name="disModelo" value="pro"> ✨ Nano Banana 2 · calidad pro (~$0.13)</label>
         </div>
-        <button class="autoBtn" style="margin-top:12px" onclick="disGenerate()">🎨 Generar imágenes de los elegidos</button>`;
+        <button class="autoBtn" style="margin-top:12px" onclick="disGenerate(this)">🎨 Generar imágenes de los elegidos</button>`;
       box.innerHTML=h;
     }
     function disToggleAll(){
@@ -2416,22 +2495,30 @@
       const allSel=cards.every(c=>c.classList.contains('sel'));
       cards.forEach(c=>c.classList.toggle('sel', !allSel));
     }
-    async function disGenerate(){
+    async function disGenerate(btn){
       const sel=[...document.querySelectorAll('.disConcepto.sel')].map(el=>+el.dataset.i);
       const msg=document.getElementById('disMsg'), prog=document.getElementById('disProg');
       if(!sel.length){ prog.classList.remove('hidden'); msg.textContent='Marca al menos un ángulo 👆'; return; }
       prog.classList.remove('hidden'); document.getElementById('disBar').style.width='0%'; msg.textContent='Iniciando…';
       document.getElementById('disResult').innerHTML='';
+      const old=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='⏳ Enviando…'; }
       try{
         const modelo=(document.querySelector('input[name="disModelo"]:checked')||{}).value||'rapida';
         const fd=new FormData(); fd.append('ctx_id',window._disCtx); fd.append('indices',JSON.stringify(sel));
         fd.append('modelo',modelo);
         const r=await fetch('/api/disruptive-images',{method:'POST',body:fd}); const j=await r.json();
-        if(j.job_id) disPoll(j.job_id); else msg.textContent=j.detail||'Error';
-      }catch(e){ msg.textContent='Error: '+e; }
+        if(j.job_id) disPoll(j.job_id); else msg.textContent=j.detail?errMsg(j.detail):'Error';
+      }catch(e){ msg.textContent='Error: '+errMsg(e); }
+      finally{ if(btn){ btn.disabled=false; btn.textContent=old; } }
     }
     async function disPoll(id){
-      const r=await fetch('/api/status/'+id); const j=await r.json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>disPoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('disMsg').textContent=jobPerdido('🎨 Generar imágenes de los elegidos');
+        document.getElementById('disGo').disabled=false; return;
+      }
       document.getElementById('disBar').style.width=(j.progress||0)+'%';
       document.getElementById('disMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>disPoll(id),1600); return; }
@@ -2507,7 +2594,7 @@
           disCacheBust=Date.now();
           const s=await (await fetch('/api/status/'+window._disJob)).json();
           disRender(s.result);
-        } else { btn.innerHTML='✗ '+((j&&j.detail)||'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
+        } else { btn.innerHTML='✗ '+((j&&j.detail)?errMsg(j.detail).slice(0,60):'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
       }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3000); }
     }
     async function disEditImg(i, btn){
@@ -2522,7 +2609,7 @@
           disCacheBust=Date.now();
           const s=await (await fetch('/api/status/'+window._disJob)).json();
           disRender(s.result);
-        } else { btn.innerHTML='✗ '+((j&&j.detail)||'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
+        } else { btn.innerHTML='✗ '+((j&&j.detail)?errMsg(j.detail).slice(0,60):'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
       }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
     }
     async function disSwapConcept(i, btn){
@@ -2535,7 +2622,7 @@
           disCacheBust=Date.now();
           const s=await (await fetch('/api/status/'+window._disJob)).json();
           disRender(s.result);
-        } else { btn.innerHTML='✗ '+((j&&j.detail)||'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
+        } else { btn.innerHTML='✗ '+((j&&j.detail)?errMsg(j.detail).slice(0,60):'reintenta'); btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
       }catch(e){ btn.innerHTML='✗ error'; btn.disabled=false; setTimeout(()=>btn.innerHTML=t,3500); }
     }
   </script>
@@ -2553,7 +2640,7 @@
       <div class="edPreviewWrap"><video id="edVideo" playsinline preload="metadata"></video></div>
       <div class="edBar">
         <button class="btn" id="edPlay" onclick="edPlayAll()">▶️ Reproducir todo</button>
-        <button class="btn" onclick="edExport()" style="background:var(--accent2)">💾 Exportar video</button>
+        <button class="btn" onclick="edExport(this)" style="background:var(--accent2)">💾 Exportar video</button>
         <span id="edInfo" style="color:var(--muted);font-size:13px;margin-left:auto"></span>
       </div>
       <div class="edHint">👇 Los clips van por su duración real · arrastra para reordenar · clic para ver uno · ✕ para borrar · la línea roja es el cabezal</div>
@@ -2698,9 +2785,10 @@
       });
     }
     function edPlayAll(){ if(edClips.length){ edPlaying=true; edGoto(0); } }
-    async function edExport(){
+    async function edExport(btn){
       const res=document.getElementById('edResult');
       if(!edClips.length){ return; }
+      const old=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='⏳ Exportando…'; }
       res.innerHTML='<div class="pmsg" style="margin-top:12px">Exportando… uniendo tus '+edClips.length+' clips</div>';
       try{
         const fd=new FormData(); fd.append('clips',JSON.stringify(edClips.map(c=>({path:c.path,in:c.in||0,out:(c.out!=null?c.out:c.duration)}))));
@@ -2710,8 +2798,9 @@
           res.innerHTML=`<div class="card" style="margin-top:14px"><h2>✅ Video exportado</h2>
             <video src="${u}" controls playsinline preload="metadata" style="width:100%;max-height:50vh;border-radius:12px;background:#000"></video>
             <a class="btn" href="${d}" download style="margin-top:10px;display:inline-block;text-decoration:none;background:var(--accent2)">⬇️ Descargar</a></div>`;
-        } else { res.innerHTML='<div class="pmsg" style="color:var(--warn)">'+(j.detail||'Error al exportar')+'</div>'; }
-      }catch(e){ res.innerHTML='<div class="pmsg" style="color:var(--warn)">Error: '+e+'</div>'; }
+        } else { res.innerHTML='<div class="pmsg" style="color:var(--warn)">'+(j.detail?errMsg(j.detail):'Error al exportar')+'</div>'; }
+      }catch(e){ res.innerHTML='<div class="pmsg" style="color:var(--warn)">Error: '+errMsg(e)+'</div>'; }
+      finally{ if(btn){ btn.disabled=false; btn.textContent=old; } }
     }
   </script>
   </div><!-- /p-editor -->
@@ -2790,13 +2879,18 @@
       msg.textContent='🎨 Generando variaciones con Nano Banana…';
       try{
         const r=await fetch('/api/variar-imagen',{method:'POST',body:fd}); const j=await r.json();
-        if(!j.job_id){ document.getElementById('viGo').disabled=false; msg.innerHTML='<span style="color:var(--warn)">'+(j.detail||'Error')+'</span>'; return; }
+        if(!j.job_id){ document.getElementById('viGo').disabled=false; msg.innerHTML='<span style="color:var(--warn)">'+errMsg(j.detail||'Error')+'</span>'; return; }
         window._viJob=j.job_id; viPoll();
-      }catch(e){ document.getElementById('viGo').disabled=false; msg.textContent='Error: '+e; }
+      }catch(e){ document.getElementById('viGo').disabled=false; msg.textContent='Error: '+errMsg(e); }
     }
     async function viPoll(){
       try{
-        const s=await (await fetch('/api/status/'+window._viJob)).json();
+        const r=await fetch('/api/status/'+window._viJob);
+        const s=await r.json();
+        if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+          document.getElementById('viMsg').innerHTML='<span style="color:var(--warn)">'+jobPerdido('✨ Generar variaciones')+'</span>';
+          document.getElementById('viGo').disabled=false; return;
+        }
         document.getElementById('viBar').style.width=Math.max(8,s.progress||0)+'%';
         document.getElementById('viMsg').textContent=s.message||'';
         if(s.status==='running'){ setTimeout(viPoll,1500); return; }
@@ -2804,7 +2898,7 @@
         if(s.status==='error'){ document.getElementById('viMsg').innerHTML='<span style="color:var(--warn)">'+(s.message||'Error')+'</span>'; return; }
         viCacheBust=Date.now();
         viRender((s.result||{}).variantes||[]);
-      }catch(e){ document.getElementById('viGo').disabled=false; document.getElementById('viMsg').textContent='Error: '+e; }
+      }catch(e){ document.getElementById('viGo').disabled=false; document.getElementById('viMsg').textContent='Error: '+errMsg(e); }
     }
     function viRender(vs){
       const box=document.getElementById('viResult'), enc=encodeURIComponent;
@@ -2883,11 +2977,17 @@
         const r=await fetch('/api/download-videos',{method:'POST',body:fd});
         const j=await r.json();
         if(j.job_id){ dlPoll(j.job_id); }
-        else{ msg.textContent=j.detail||'Error'; document.getElementById('dlGo').disabled=false; }
-      }catch(e){ msg.textContent='Error: '+e; document.getElementById('dlGo').disabled=false; }
+        else{ msg.textContent=j.detail?errMsg(j.detail):'Error'; document.getElementById('dlGo').disabled=false; }
+      }catch(e){ msg.textContent='Error: '+errMsg(e); document.getElementById('dlGo').disabled=false; }
     }
     async function dlPoll(id){
-      const r=await fetch('/api/status/'+id); const j=await r.json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>dlPoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('dlMsg').textContent=jobPerdido('📥 Descargar videos');
+        document.getElementById('dlGo').disabled=false; return;
+      }
       document.getElementById('dlBar').style.width=(j.progress||0)+'%';
       document.getElementById('dlMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>dlPoll(id),1200); return; }
@@ -2956,7 +3056,7 @@
   <div id="fpActions" class="fpActions hidden">
     <span id="fpSelCount" class="fpCred"></span>
     <select id="fpAspect"><option value="9:16">9:16 vertical</option><option value="4:5">4:5</option><option value="1:1">1:1 cuadrado</option></select>
-    <button class="autoBtn" style="margin:0;width:auto" onclick="fpCut()">✂️ Cortar seleccionados en clips</button>
+    <button class="autoBtn" style="margin:0;width:auto" onclick="fpCut(this)">✂️ Cortar seleccionados en clips</button>
   </div>
 
   <div class="autoProg hidden" id="fpProg">
@@ -3058,12 +3158,12 @@
       try{
         const r=await fetch('/api/foreplay-search',{method:'POST',body:fd});
         const j=await r.json();
-        if(!r.ok){ msg.innerHTML='<span style="color:var(--warn)">'+fpEsc(j.detail||'Error')+'</span>'; return; }
+        if(!r.ok){ msg.innerHTML='<span style="color:var(--warn)">'+fpEsc(errMsg(j.detail||'Error'))+'</span>'; return; }
         _fpAds=_fpAds.concat(j.ads||[]);
         _fpCursor=j.cursor||'';
         msg.textContent=_fpAds.length?'':'Sin resultados — prueba términos más cortos';
         fpRender(); fpUsage();
-      }catch(e){ msg.textContent='Error: '+e; }
+      }catch(e){ msg.textContent='Error: '+errMsg(e); }
       finally{ document.getElementById('fpGo').disabled=false; _fpBusy=false; }
     }
     // 📸 PRODUCTO EXACTO: foto → job con progreso → todos los creativos confirmados primero
@@ -3083,13 +3183,19 @@
         const j=await r.json();
         if(!r.ok) throw (j.detail||'Error');
         fpProductoPoll(j.job_id);
-      }catch(err){ document.getElementById('fpMsg').textContent='Error: '+err; }
+      }catch(err){ document.getElementById('fpMsg').textContent='Error: '+errMsg(err); }
       finally{ e.target.value=''; }
     });
     async function fpProductoPoll(id){
-      let j;
-      try{ const r=await fetch('/api/status/'+id); j=await r.json(); }
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
       catch(e){ setTimeout(()=>fpProductoPoll(id),2500); return; }
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('fpProg').classList.add('hidden');
+        document.getElementById('fpFotoTxt').textContent='📸 PRODUCTO EXACTO — sube la foto de tu producto y te traigo TODOS sus creativos';
+        document.getElementById('fpSearchMsg').innerHTML='<span style="color:var(--warn)">'+jobPerdido('📸 PRODUCTO EXACTO (sube la foto de nuevo)')+'</span>';
+        return;
+      }
       document.getElementById('fpBar').style.width=(j.progress||0)+'%';
       document.getElementById('fpMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>fpProductoPoll(id),1300); return; }
@@ -3179,7 +3285,7 @@
       document.getElementById('fpActions').classList.toggle('hidden', _fpSel.size===0);
       document.getElementById('fpSelCount').textContent=_fpSel.size?(_fpSel.size+' seleccionados'):'';
     }
-    async function fpCut(){
+    async function fpCut(btn){
       const sel=[..._fpSel].map(i=>({video:_fpAds[i].video,name:_fpAds[i].name})).filter(a=>a.video);
       if(!sel.length) return;
       const fd=new FormData();
@@ -3190,14 +3296,22 @@
       prog.classList.remove('hidden');
       document.getElementById('fpBar').style.width='0%';
       document.getElementById('fpMsg').textContent='Iniciando…';
+      const old=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='⏳ Enviando…'; }
       try{
         const j=await (await fetch('/api/foreplay-clips',{method:'POST',body:fd})).json();
         if(j.job_id) fpPoll(j.job_id);
-        else document.getElementById('fpMsg').textContent=j.detail||'Error';
-      }catch(e){ document.getElementById('fpMsg').textContent='Error: '+e; }
+        else document.getElementById('fpMsg').textContent=j.detail?errMsg(j.detail):'Error';
+      }catch(e){ document.getElementById('fpMsg').textContent='Error: '+errMsg(e); }
+      finally{ if(btn){ btn.disabled=false; btn.textContent=old; } }
     }
     async function fpPoll(id){
-      const j=await (await fetch('/api/status/'+id)).json();
+      let r,j;
+      try{ r=await fetch('/api/status/'+id); j=await r.json(); }
+      catch(e){ setTimeout(()=>fpPoll(id),2500); return; }   // red caída momentánea → reintenta
+      if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+        document.getElementById('fpMsg').innerHTML='<span style="color:var(--warn)">'+jobPerdido('✂️ Cortar seleccionados en clips')+'</span>';
+        return;
+      }
       document.getElementById('fpBar').style.width=(j.progress||0)+'%';
       document.getElementById('fpMsg').textContent=j.message||'';
       if(j.status==='running'){ setTimeout(()=>fpPoll(id),1500); return; }
@@ -3339,6 +3453,8 @@ async function refreshConfig(){
     kp.textContent=(j.gemini_key_status==="cuota")?"sin cuota (429)":"key inválida";
     kp.className="pill off";
   }
+  // ⚠️ y además un banner arriba de TODA la app (Jack no mira 🔑 Claves): dismissible
+  gemBanner(j.gemini_key_status);
   setPill("elevenPill", j.has_eleven_key);
   setPill("anthropicPill", j.has_anthropic_key);
   setPill("foreplayPill", j.has_foreplay_key);
@@ -3622,12 +3738,18 @@ document.getElementById("go").onclick = async ()=>{
   document.getElementById("scripts").innerHTML = "";
   document.getElementById("progCard").classList.remove("hidden");
   const endpoint = useVO.checked ? "/api/scripts" : "/api/process";
-  const r = await fetch(endpoint,{method:"POST",body:buildForm()});
-  const j = await r.json();
-  // contexto para "1 de prueba → N más". Sin voz: ya tenemos el job del render. Con voz: el
-  // job del render se fija al elegir guiones (renderVO); aquí aún es el paso de guiones.
-  window._gen = useVO.checked ? null : {flow:'novoice', jobId:j.job_id, generated:0};
-  poll(j.job_id);
+  try{
+    const r = await fetch(endpoint,{method:"POST",body:buildForm()});
+    const j = await r.json();
+    if(!r.ok || !j.job_id) throw new Error(errMsg((j && j.detail) ? j.detail : 'No se pudo iniciar'));
+    // contexto para "1 de prueba → N más". Sin voz: ya tenemos el job del render. Con voz: el
+    // job del render se fija al elegir guiones (renderVO); aquí aún es el paso de guiones.
+    window._gen = useVO.checked ? null : {flow:'novoice', jobId:j.job_id, generated:0};
+    poll(j.job_id);
+  }catch(e){
+    document.getElementById("progMsg").innerHTML = `<span class="err">Error: ${errMsg(e)}</span>`;
+    document.getElementById("go").disabled = false;
+  }
 };
 
 // 🎭 B-roll con IA: Claude piensa el punto de dolor, busca en TikTok, juzga portadas y
@@ -3663,7 +3785,7 @@ async function buscarBrollIA(){
     window._brollPrev = (window._brollPrev||[]).concat(links);   // preview con tarjetas (como los creativos)
     brollPrevPaint();
     btn.textContent = `✅ ${links.length} escenas — 🗑️ quita las que no sirvan y baja las que queden`;
-  }catch(e){ btn.textContent = orig; alert("Error: "+e); }
+  }catch(e){ btn.textContent = orig; alert("Error: "+errMsg(e)); }
   finally{ setTimeout(()=>{ btn.disabled=false; if(btn.textContent.startsWith("✅")) btn.textContent=orig; }, 6000); }
 }
 
@@ -3739,13 +3861,19 @@ async function bajarLinks(srcId, btnId){
     } else {
       btn.textContent = orig; alert(j.error || "No se pudo bajar ningún video (revisa los links)");
     }
-  }catch(e){ btn.textContent = orig; alert("Error: "+e); }
+  }catch(e){ btn.textContent = orig; alert("Error: "+errMsg(e)); }
   finally{ setTimeout(()=>{ btn.disabled=false; if(btn.textContent.startsWith("✅")) btn.textContent=orig; }, 3000); }
 }
 
 async function poll(id){
-  const r = await fetch("/api/status/"+id);
-  const j = await r.json();
+  let r,j;
+  try{ r = await fetch("/api/status/"+id); j = await r.json(); }
+  catch(e){ setTimeout(()=>poll(id),2500); return; }   // red caída momentánea → reintenta
+  if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+    document.getElementById("progMsg").innerHTML = `<span class="err">${jobPerdido('Generar clips')}</span>`;
+    document.getElementById("go").disabled = false;
+    return;
+  }
   document.getElementById("barFill").style.width = j.progress+"%";
   document.getElementById("progMsg").textContent = j.message;
   if(j.status==="running"){ setTimeout(()=>poll(id),1200); return; }
@@ -3858,9 +3986,15 @@ function renderScripts(jobId, scripts, meta){
     fd.append("start_version", "0");
     // contexto para "N más": el flujo con voz reusa el MISMO job (pool ya enmascarado) + estos guiones
     window._gen = {flow:'voice', jobId:jobId, scriptsJson:scriptsJson, metasJson:metasJson, generated:0};
-    const r = await fetch("/api/render",{method:"POST",body:fd});
-    const j = await r.json();
-    poll(j.job_id);
+    try{
+      const r = await fetch("/api/render",{method:"POST",body:fd});
+      const j = await r.json();
+      if(!r.ok || !j.job_id) throw new Error(errMsg((j && j.detail) ? j.detail : 'No se pudo iniciar el render'));
+      poll(j.job_id);
+    }catch(e){
+      document.getElementById("progMsg").innerHTML = `<span class="err">Error: ${errMsg(e)} — dale otra vez a Generar para rehacer los guiones.</span>`;
+      document.getElementById("go").disabled = false;
+    }
   };
 }
 
@@ -4007,7 +4141,7 @@ async function enviarFeedback(silent){
     const r = await fetch('/api/feedback',{method:'POST',body:fd});
     const j = await r.json();
     if(msg) msg.innerHTML = r.ok ? `<span style="color:var(--accent2)">✅ ${j.message||'Anotado, Claude lo mejora.'}</span>`
-                                 : `<span class="err">${j.detail||'No se pudo guardar'}</span>`;
+                                 : `<span class="err">${j.detail?errMsg(j.detail):'No se pudo guardar'}</span>`;
   }catch(e){ if(msg) msg.innerHTML = `<span class="err">${e.message||e}</span>`; }
 }
 
@@ -4031,14 +4165,16 @@ async function generarMas(){
       fd.append("n_versions", String(n));
       fd.append("start_version", String(g.generated));
       const r = await fetch("/api/render",{method:"POST",body:fd});
-      jobId = (await r.json()).job_id;
+      const jj = await r.json();
+      if(!r.ok || !jj.job_id){ throw new Error(errMsg((jj && jj.detail) ? jj.detail : "No se pudo")); }
+      jobId = jj.job_id;
     } else {
       const fd = new FormData();
       fd.append("job_id", g.jobId);
       fd.append("n", String(n));
       const r = await fetch("/api/more-versions",{method:"POST",body:fd});
       const jj = await r.json();
-      if(!r.ok || jj.detail){ throw new Error(jj.detail || "No se pudo"); }
+      if(!r.ok || jj.detail){ throw new Error(jj.detail ? errMsg(jj.detail) : "No se pudo"); }
       jobId = jj.job_id;
     }
   }catch(e){
@@ -4049,8 +4185,14 @@ async function generarMas(){
 }
 
 async function pollMore(id){
-  const r = await fetch("/api/status/"+id);
-  const j = await r.json();
+  let r,j;
+  try{ r = await fetch("/api/status/"+id); j = await r.json(); }
+  catch(e){ setTimeout(()=>pollMore(id),2500); return; }   // red caída momentánea → reintenta
+  if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+    document.getElementById("progMsg").innerHTML = `<span class="err">${jobPerdido('🔁 Generar los que elegí')}</span>`;
+    appendMorePanel();
+    return;
+  }
   document.getElementById("barFill").style.width = j.progress+"%";
   document.getElementById("progMsg").textContent = j.message;
   if(j.status==="running"){ setTimeout(()=>pollMore(id),1200); return; }
@@ -4125,7 +4267,7 @@ async function reaplicarHook(btn){
     fd.append('job_id', jid); fd.append('i', i); fd.append('texto', texto);
     const r = await fetch('/api/reaplicar-hook', {method:'POST', body:fd});
     const j = await r.json();
-    if(!r.ok || !j.ok){ throw new Error(j.detail || 'no se pudo'); }
+    if(!r.ok || !j.ok){ throw new Error(j.detail ? errMsg(j.detail) : 'no se pudo'); }
     const card = row.closest('.vcard');
     // refresca el video con la ruta nueva (cache-bust para que el navegador no muestre el viejo)
     const vid = card && card.querySelector('video');
@@ -4171,11 +4313,13 @@ async function regenVersion(btn){
     const fd = new FormData(); fd.append('job_id', jid); fd.append('name', name); fd.append('motivo', motivo);
     const r = await fetch('/api/regenerate-version', {method:'POST', body:fd});
     const j = await r.json();
-    if(!j.job_id){ throw new Error(j.detail || 'no se pudo'); }
+    if(!j.job_id){ throw new Error(j.detail ? errMsg(j.detail) : 'no se pudo'); }
     // polling del sub-job de regeneración
     for(let k=0; k<240; k++){
       await new Promise(s=>setTimeout(s, 1400));
-      const s = await (await fetch('/api/status/'+j.job_id)).json();
+      const sr = await fetch('/api/status/'+j.job_id);
+      const s = await sr.json();
+      if(sr.status===404){ throw new Error('la app se actualizó y esta regeneración se perdió — dale otra vez'); }
       btn.innerHTML = '⏳ '+(s.message||'Regenerando…');
       if(s.status==='error'){ throw new Error(s.message||'error'); }
       if(s.status==='done' && s.result && s.result.version){
@@ -4221,13 +4365,26 @@ document.getElementById("swapGo").onclick = async ()=>{
   newSwapFiles.forEach(f=>fd.append("new_files", f));
   fd.append("product_desc", document.getElementById("swapDesc").value);
   fd.append("new_desc", document.getElementById("swapNewDesc").value);
-  const r = await fetch("/api/swap",{method:"POST",body:fd});
-  const j = await r.json();
-  swapPoll(j.job_id);
+  try{
+    const r = await fetch("/api/swap",{method:"POST",body:fd});
+    const j = await r.json();
+    if(!r.ok || !j.job_id) throw new Error(errMsg((j && j.detail) ? j.detail : 'No se pudo iniciar'));
+    swapPoll(j.job_id);
+  }catch(e){
+    document.getElementById("swapMsg").innerHTML = `<span class="err">Error: ${errMsg(e)}</span>`;
+    document.getElementById("swapGo").disabled = false;
+  }
 };
 
 async function swapPoll(id){
-  const r = await fetch("/api/status/"+id); const j = await r.json();
+  let r,j;
+  try{ r = await fetch("/api/status/"+id); j = await r.json(); }
+  catch(e){ setTimeout(()=>swapPoll(id),2500); return; }   // red caída momentánea → reintenta
+  if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+    document.getElementById("swapMsg").innerHTML = `<span class="err">${jobPerdido('🔄 Reemplazar producto')}</span>`;
+    document.getElementById("swapGo").disabled = false;
+    return;
+  }
   document.getElementById("swapBar").style.width = j.progress+"%";
   document.getElementById("swapMsg").textContent = j.message;
   if(j.status==="running"){ setTimeout(()=>swapPoll(id),1200); return; }
@@ -4270,14 +4427,21 @@ document.getElementById("dubTradBtn").onclick = async ()=>{
   try{
     const r = await fetch("/api/dub-preview",{method:"POST",body:fd});
     const j = await r.json();
-    if(!r.ok){ throw new Error(j.detail||"no se pudo"); }
+    if(!r.ok){ throw new Error(j.detail?errMsg(j.detail):"no se pudo"); }
     window._dubPrevJob = j.job_id;
     dubPrevPoll(j.job_id);
   }catch(e){ document.getElementById("dubProg").classList.add("hidden"); document.getElementById("dubTradBtn").disabled=false; alert("No se pudo traducir: "+(e.message||e)); }
 };
 
 async function dubPrevPoll(id){
-  const r = await fetch("/api/status/"+id); const j = await r.json();
+  let r,j;
+  try{ r = await fetch("/api/status/"+id); j = await r.json(); }
+  catch(e){ setTimeout(()=>dubPrevPoll(id),2500); return; }   // red caída momentánea → reintenta
+  if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+    document.getElementById("dubMsg").innerHTML = `<span class="err">${jobPerdido('① 🌎 Traducir')}</span>`;
+    document.getElementById("dubTradBtn").disabled = false;
+    return;
+  }
   document.getElementById("dubBar").style.width = j.progress+"%";
   document.getElementById("dubMsg").textContent = j.message;
   if(j.status==="running"){ setTimeout(()=>dubPrevPoll(id),2500); return; }
@@ -4357,13 +4521,20 @@ async function dubGenerar(){
   try{
     const r = await fetch("/api/dub-generar",{method:"POST",body:fd});
     const j = await r.json();
-    if(!r.ok){ throw new Error(j.detail||"no se pudo"); }
+    if(!r.ok){ throw new Error(j.detail?errMsg(j.detail):"no se pudo"); }
     dubGenPoll(j.job_id);
   }catch(e){ document.getElementById("dubProg").classList.add("hidden"); document.getElementById("dubGenBtn").disabled=false; alert("No se pudo generar: "+(e.message||e)); }
 }
 
 async function dubGenPoll(id){
-  const r = await fetch("/api/status/"+id); const j = await r.json();
+  let r,j;
+  try{ r = await fetch("/api/status/"+id); j = await r.json(); }
+  catch(e){ setTimeout(()=>dubGenPoll(id),2500); return; }   // red caída momentánea → reintenta
+  if(r.status===404){   // el server se reinició y el job se perdió → honesto y accionable
+    document.getElementById("dubMsg").innerHTML = `<span class="err">${jobPerdido('② 🎙️ Generar video doblado')}</span>`;
+    const gb=document.getElementById("dubGenBtn"); if(gb) gb.disabled=false;
+    return;
+  }
   document.getElementById("dubBar").style.width = j.progress+"%";
   document.getElementById("dubMsg").textContent = j.message;
   if(j.status==="running"){ setTimeout(()=>dubGenPoll(id),3000); return; }
@@ -4540,7 +4711,7 @@ async function dubGenPoll(id){
       esperando.textContent=(j&&j.respuesta)?j.respuesta:'No pude armar la respuesta — probá de nuevo.';
       hist.push({rol:'vos',texto:q},{rol:'app',texto:esperando.textContent});
     }catch(e){
-      esperando.textContent='No pude hablar con el backend ('+e+'). ¿Está corriendo la app? Probá recargar la página.';
+      esperando.textContent='No pude hablar con el backend ('+errMsg(e)+'). ¿Está corriendo la app? Probá recargar la página.';
     }
     ocupado=false;
     const box=document.getElementById('asisMsgs'); box.scrollTop=box.scrollHeight;

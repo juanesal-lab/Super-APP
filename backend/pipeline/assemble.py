@@ -579,7 +579,9 @@ def blur_caption(in_path: str, out_path: str, position: str = "abajo") -> str:
     splits = len(bands) + 1
     fc = [f"[0:v]split={splits}[base]" + "".join(f"[c{i}]" for i in range(len(bands)))]
     for i, (yf, hf) in enumerate(bands):
-        fc.append(f"[c{i}]crop=iw:ih*{hf}:0:ih*{yf},boxblur=24:4[b{i}]")
+        # gblur (gaussiano), NUNCA boxblur: la regla del dueño (CLAUDE.md §7) — el boxblur se ve
+        # cuadriculado/pixelado; el gaussiano tapa suave y parejo.
+        fc.append(f"[c{i}]crop=iw:ih*{hf}:0:ih*{yf},gblur=sigma=22:steps=2[b{i}]")
     last = "[base]"
     for i, (yf, hf) in enumerate(bands):
         tag = "[v]" if i == len(bands) - 1 else f"[t{i}]"
@@ -606,7 +608,7 @@ def blur_boxes(in_path: str, out_path: str, boxes: list[dict]) -> str:
     for i, b in enumerate(boxes):
         fc.append(
             f"[c{i}]crop=iw*{b['w']:.4f}:ih*{b['h']:.4f}:iw*{b['x']:.4f}:ih*{b['y']:.4f},"
-            f"boxblur=26:5[bb{i}]")
+            f"gblur=sigma=24:steps=2[bb{i}]")   # gblur, no boxblur (regla del dueño: tapado suave)
     last = "[base]"
     for i, b in enumerate(boxes):
         tag = "[v]" if i == n - 1 else f"[t{i}]"

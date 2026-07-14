@@ -20,93 +20,29 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import foreplay_search as fp
-from . import tiktok_search as _tks
 from .tiktok_search import _expandir, _verificar, _verificar_video, analizar_foto, buscar
 
 log = logging.getLogger("creative_search")
 
-# ══ CAMINO RÁPIDO de TikTok (sin tocar tiktok_search.py) ═══════════════════════════════════════
+# ══ CAMINO RÁPIDO de TikTok ═══════════════════════════════════════════════════════════════════
 # Lo LENTO de buscar() es la verificación por CONTENIDO del video: baja el mp4 ENTERO de decenas de
 # candidatos y lo juzga con Gemini → minutos. El juez de PORTADA (thumbnail ya descargado) es rápido
-# y basta para marcar "producto exacto" en el camino veloz. Como NO podemos editar tiktok_search.py,
-# se envuelven sus jueces (`_verificar`/`_verificar_video`) con wrappers que, SOLO cuando hay un
-# contexto rápido activo (`_TK_FAST`), (a) cachean el veredicto de PORTADA y (b) en el juez profundo
-# dejan pasar de verdad SOLO los primeros `max` (0 por defecto = deep OFF) y para el resto devuelven
-# el veredicto de portada YA cacheado — sin descargar ningún video. Sin contexto activo (p.ej. el
-# endpoint viejo /api/tiktok-search), los wrappers llaman al original: comportamiento idéntico.
-_TK_FAST_LOCK = threading.Lock()
-_TK_FAST = None                    # dict activo mientras corre un buscar() en modo rápido
-_orig_verificar = _tks._verificar
-_orig_verificar_video = _tks._verificar_video
-_orig_buscar_broll = _tks.buscar_broll
-
-
-def _cover_key(cand: dict) -> str:
-    c = cand or {}
-    return str(c.get("cover") or c.get("thumbnail") or c.get("play") or c.get("video") or id(c))
-
-
-def _verificar_cached(cand, ref_bytes, ref_desc, api_key):
-    """Juez de PORTADA original + cache del veredicto (para reusarlo en el juez profundo rápido)."""
-    v = _orig_verificar(cand, ref_bytes, ref_desc, api_key)
-    ctx = _TK_FAST
-    if ctx is not None:
-        try:
-            ctx["cover"][_cover_key(cand)] = v
-        except Exception:  # noqa: BLE001
-            pass
-    return v
-
-
-def _verificar_video_fast(cand, ref_bytes, ref_desc, api_key):
-    """Juez profundo ACOTADO: solo los primeros `max` bajan el video de verdad; el resto reusa el
-    veredicto de portada (rápido, sin red). Sin contexto rápido → juez profundo original de siempre."""
-    ctx = _TK_FAST
-    if ctx is None:
-        return _orig_verificar_video(cand, ref_bytes, ref_desc, api_key)
-    allow = False
-    with ctx["lock"]:
-        if ctx["used"] < ctx["max"]:
-            ctx["used"] += 1
-            allow = True
-    if allow:
-        return _orig_verificar_video(cand, ref_bytes, ref_desc, api_key)
-    return ctx["cover"].get(_cover_key(cand))    # veredicto de portada (o None si no se pudo juzgar)
-
-
-def _buscar_broll_fast(*args, **kwargs):
-    """B-ROLL en modo rápido: buscar() lo llama con `verificar_contenido=True`, que BAJA + juzga con
-    Gemini hasta ~20 videos de b-roll (segundo gran cuello de botella, aparte de la verificación del
-    producto). En el camino veloz el b-roll es SECUNDARIO (panel de apoyo) → se omite (lista vacía)
-    para no bloquear la respuesta de los CREATIVOS, que es lo que el dueño necesita ya. Fuera del
-    modo rápido, se comporta igual que siempre."""
-    if _TK_FAST is not None:
-        return []
-    return _orig_buscar_broll(*args, **kwargs)
-
-
-# Instalar los wrappers en el módulo tiktok_search (buscar() los resuelve como globals del módulo).
-_tks._verificar = _verificar_cached
-_tks._verificar_video = _verificar_video_fast
-_tks.buscar_broll = _buscar_broll_fast
+# y basta para marcar "producto exacto" en el camino veloz.
+# FIX (caza-bugs 2026-07-14): antes esto vivía como MONKEYPATCH global sobre tiktok_search
+# (_TK_FAST + wrappers de _verificar/_verificar_video/buscar_broll). Ese estado GLOBAL contaminaba
+# cualquier flujo CONCURRENTE mientras corría una búsqueda rápida (~1 min): el botón 🎭 B-roll
+# (/api/broll-dolor) devolvía [] en silencio y el /api/tiktok-search clásico perdía su juez
+# profundo (le robaba el presupuesto del contexto ajeno). Ahora el modo rápido viaja por
+# PARÁMETROS de buscar() (deep_video_max / incluir_broll) — cero estado global, cero contagio.
 
 
 def _tiktok_rapido(buscar_kwargs: dict, tk_deep_max: int = 0) -> dict:
-    """Corre buscar() de TikTok en modo RÁPIDO (juez de portada confirma; deep de video acotado a
-    `tk_deep_max`, 0 = OFF). El lock serializa búsquedas rápidas concurrentes (herramienta de 1 solo
-    dueño → prácticamente nunca chocan) para que el contexto global no se pise."""
-    global _TK_FAST
-    with _TK_FAST_LOCK:
-        _TK_FAST = {"cover": {}, "used": 0, "max": max(0, int(tk_deep_max)),
-                    "lock": threading.Lock()}
-        try:
-            return buscar(**buscar_kwargs)
-        finally:
-            _TK_FAST = None
+    """Corre buscar() de TikTok en modo RÁPIDO: juez de portada confirma, deep de video acotado a
+    `tk_deep_max` (0 = OFF) y sin panel de b-roll (secundario; bloqueaba la respuesta)."""
+    return buscar(**buscar_kwargs, deep_video_max=max(0, int(tk_deep_max)), incluir_broll=False)
 
 # tope de thumbnails de Foreplay verificados con Gemini (costo acotado; flash es barato pero no gratis)
 # Pool más grande (era 24): como ahora SOLO se devuelven matches alta/media (se descarta baja), hace

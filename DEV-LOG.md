@@ -4076,3 +4076,11 @@ Jack pidió "mejora TODO". 5 agentes en paralelo; van 3 fusionados y verificados
 - NOTA operativa: dos agentes trabajaron directo en main (sus worktrees se auto-limpiaron al caerse la
   sesión por límite) — commits secuenciales limpios, verificados con la suite. AVISO Juan: vi tu pestaña
   nueva 🧭 Descubrir — el agente de UX le aplicó el mismo patrón de 404 honesto sin tocar tu lógica.
+
+### 2026-07-14 · Claude (juanesal-lab) · 🧹 Housekeeping: feedback-jack.md marcado ✅ + verificación post-merge
+Retomé la sesión con el protocolo (pull + DEV-LOG + feedback-jack): las 2 entradas de feedback del
+07-08 (blur/repetición/2x1/riser) YA estaban resueltas por jackingshop1-cell ese mismo día pero nunca
+se marcaron — las marqué ✅ hecho con el detalle de cada fix. Corrí tests/smoke.py: 28/28 OK (0.7s),
+incluyendo los checks de landings (_limpiar_cifras, gate de publicación). Cero código tocado.
+AVISO Jack: el motor de Crear Landings quedó verificado vivo tras tus merges; sigue pendiente de tu
+lado la key de Gemini con créditos y la prueba E2E real del flujo landing→Shopify.

@@ -691,7 +691,7 @@ def blur_boxes_timed(in_path: str, out_path: str, timed_boxes: list[dict],
     for i, b in enumerate(boxes):
         fc.append(
             f"[c{i}]crop=iw*{b['w']:.4f}:ih*{b['h']:.4f}:iw*{b['x']:.4f}:ih*{b['y']:.4f},"
-            f"boxblur=28:6[bb{i}]")
+            f"gblur=sigma=26:steps=2[bb{i}]")   # gblur, no boxblur (regla del dueño: tapado suave)
     last = "[base]"
     for i, b in enumerate(boxes):
         t0 = max(0.0, float(b.get("t", 0)) - window)

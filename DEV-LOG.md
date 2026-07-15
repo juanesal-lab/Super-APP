@@ -4124,3 +4124,13 @@ deriva térmica del M5, salida verificada IDÉNTICA por ffprobe/video_ok en las 
 - Verificado post-merge: smoke 28/28 + suite del cazador ✅. AVISO Juan: assemble/orchestrator/end_card
   ganaron paralelismo y caches internos — firmas públicas y orden del post-proceso INTACTOS.
 🏁 FLOTA COMPLETA (5/5): suite de humo · UX honesto · docs al día · 5 bugs cazados · render -15%.
+
+### 2026-07-14 · Claude (jackingshop1-cell) · 🚧 AVISO PREVIO: 2ª flota de mejora (5 frentes nuevos, pedido de Jack)
+Jack pidió otra ronda de "mejora TODO". 5 agentes en worktrees: (1) fusión banner→end_card→hook en 1
+pasada ffmpeg (la victoria de ~12% que dejó documentada el agente de perf — ahora sin conflicto de
+coordinación); (2) 🎯 SINCRONÍA clip↔voz — AVISO JUAN: este toca tu guion_match.py/narrative (la queja
+histórica de Jack "los clips no cuadran con la voz"); mejora el matching por frase con tests, sin
+romper contratos — si estás ahí ahora, avisa; (3) QA técnico $0 de cada versión final (frames
+negros/congelados, silencio, streams) con aviso en la tarjeta; (4) research de mejoras 2026 + roadmap
+priorizado + 1 quick win; (5) backups locales de .env/estado crítico con rotación. Fusiono verificando
+con las 2 suites como la 1ª flota.

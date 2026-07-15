@@ -323,6 +323,55 @@ def _agregar_end_card(versions: list[dict], work_dir: str, progress,
         list(ex.map(_ec_one, versions))
 
 
+def _agregar_banner_y_endcard(versions: list[dict], work_dir: str, progress,
+                              start: float = 0.0, dur: float = 0.0,
+                              line2: str = "OFERTA 2X1",
+                              ec_line1: str = "PAGAS AL RECIBIR",
+                              ec_line2: str = "ENVÍO GRATIS A TODA COLOMBIA",
+                              ec_cta: str = "PIDE EL TUYO AQUÍ 👇") -> None:
+    """PERF (fusión medida): banner (overlay) + end-card (concat) en UNA sola pasada de ffmpeg
+    por versión, en vez de dos re-encodes GPU encadenados. Semántica idéntica (banner sobre
+    [0..D] con su enable, card anexada al final) → el resultado ES la base pre-hook que luego
+    guarda _agregar_hooks_por_version en v['_prehook']. Se usa SOLO cuando banner Y end-card
+    están ambos activos; con una sola capa el runner sigue el camino de siempre (sin riesgo)."""
+    from pipeline.overlay_fusion import compose_banner_endcard
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
+    line2 = (line2 or "").strip()
+    cuando = f" (aparece al seg {start:.0f})" if start and start > 0 else ""
+    etq = line2 or "envío gratis"
+    progress(f"🏷️🏁 Banner ({etq}){cuando} + cierre final en 1 pasada...", 97)
+    gk = _load_env_key()
+
+    def _fus_one(v):
+        try:
+            out = v["path"][:-4] + "_ofec.mp4"
+            v["path"] = compose_banner_endcard(v["path"], out, work_dir, banner_line2=line2,
+                                               banner_start=start, banner_dur=dur, gemini_key=gk,
+                                               ec_line1=ec_line1, ec_line2=ec_line2, ec_cta=ec_cta)
+        except Exception:  # noqa: BLE001
+            pass
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_fus_one, versions))
+
+
+def _aplicar_banner_endcard(versions: list[dict], work_dir: str, progress, *,
+                            do_banner: bool, do_endcard: bool,
+                            start: float = 0.0, dur: float = 0.0,
+                            line2: str = "OFERTA 2X1") -> None:
+    """Enrutador de las capas banner/end-card: si AMBAS están activas → 1 pasada fusionada;
+    si solo una → camino de siempre (add_offer_banner / append_end_card). Centraliza la
+    decisión para que los 3 runners (_run_job, _run_more_versions_job, _run_render_job) la
+    compartan idéntica."""
+    if do_banner and do_endcard:
+        _agregar_banner_y_endcard(versions, work_dir, progress, start=start, dur=dur, line2=line2)
+    elif do_banner:
+        _agregar_banner_oferta(versions, work_dir, progress, start=start, dur=dur, line2=line2)
+    elif do_endcard:
+        _agregar_end_card(versions, work_dir, progress)
+
+
 def _agregar_hooks_por_version(result: dict, work_dir: str, product_desc: str, progress) -> None:
     """🎯 Un HOOK de texto (pastilla blanca arriba, 0-3s) por versión, COHERENTE con lo que dice
     cada ángulo (referencia de Jack: 'MIRA LA SOLUCIÓN'). La IA lo escribe; Jack lo edita/re-aplica
@@ -564,13 +613,15 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
                 and settings.get("musica", True):
             _agregar_musica_sfx(result["versions"], os.path.join(WORK_DIR, job_id),
                                 settings.get("product_desc", ""), progress)
-        if result.get("ok") and result.get("versions") and settings.get("banner_oferta"):
-            _agregar_banner_oferta(result["versions"], os.path.join(WORK_DIR, job_id), progress,
-                                   start=settings.get("banner_start", 0.0),
-                                   dur=settings.get("banner_dur", 0.0),
-                                   line2=settings.get("banner_line2", "OFERTA 2X1"))
-        if result.get("ok") and result.get("versions") and settings.get("end_card"):
-            _agregar_end_card(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+        if result.get("ok") and result.get("versions") \
+                and (settings.get("banner_oferta") or settings.get("end_card")):
+            # banner+end-card fusionados en 1 pasada si AMBOS activos; si solo uno, camino de siempre
+            _aplicar_banner_endcard(result["versions"], os.path.join(WORK_DIR, job_id), progress,
+                                    do_banner=bool(settings.get("banner_oferta")),
+                                    do_endcard=bool(settings.get("end_card")),
+                                    start=settings.get("banner_start", 0.0),
+                                    dur=settings.get("banner_dur", 0.0),
+                                    line2=settings.get("banner_line2", "OFERTA 2X1"))
         if result.get("ok") and result.get("versions") and settings.get("hooks_por_version"):
             _agregar_hooks_por_version(result, os.path.join(WORK_DIR, job_id),
                                        settings.get("product_desc", ""), progress)
@@ -1026,12 +1077,13 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
         if isinstance(result, dict) and result.get("ok") and result.get("versions") \
                 and s.get("musica", True):
             _agregar_musica_sfx(result["versions"], wd, s.get("product_desc", ""), progress)
-        if result.get("ok") and result.get("versions") and s.get("banner_oferta"):
-            _agregar_banner_oferta(result["versions"], wd, progress,
-                                   start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
-                                   line2=s.get("banner_line2", "OFERTA 2X1"))
-        if result.get("ok") and result.get("versions") and s.get("end_card"):
-            _agregar_end_card(result["versions"], wd, progress)
+        if result.get("ok") and result.get("versions") \
+                and (s.get("banner_oferta") or s.get("end_card")):
+            _aplicar_banner_endcard(result["versions"], wd, progress,
+                                    do_banner=bool(s.get("banner_oferta")),
+                                    do_endcard=bool(s.get("end_card")),
+                                    start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
+                                    line2=s.get("banner_line2", "OFERTA 2X1"))
         if result.get("ok") and result.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(result, wd, s.get("product_desc", ""), progress)
         # cut 4:5 (Meta): si los post-pasos cambiaron el master, re-cortarlo del path FINAL
@@ -2149,12 +2201,13 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         # antes el toggle se IGNORABA en esta ruta (queja de Jack: "no está haciendo lo del 2x1").
         # FIX 2026-07-08: ahora respeta el "aparece al seg N · dura M" (antes iba full-video desde
         # el seg 0 aunque Jack pusiera 5 — su queja "le puse esto y no hizo caso").
-        if manifest.get("ok") and manifest.get("versions") and s.get("banner_oferta"):
-            _agregar_banner_oferta(manifest["versions"], wd, progress,
-                                   start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
-                                   line2=s.get("banner_line2", "OFERTA 2X1"))
-        if manifest.get("ok") and manifest.get("versions") and s.get("end_card"):
-            _agregar_end_card(manifest["versions"], wd, progress)
+        if manifest.get("ok") and manifest.get("versions") \
+                and (s.get("banner_oferta") or s.get("end_card")):
+            _aplicar_banner_endcard(manifest["versions"], wd, progress,
+                                    do_banner=bool(s.get("banner_oferta")),
+                                    do_endcard=bool(s.get("end_card")),
+                                    start=s.get("banner_start", 0.0), dur=s.get("banner_dur", 0.0),
+                                    line2=s.get("banner_line2", "OFERTA 2X1"))
         if manifest.get("ok") and manifest.get("versions") and s.get("hooks_por_version"):
             _agregar_hooks_por_version(manifest, wd, s.get("product_desc", ""), progress)
         # cut 4:5 (Meta): si los post-pasos cambiaron el master, re-cortarlo del path FINAL

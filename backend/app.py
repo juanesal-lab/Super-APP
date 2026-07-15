@@ -435,6 +435,37 @@ def _normalizar_audio(versions: list[dict], work_dir: str, progress) -> None:
         list(ex.map(_norm_one, versions))
 
 
+def _qa_tecnico_versiones(versions: list[dict], progress) -> None:
+    """QA TÉCNICO de cada versión FINAL (después de normalizar el audio): caza los defectos BARATOS
+    que `video_ok` no ve — frames negros, imagen congelada, silencios largos, clipping/audio mudo,
+    duración disparatada, streams enfermos. Corre EN PARALELO por versión (mismo patrón que los otros
+    post-pasos) y guarda v['qa_tecnico'] = {ok, defectos, metrica}. HONESTO y NO BLOQUEANTE: si hay
+    defectos NO frena la entrega, solo se pinta un badge rojo en la tarjeta para que Jack lo sepa."""
+    from pipeline.qa_tecnico import revisar_version
+    from pipeline.assemble import WORKERS
+    from concurrent.futures import ThreadPoolExecutor
+    if not versions:
+        return
+    progress("🩺 Revisión técnica final (frames negros, congelados, audio)...", 99)
+
+    def _qa_one(v):
+        try:
+            # duración esperada: la suma de los segmentos del guion, si el manifest la trae
+            dur_esp = None
+            try:
+                segs = v.get("segments") or []
+                if segs:
+                    dur_esp = sum(float(s.get("duration", 0) or 0) for s in segs) or None
+            except Exception:  # noqa: BLE001
+                dur_esp = None
+            v["qa_tecnico"] = revisar_version(v.get("path", ""), dur_esperada=dur_esp)
+        except Exception:  # noqa: BLE001
+            v["qa_tecnico"] = {"ok": True, "defectos": [], "metrica": {}}
+
+    with ThreadPoolExecutor(max_workers=min(WORKERS, max(1, len(versions)))) as ex:
+        list(ex.map(_qa_one, versions))
+
+
 def _crop_45(src: str, dst: str) -> bool:
     """Re-corta el master 9:16 FINAL a 4:5 (mismo crop central que el _mk45 del orchestrator)."""
     from pipeline.ffmpeg_utils import run as _ffrun
@@ -533,6 +564,9 @@ def _run_job(job_id: str, paths: list[str], settings: dict):
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(result, dict) and result.get("ok") and result.get("versions"):
             _normalizar_audio(result["versions"], os.path.join(WORK_DIR, job_id), progress)
+        # QA técnico final (aditivo, no bloquea): badge honesto si algo salió con defectos
+        if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+            _qa_tecnico_versiones(result["versions"], progress)
         _stash_regen(job, result, job_id)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -966,6 +1000,9 @@ def _run_more_versions_job(rid: str, src_job: str, start_version: int, n: int):
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(result, dict) and result.get("ok") and result.get("versions"):
             _normalizar_audio(result["versions"], wd, progress)
+        # QA técnico final (aditivo, no bloquea): badge honesto si algo salió con defectos
+        if isinstance(result, dict) and result.get("ok") and result.get("versions"):
+            _qa_tecnico_versiones(result["versions"], progress)
         _stash_regen(job, result, rid)
         job["result"] = result
         job["status"] = "done" if result.get("ok") else "error"
@@ -2054,6 +2091,9 @@ def _run_render_job(job_id: str, scripts: list[str], voice_key: str,
         # ÚLTIMO paso siempre: volumen parejo a -14 LUFS en el audio final de cada versión
         if isinstance(manifest, dict) and manifest.get("ok") and manifest.get("versions"):
             _normalizar_audio(manifest["versions"], wd, progress)
+        # QA técnico final (aditivo, no bloquea): badge honesto si algo salió con defectos
+        if isinstance(manifest, dict) and manifest.get("ok") and manifest.get("versions"):
+            _qa_tecnico_versiones(manifest["versions"], progress)
         # 🎯 avatar/estructura de cada versión (aditivo, 2026-07-11): viaja al manifest para que
         # Jack SEPA qué avatar testea con cada video. `metas` va paralelo a `scripts`, así que el
         # mapeo guion→versión es el MISMO que el de `chosen` (1:1 en embudo; cíclico desde sv si no).

@@ -23,7 +23,10 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import foreplay_search as fp
-from .tiktok_search import _expandir, _verificar, _verificar_video, analizar_foto, buscar
+from .tiktok_search import (
+    _as_completed_deadline, _deadline, _expandir, _restante, _verificar, _verificar_video,
+    analizar_foto, buscar,
+)
 
 log = logging.getLogger("creative_search")
 
@@ -45,9 +48,9 @@ def _tiktok_rapido(buscar_kwargs: dict, tk_deep_max: int = 0) -> dict:
     return buscar(**buscar_kwargs, deep_video_max=max(0, int(tk_deep_max)), incluir_broll=False)
 
 # tope de thumbnails de Foreplay verificados con Gemini (costo acotado; flash es barato pero no gratis)
-# Pool más grande (era 24): como ahora SOLO se devuelven matches alta/media (se descarta baja), hace
-# falta revisar más candidatos para llegar al N pedido SIN aflojar el juez.
-_FP_VERIFY_MAX = 32
+# 24: equilibrio entre recall (solo alta/media entran) y velocidad — con el DEADLINE global, un pool
+# más grande casi nunca se terminaba de juzgar antes de cortar. 24 portadas se juzgan en segundos.
+_FP_VERIFY_MAX = 24
 _FP_TERMS = 4          # cuántos términos de búsqueda se mandan a Foreplay (cada uno gasta créditos)
 
 # ── heurística barata para preferir los términos EN ESPAÑOL (analizar_foto mezcla ES+EN) ──────────
@@ -157,9 +160,12 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                      gemini_key: str | None, count: int = 20,
                      verify_max: int = _FP_VERIFY_MAX,
                      excluir: set[str] | None = None, solo_confirmados: bool = True,
-                     rellenar_n: bool = False, deep_video_max: int = 0) -> dict:
+                     rellenar_n: bool = False, deep_video_max: int = 0,
+                     deadline: float | None = None) -> dict:
     """Busca en Foreplay con varios términos (paralelo), deduplica y verifica el MISMO producto.
     Devuelve {ok, ads:[...], n_confirmados, verificado, terminos, error?}."""
+    if deadline is None:                 # DEADLINE global: pasado el tope, devuelve lo confirmado
+        deadline = _deadline()           # (nunca cuelgue infinito)
     if not foreplay_key:
         return {"ok": False, "error": "Falta la API key de Foreplay (ponla en 🔑 Claves)",
                 "ads": [], "n_confirmados": 0, "verificado": False, "terminos": []}
@@ -215,13 +221,14 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
         ref_desc = str(info.get("desc") or "")
         pool = ad_list[:verify_max]
         cover_ok, dudosos, rechazados = [], [], []   # rechazados = otro producto del nicho (último recurso si 0 confirmados)
-        with ThreadPoolExecutor(max_workers=8) as ex:
+        ex = ThreadPoolExecutor(max_workers=8)
+        try:
             futs = {}
             for a in pool:
                 cand = {"cover": a.get("thumbnail") or "",
                         "title": (a.get("name") or a.get("headline") or "")[:120]}
                 futs[ex.submit(_verificar, cand, ref_bytes, ref_desc, gemini_key)] = a
-            for fut in as_completed(futs):
+            for fut in _as_completed_deadline(futs, deadline):
                 v, a = fut.result(), futs[fut]
                 # SOLO match=true de confianza NO baja (alta/media). Nunca baja ni match=false →
                 # jamás otro producto (ni siquiera con rellenar_n: el juez NO se afloja).
@@ -240,6 +247,8 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                     a["_cand_prio"] = 0
                     rechazados.append(a)
                 # match=False → nunca confirmado ni candidato, salvo ÚLTIMO RECURSO (abajo)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)   # nunca bloquear en el shutdown por un hilo colgado
         # CONTENIDO (DEEP, OPCIONAL Y ACOTADO): bajar el video ENTERO + juzgarlo por dentro es lo
         # LENTO (minutos con muchos ads). En el camino RÁPIDO (deep_video_max=0, por defecto) el juez
         # de PORTADA — que ya pasó el filtro ESTRICTO — confirma. Si se pide deep, se verifica por
@@ -253,13 +262,14 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
             a["verificado_producto"] = True
             confirmados.append(a)
         if deep_pool:
-            with ThreadPoolExecutor(max_workers=4) as ex:
+            exd = ThreadPoolExecutor(max_workers=4)
+            try:
                 futs = {}
                 for a in deep_pool:
                     cand = {"video": a.get("video") or "", "play": a.get("video") or "",
                             "title": (a.get("name") or a.get("headline") or "")[:120]}
-                    futs[ex.submit(_verificar_video, cand, ref_bytes, ref_desc, gemini_key)] = a
-                for fut in as_completed(futs):
+                    futs[exd.submit(_verificar_video, cand, ref_bytes, ref_desc, gemini_key)] = a
+                for fut in _as_completed_deadline(futs, deadline):
                     v, a = fut.result(), futs[fut]
                     if v is None:                # no se pudo bajar/juzgar el video → cae al veredicto
                         a["_conf"] = a.get("_cover_conf") or "media"   # de portada, que ya pasó el filtro
@@ -274,6 +284,8 @@ def _buscar_foreplay(info: dict, ref_bytes: bytes | None, foreplay_key: str | No
                         a["_cand_prio"] = 3      # el más prometedor de los no confirmados
                         dudosos.append(a)
                     # match=False por contenido → fuera SIEMPRE (no es el mismo producto)
+            finally:
+                exd.shutdown(wait=False, cancel_futures=True)
         confirmados.sort(key=lambda a: a.get("dias", 0), reverse=True)
         if rellenar_n and len(confirmados) < count:
             # 🟡 CANDIDATOS SIN CONFIRMAR: sección APARTE y etiquetada (nunca mezclados con los

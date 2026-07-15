@@ -63,9 +63,48 @@ def _tk_get(url: str, params: dict, timeout: int = 25, reintentos: int = 2) -> d
     return {}
 
 
+# ── TIMEOUTS DUROS + DEADLINE GLOBAL (Jack: la búsqueda JAMÁS se queda cargando infinito) ─────────
+# BUG REAL reproducido (2026-07-15) con los 3 productos de Jack: la pestaña se colgaba PARA SIEMPRE.
+# Causa: las llamadas a Gemini NO tenían timeout y el 2º juez Claude tenía 120s + retry (hasta 240s
+# POR candidato) → un socket que nunca respondía dejaba el ThreadPool esperando eternamente y el job
+# nunca marcaba done/error. Arreglo: (a) TOPE por llamada (Gemini y Claude), (b) DEADLINE global por
+# búsqueda — pasado el tope, se devuelve lo que YA se confirmó (partial) y se abandonan las llamadas
+# atascadas, sin bloquear. Así nunca hay cuelgue infinito.
+_GEMINI_TIMEOUT_MS = 30_000     # 30s por llamada a Gemini (flash responde en ~1-3s; esto es la red de seguridad)
+_CLAUDE_TIMEOUT_S = 20.0        # 20s por llamada a Claude (era 120s + retry = hasta 240s por candidato)
+_BUDGET_S = 80.0                # presupuesto por defecto de una búsqueda (deadline global) — nunca más
+
+
+def _deadline(budget: float | None = None) -> float:
+    """Instante (monotónico) en que la búsqueda debe cortar y devolver lo que tenga."""
+    return time.monotonic() + (budget if budget is not None else _BUDGET_S)
+
+
+def _restante(deadline: float | None) -> float | None:
+    return None if deadline is None else max(0.0, deadline - time.monotonic())
+
+
+def _as_completed_deadline(futs, deadline: float | None):
+    """Como as_completed pero JAMÁS espera más allá del `deadline` global: rinde los futures que
+    completaron a tiempo y, si se acaba el tiempo, CORTA (los que faltan quedan abandonados — sus
+    llamadas ya tienen su propio timeout duro, así que mueren solas). Sin deadline = as_completed
+    normal (compatibilidad con los llamadores viejos)."""
+    if deadline is None:
+        yield from as_completed(futs)
+        return
+    try:
+        for fut in as_completed(futs, timeout=_restante(deadline)):
+            yield fut
+    except TimeoutError:      # se acabó el presupuesto global → devolver lo confirmado hasta aquí
+        return
+
+
 def _client(api_key):
     from google import genai
-    return genai.Client(api_key=api_key)
+    from google.genai import types
+    # http_options.timeout va en MILISEGUNDOS (verificado en genai 0.8.0): tope duro por llamada
+    return genai.Client(api_key=api_key,
+                        http_options=types.HttpOptions(timeout=_GEMINI_TIMEOUT_MS))
 
 
 def analizar_foto(image_path: str, nombre: str, api_key: str,
@@ -482,7 +521,7 @@ def _broll_brief_claude(nombre: str, angulo: str, ref_desc: str, anthropic_key: 
                 "'sábanas mojadas vergüenza', 'mujer llorando frustrada baño'; resultado: 'mujer durmiendo "
                 "tranquila', 'abuela feliz nietos'. Piensa QUÉ ESCENA le duele al comprador de ESTE producto "
                 "con ESTE ángulo y dame las búsquedas.")
-        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
+        client = Anthropic(api_key=anthropic_key, timeout=_CLAUDE_TIMEOUT_S, max_retries=1)
         resp = client.messages.create(
             model=_CLAUDE, max_tokens=700,
             tools=[tool], tool_choice={"type": "tool", "name": "brief_broll"},
@@ -993,7 +1032,9 @@ def _verificar_claude(cand: dict, ref_bytes, ref_desc: str, anthropic_key: str) 
             "rasgos, o hay CUALQUIER duda → match=false (mejor descartar un bueno que colar un malo). Es UGC: "
             "el producto puede estar en la mano, en ángulo o con otra luz, pero los RASGOS deben coincidir.")
         from anthropic import Anthropic
-        client = Anthropic(api_key=anthropic_key, timeout=120.0, max_retries=1)
+        # TOPE DURO: 20s y SIN retry — el 2º juez es un veto OPCIONAL; si Claude se cuelga NO puede
+        # arrastrar toda la búsqueda al infinito (bug real: se quedaba leyendo el socket para siempre).
+        client = Anthropic(api_key=anthropic_key, timeout=_CLAUDE_TIMEOUT_S, max_retries=0)
         content = [{"type": "text", "text": prompt}]
         for b in refs + [cimg]:
             content.append({"type": "image", "source": {"type": "base64", "media_type": _media_type(b),
@@ -1016,7 +1057,7 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
            image_paths: list[str] | None = None, explorar_cuentas: bool = True,
            landing_text: str = "", solo_confirmados: bool = True,
            rellenar_n: bool = False, deep_video_max: int | None = None,
-           incluir_broll: bool = True) -> dict:
+           incluir_broll: bool = True, deadline: float | None = None) -> dict:
     """foto/nombre -> {ok, keywords, links:[{url,title,cover}], busqueda, verificado}.
 
     Si hay `anthropic_key`, Claude actúa de SEGUNDO juez (doble verificación) sobre lo que Gemini aprobó.
@@ -1045,6 +1086,8 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     Estos dos modos vivían como MONKEYPATCH global en creative_search (_TK_FAST) y contaminaban
     cualquier búsqueda/b-roll CONCURRENTE de otros flujos — ahora viajan por parámetros."""
     api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if deadline is None:                 # DEADLINE global: pasado el tope se devuelve lo confirmado
+        deadline = _deadline()           # (nunca cuelgue infinito), sin importar quién llame
     ref_bytes = None
     ref_desc = nombre
     queries = _expandir(nombre, [])
@@ -1112,20 +1155,25 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         cand_list.sort(key=lambda c: (_title_score(c),
                                       1 if c.get("region") in _ES_REGIONS else 0,
                                       c.get("plays", 0)), reverse=True)
-        # Verifica MUCHOS más (escalado a lo que pide el usuario): como el filtro estricto de "mismo
-        # producto" descarta hartos, hay que revisar un pool grande para LLEGAR al count pedido.
-        pool_n = min(len(cand_list), max(150, count * 8))
+        # CAP del pool a juzgar por portada: antes era max(150, count*8) = ~160 llamadas a Gemini →
+        # decenas de segundos SOLO en el pre-filtro (y con el deadline, casi nunca llegaba al final).
+        # max(48, count*3) = ~60 basta: los candidatos ya vienen ordenados por relevancia (título >
+        # hispano > views), así que los buenos están arriba. Primeros CONFIRMADOS rápido.
+        pool_n = min(len(cand_list), max(48, count * 3))
         pool = cand_list[:pool_n]             # los más RELEVANTES primero (título > hispano > views)
         # ── VERIFICACIÓN EXACTA: por CONTENIDO del video, no por portada ─────────────────────
         # 1) PORTADA = pre-filtro BARATO. NO confirma sola (engaña: antes/después, cara, pie): solo
         #    PRIORIZA a cuáles vale la pena bajar el video para juzgarlo por dentro.
         cover_res: dict[int, dict] = {}
-        with ThreadPoolExecutor(max_workers=10) as ex:
+        ex = ThreadPoolExecutor(max_workers=10)
+        try:
             futs = {ex.submit(_verificar, c, ref_bytes, ref_desc, api_key): c for c in pool}
-            for fut in as_completed(futs):
+            for fut in _as_completed_deadline(futs, deadline):
                 v = fut.result()
                 if v:
                     cover_res[id(futs[fut])] = v
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)   # nunca bloquear en el shutdown por un hilo colgado
         _CONF = {"alta": 2, "media": 1, "baja": 0}
 
         def _prio(c):
@@ -1166,9 +1214,10 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                 cands = cands[:n_deep]
             if not cands:
                 return out
-            with ThreadPoolExecutor(max_workers=4) as ex:
-                futs = {ex.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
-                for fut in as_completed(futs):
+            exd = ThreadPoolExecutor(max_workers=4)
+            try:
+                futs = {exd.submit(_verificar_video, c, ref_bytes, ref_desc, api_key): c for c in cands}
+                for fut in _as_completed_deadline(futs, deadline):
                     v = fut.result()
                     deep_res[id(futs[fut])] = v          # también los que dudó / no pudo / rechazó
                     if v and v.get("match") and v.get("confianza") != "baja":
@@ -1177,6 +1226,8 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
                         c["_rank"] = (_CONF.get(v.get("confianza"), 0), v.get("muestra", False),
                                       v.get("overlay", 1), v.get("es", False), c.get("plays", 0))
                         out.append(c)
+            finally:
+                exd.shutdown(wait=False, cancel_futures=True)
             return out
 
         # a DEEP: portada aprobó O título fuerte (la portada a veces no muestra el producto), por prioridad.
@@ -1190,18 +1241,24 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
         # 2) DOBLE JUEZ: Claude VETA (2º juez estricto) lo confirmado por contenido. False = fuera;
         #    True o None (fallo técnico) = se queda (ya pasó el filtro ESTRICTO de contenido).
         vetados: set[int] = set()          # ids que el 2º juez (Claude) rechazó DEFINITIVO
-        if anthropic_key and matches:
+        # El 2º juez (Claude) es un veto OPCIONAL y era EL cuelgue real (socket sin respuesta). Solo se
+        # corre si queda presupuesto (>15s); con deadline-drain, lo que Claude no alcance a juzgar
+        # simplemente NO se veta (ya pasó el juez estricto de Gemini) — jamás bloquea la búsqueda.
+        if anthropic_key and matches and (_restante(deadline) or 0) > 15:
             res_cl: dict[int, object] = {}
-            with ThreadPoolExecutor(max_workers=5) as ex:
-                cf = {ex.submit(_verificar_claude, c, ref_bytes, ref_desc, anthropic_key): c for c in matches}
-                for fut in as_completed(cf):
+            exc = ThreadPoolExecutor(max_workers=5)
+            try:
+                cf = {exc.submit(_verificar_claude, c, ref_bytes, ref_desc, anthropic_key): c for c in matches}
+                for fut in _as_completed_deadline(cf, deadline):
                     res_cl[id(cf[fut])] = fut.result()
+            finally:
+                exc.shutdown(wait=False, cancel_futures=True)
             vetados = {id(c) for c in matches if res_cl.get(id(c)) is False}
             matches = [c for c in matches if id(c) not in vetados]
 
         # 3) CUENTAS VENDEDORAS: si faltan, explora las cuentas de los confirmados y DEEP-verifica sus
         #    posts con el MISMO filtro exacto (no solo portada) para que no se cuele nada.
-        if explorar_cuentas and matches and len(matches) < count:
+        if explorar_cuentas and matches and len(matches) < count and (_restante(deadline) or 999) > 20:
             vistos_urls = {_tk_key(c) for c in cand_list} | {_tk_key(c) for c in matches}
             cuentas: list[str] = []
             for c in matches:
@@ -1301,11 +1358,16 @@ def buscar(image_path: str | None = None, nombre: str = "", api_key: str | None 
     # HONESTIDAD (plan 30/30): el mensaje de "no encontré" queda SOLO para el caso de verdad vacío
     # (ni confirmados NI candidatos tras toda la escalera). Si hay candidatos, la sección ámbar de
     # la UI ya explica sola qué son (separados de los confirmados: eso no es relleno).
+    deadline_hit = deadline is not None and time.monotonic() >= deadline
     mensaje = ""
-    if verificado and not links and not candidatos:
+    if deadline_hit and (links or candidatos):
+        mensaje = ("Tardó más de la cuenta, así que te muestro lo que alcancé a confirmar — afina el "
+                   "nombre o sube una foto más clara para acelerar.")
+    elif verificado and not links and not candidatos:
         mensaje = (f"Encontré 0 con estas búsquedas: "
                    f"[{', '.join(queries[:6])}]. "
-                   "Dame la marca, un hashtag o el país para ampliar.")
+                   + ("Tardó mucho; " if deadline_hit else "")
+                   + "Dame la marca, un hashtag o el país para ampliar.")
     elif verificado and n_conf < count and not candidatos:
         mensaje = (f"Encontré {n_conf} confirmados con estas búsquedas: "
                    f"[{', '.join(queries[:6])}]. "

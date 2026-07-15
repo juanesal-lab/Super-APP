@@ -4243,3 +4243,24 @@ TikTok (que es lento por el pacer de 1 req/s).
 - Nota: verifiqué que todos los helpers de render (tkFpCard/tkVerBadge/tkCandBadge/…) existen → el
   "no aparece nada" era el spinner tapando (ya arreglado antes) + pestaña sin refrescar, no un crash.
 AVISO Juan: solo /api/creative-search (param opcional aditivo) + index.html. Nada más tuyo tocado.
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🔴→✅ Buscar creativos SE COLGABA INFINITO — causa raíz + tope duro
+Jack: "se queda cargando y nunca termina" con 3 productos reales (repelente, compresas, rodillera).
+NO era Gemini (verifiqué: ya tiene créditos y genera). Agente lo reprodujo EN VIVO con watchdog de
+stacks y cazó la causa:
+- **CAUSA RAÍZ**: llamadas de red SIN tope. El 2º juez Claude (_verificar_claude, opus) leía el socket
+  SSL para SIEMPRE (timeout=120s + retry = hasta 240s/candidato × varios en paralelo = ∞). Gemini
+  (_client) sin timeout alguno. Los ThreadPool + as_completed sin corte → una llamada atascada dejaba
+  el job en "running" para siempre (nunca done/error). La imagen webp NO era el problema (analizar_foto
+  da buenos keywords).
+- **FIX** (tiktok_search.py + creative_search.py): Gemini _client con timeout duro 30s (http_options);
+  Claude a 20s + max_retries=0; DEADLINE GLOBAL _BUDGET_S=80s en buscar() con helpers _deadline/
+  _as_completed_deadline → los bucles drenan hasta el deadline y devuelven lo YA confirmado (+cancel_
+  futures); CAP del pool de portadas max(150,count*8)≈160 → max(48,count*3)≈60; Foreplay recibe el
+  deadline; mensaje honesto "tardó mucho, te muestro lo que alcancé" si vence. NUNCA MÁS cuelgue infinito.
+- ANTES: los 3 productos → cuelgue ∞ en TikTok. DESPUÉS: spinner libre en ~33s, TikTok lleno en ~65-83s,
+  con resultados (prod1: 17 TikTok + 20 candidatos FP). Verificado: smoke 28/28, cazador ✅, contrato del
+  front intacto.
+- NOTA: la sesión paralela arregló EN PARALELO el lado FRONT del mismo síntoma (ocultar spinner tkProg
+  al cargar + selector de fuente Ambos/Solo TikTok/Solo Foreplay) — se complementan (front + backend).
+AVISO Juan: tiktok_search/creative_search ganaron timeouts y deadline global (aditivo, contrato intacto).

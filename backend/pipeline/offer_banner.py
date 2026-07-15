@@ -12,6 +12,9 @@ from PIL import Image, ImageDraw, ImageFont
 from .caption_styles import _fontpath, _fit
 from .ffmpeg_utils import probe, run
 from .assemble import venc
+# Zonas seguras (regla dura del dueño — CLAUDE.md §7 de Vidaria): contrato compartido.
+from .text_overlay import (SAFE_BANNER_PAD_PX, SAFE_MIN_BANNER_PX, safe_bottom_limit,
+                           safe_margin_x, safe_px, safe_top_min)
 
 _ROJO = (226, 45, 44, 255)
 _NARANJA = (240, 120, 18, 255)      # naranja alto contraste (banner inferior de oferta)
@@ -25,14 +28,24 @@ def render_banner(W: int, H: int, y_frac: float = 0.04,
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     fp = _fontpath(True)
-    y = int(H * y_frac)
+    # Regla del dueño: el banner arranca a ≥90px del borde superior (que el reloj/UI no lo tape).
+    y = max(int(H * y_frac), safe_top_min(H))
+    margin = safe_margin_x(W)               # ninguna letra toca el borde (≥64px laterales)
+    pad_min = safe_px(H, SAFE_BANNER_PAD_PX)  # padding interno de la caja ≥24px
 
     line1 = (line1 or "").strip()
     if line1:
-        s1 = max(18, int(H * 0.026))
+        s1 = max(safe_px(H, SAFE_MIN_BANNER_PX), int(H * 0.026))   # banner ≥44px legible
         f1 = ImageFont.truetype(fp, s1)
         tw = d.textlength(line1, font=f1)
-        padx, pady = int(s1 * 0.7), int(s1 * 0.45)
+        padx, pady = max(pad_min, int(s1 * 0.7)), max(pad_min, int(s1 * 0.45))
+        # que la pill COMPLETA quepa dentro de los márgenes: si no cabe, achica la letra
+        # (nunca bajo 24px absolutos) — jamás texto cortado por el borde.
+        while tw + 2 * padx > W - 2 * margin and s1 > 24:
+            s1 -= 2
+            f1 = ImageFont.truetype(fp, s1)
+            tw = d.textlength(line1, font=f1)
+            padx, pady = max(pad_min, int(s1 * 0.7)), max(pad_min, int(s1 * 0.45))
         x0 = (W - tw) / 2 - padx
         x1 = (W + tw) / 2 + padx
         d.rounded_rectangle([x0, y, x1, y + s1 + 2 * pady], radius=int((s1 + 2 * pady) / 2), fill=_ROJO)
@@ -41,9 +54,13 @@ def render_banner(W: int, H: int, y_frac: float = 0.04,
 
     line2 = (line2 or "").strip()
     if line2:
-        s2 = max(22, int(H * 0.036))
+        s2 = max(safe_px(H, SAFE_MIN_BANNER_PX), int(H * 0.036))
         f2 = ImageFont.truetype(fp, s2)
         tw2 = d.textlength(line2, font=f2)
+        while tw2 > W - 2 * margin and s2 > 24:    # completa dentro del margen, nunca cortada
+            s2 -= 2
+            f2 = ImageFont.truetype(fp, s2)
+            tw2 = d.textlength(line2, font=f2)
         st = max(3, s2 // 7)
         d.text(((W - tw2) / 2, y), line2, font=f2, fill=(255, 255, 255, 255),
                stroke_width=st, stroke_fill=(0, 0, 0, 255))
@@ -51,9 +68,13 @@ def render_banner(W: int, H: int, y_frac: float = 0.04,
 
 
 def safe_top_y(video_path: str, gemini_key: str | None) -> float:
-    """La IA elige una y-fracción (0.02-0.30) para el banner donde NO tape cara/producto/texto. Default .04."""
+    """La IA elige una y-fracción (0.05-0.30) para el banner donde NO tape cara/producto/texto.
+
+    Piso duro = 90px/1920 (regla del dueño: el banner arranca a ≥90px para que el reloj/UI
+    no lo tape); render_banner además re-clampa en píxeles reales. Default .048 (~92px)."""
+    _floor = 0.048                      # ≈ 92px sobre 1920: cumple el "≥90px del borde superior"
     if not gemini_key:
-        return 0.04
+        return _floor
     try:
         import cv2
         from google import genai
@@ -63,14 +84,14 @@ def safe_top_y(video_path: str, gemini_key: str | None) -> float:
         ok, fr = cap.read()
         cap.release()
         if not ok or fr is None:
-            return 0.04
+            return _floor
         ok, buf = cv2.imencode(".jpg", fr)
         if not ok:
-            return 0.04
+            return _floor
         prompt = ("Mira este frame vertical de un anuncio. Voy a poner un BANNER de oferta ARRIBA (2 líneas). "
-                  "¿A qué fracción vertical (0.02 a 0.30, desde arriba) lo pongo para que NO tape la cara, el "
+                  "¿A qué fracción vertical (0.05 a 0.30, desde arriba) lo pongo para que NO tape la cara, el "
                   "producto ni texto importante? Prefiere lo más ARRIBA posible con espacio libre. "
-                  "Responde SOLO el número (ej. 0.04).")
+                  "Responde SOLO el número (ej. 0.05).")
         # rápido por REST (thinkingBudget=0, ~2s por versión vs ~10s "pensando"); fallback SDK
         from . import gemini_fast
         texto = gemini_fast.generate(gemini_key, [prompt, (buf.tobytes(), "image/jpeg")])
@@ -82,10 +103,10 @@ def safe_top_y(video_path: str, gemini_key: str | None) -> float:
         import re
         m = re.search(r"0?\.\d+", texto)
         if m:
-            return max(0.02, min(0.30, float(m.group(0))))
+            return max(_floor, min(0.30, float(m.group(0))))
     except Exception:  # noqa: BLE001
         pass
-    return 0.04
+    return _floor
 
 
 def add_offer_banner(video_path: str, out_path: str, work_dir: str, *,
@@ -139,14 +160,15 @@ def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045,
     fp = _fontpath(True)
     hook = (hook_text or "").strip().upper() or "MÍRALO ANTES DE QUE SE AGOTE"
 
-    margin_x = int(W * 0.045)
+    margin_x = max(int(W * 0.045), safe_margin_x(W))     # laterales ≥64px (regla del dueño)
     max_w = W - 2 * margin_x
     size0 = int(H * 0.032)
+    # piso legible del banner ≥44px (si no cabe, _fit parte en más líneas — nunca corta)
     font, lines, line_h, size = _fit(d, hook, fp, max_w, int(H * 0.22), size0,
-                                     min_size=max(20, int(H * 0.020)))
+                                     min_size=max(safe_px(H, SAFE_MIN_BANNER_PX), int(H * 0.020)))
 
-    pad = int(size * 0.55)
-    bar_top = int(H * y_frac)
+    pad = max(int(size * 0.55), safe_px(H, SAFE_BANNER_PAD_PX))   # padding interno ≥24px
+    bar_top = max(int(H * y_frac), safe_top_min(H))      # arranca a ≥90px del borde superior
     text_h = line_h * len(lines)
     bar_h = text_h + 2 * pad
     # barra sólida oscura (dorado/oscuro estilo BEE), full-width, alto contraste
@@ -163,10 +185,11 @@ def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045,
     if not con_2x1:
         return img
     tag = "OFERTA 2X1"
-    ts = max(20, int(H * 0.030))
+    ts = max(safe_px(H, SAFE_MIN_BANNER_PX), int(H * 0.030))     # banner ≥44px legible
     tf = ImageFont.truetype(fp, ts)
     tw = d.textlength(tag, font=tf)
-    px, py = int(ts * 0.65), int(ts * 0.34)
+    px = max(int(ts * 0.65), safe_px(H, SAFE_BANNER_PAD_PX))     # padding ≥24px
+    py = max(int(ts * 0.34), safe_px(H, SAFE_BANNER_PAD_PX))
     tag_top = bar_top + bar_h + int(H * 0.008)
     x0 = (W - tw) / 2 - px
     x1 = (W + tw) / 2 + px
@@ -176,10 +199,11 @@ def render_hook_top(W: int, H: int, hook_text: str, y_frac: float = 0.045,
     return img
 
 
-def render_offer_bottom(W: int, H: int, y_frac: float = 0.815,
+def render_offer_bottom(W: int, H: int, y_frac: float = 0.72,
                         text: str | None = None, con_2x1: bool = True) -> Image.Image:
-    """PNG full-frame: barra NARANJA alto contraste ABAJO (dentro de la safe zone: su base queda
-    ~13% por encima del borde inferior para que la UI de Reels/Stories no la tape)."""
+    """PNG full-frame: barra NARANJA alto contraste ABAJO, pero SIEMPRE por ENCIMA de la zona
+    muerta inferior (regla del dueño: los últimos ~420px/22% los tapa el caption y los botones
+    de TikTok/Reels → cero texto clave ahí; la base de la barra queda a y ≤ 1500/1920)."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     fp = _fontpath(True)
@@ -188,18 +212,17 @@ def render_offer_bottom(W: int, H: int, y_frac: float = 0.815,
                 else "¡ENVÍO GRATIS!   ·   PAGAS AL RECIBIR")
     txt = (text or "").strip().upper()
 
-    margin_x = int(W * 0.04)
+    margin_x = max(int(W * 0.04), safe_margin_x(W))      # laterales ≥64px
     max_w = W - 2 * margin_x
     size0 = int(H * 0.028)
     font, lines, line_h, size = _fit(d, txt, fp, max_w, int(H * 0.12), size0,
-                                     min_size=max(18, int(H * 0.018)))
+                                     min_size=max(safe_px(H, SAFE_MIN_BANNER_PX), int(H * 0.018)))
 
-    pad = int(size * 0.5)
+    pad = max(int(size * 0.5), safe_px(H, SAFE_BANNER_PAD_PX))   # padding interno ≥24px
     bar_h = line_h * len(lines) + 2 * pad
-    bar_top = int(H * y_frac)
-    # no dejar que se salga por abajo
-    if bar_top + bar_h > int(H * 0.97):
-        bar_top = int(H * 0.97) - bar_h
+    limite = safe_bottom_limit(H)           # y máxima del texto clave (~78% del alto)
+    bar_top = min(int(H * y_frac), limite - bar_h)
+    bar_top = max(0, bar_top)
     d.rectangle([0, bar_top, W, bar_top + bar_h], fill=_NARANJA)
     stroke = max(2, size // 16)
     y = bar_top + pad

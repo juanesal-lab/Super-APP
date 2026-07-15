@@ -162,6 +162,18 @@ def _get_job(job_id: str) -> dict | None:
             return None
     return None
 
+
+def _lanzar_job(job_id: str, fn, *args) -> None:
+    """Lanza el worker de un job en 2º plano Y guarda la receta (fn + args) en el job para que
+    el botón 🔄 Reintentar del panel de trabajos pueda relanzarlo con UN clic si falla.
+    Los archivos de entrada viven en uploads/<id>/ (se conservan días) → el reintento los reusa;
+    si ya no están, el worker falla con su error honesto de siempre. Solo memoria (no persiste
+    reinicios): tras un reinicio el panel ofrece 'volver a la pestaña' en vez de reintentar."""
+    j = JOBS.get(job_id)
+    if j is not None:
+        j["_retry"] = (fn, args)
+    threading.Thread(target=fn, args=(job_id, *args), daemon=True).start()
+
 # Ancho de descarga (la altura se ajusta sola segun el formato 1:1 / 9:16 / 4:5)
 RES_MAP = {"2160": 2160, "1440": 1440, "1080": 1080, "720": 720, "480": 480}
 

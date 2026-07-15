@@ -4165,3 +4165,25 @@ AVISO Juan: app.py ganó `_lanzar_job` + 6 endpoints nuevos al FINAL del archivo
 _run_*_job) de los flujos principales ahora van por `_lanzar_job` (misma semántica). index.html: pestaña
 Resultados + barra de salud + panel flotante 🗂 + historial, cada uno con su JS propio; no toqué la
 lógica de ninguna pestaña tuya.
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🚀 2ª FLOTA DE MEJORA (5/5) fusionada y verificada
+5 agentes en worktrees, fusionados sobre main (que traía trabajo de una sesión paralela — árbol esperó
+a que cerrara). Combinado verificado: 75 rutas, smoke 28/28, cazador ✅, JS 20/20, backend compila.
+- **⚡ Fusión de capas (NUEVO overlay_fusion.py)**: banner (overlay) + end-card (concat) en 1 pasada
+  ffmpeg → −28% en ese sub-lote (3 encodes/versión → 2). El hook queda aparte para que _prehook
+  (base de reaplicar-hook) siga siendo banner+endcard SIN hook. Solo se activa con 2+ capas; 1 capa =
+  camino de siempre. Frames verificados (hook sobre banner en t=1s, banner sin hook t=5s, end-card final).
+- **🎯 Sincronía clip↔voz (queja histórica #1 de Jack)**: guion_match.plan_montaje — los FALLBACKS
+  ignoraban la fase → el CTA mostraba DOLOR en vez del producto. Nuevo veto duro _MISMATCH_DURO
+  (dolor no enseña producto/caja; cta/resultado/demo no enseñan sufrimiento) + compat-repeat (repite
+  clip lejano compatible antes que romper coherencia). Param mismatch_duro (default False = idéntico;
+  orchestrator y regen lo activan). Caso rojo→verde: mismatches 3→1 en pool escaso. AVISO Juan: tu
+  guion_match ganó veto por fase (aditivo, tu firma intacta).
+- **🩺 QA técnico (NUEVO qa_tecnico.py)**: revisar_version() detecta frames negros/congelados/silencio/
+  clipping/duración anómala en ~0.07s (una pasada ffmpeg). Corre en paralelo tras normalizar en los 3
+  runners → v["qa_tecnico"]; badge rojo "🩺 QA: ..." en la tarjeta (honesto, no bloquea). 6/6 fixtures.
+- **💾 Backups (NUEVO backups.py)**: respalda .env de app+montador, radar.db/.env/config a
+  ~/Backups/creativemaxing/<fecha>/ (chmod 700/600, rotación 14 días, jamás toca fuera de ahí). Diario
+  al arrancar + /api/backup-now y /api/backup-status + tarjeta en 🔑 Claves + tests/RESTORE.md. 25/25.
+- **🔍 Research + quick win (NUEVO testing_plan.py + assets/research-mejoras-2026.md)**: roadmap 2026 con
+  fuentes + implementó el quick win #1 (plan de testeo Meta/TikTok por lote con umbrales concretos, $0 IA).

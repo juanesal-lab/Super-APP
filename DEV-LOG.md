@@ -4226,3 +4226,20 @@ resultados de Foreplay ya estuvieran pintados debajo.
 - La Foreplay key nueva (10k créditos) responde OK (el 402 viejo del historial era la key anterior sin cuota).
 - Solo frontend. JS 20/20. Con el supervisor (auto-pull 30s) se despliega solo; Jack refresca navegador.
 AVISO Juan: nada de backend tocado.
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🎛️ Buscar creativos: SELECTOR de fuente (Ambos / Solo Foreplay / Solo TikTok)
+Pedido de Jack: poder elegir buscar solo en TikTok, solo en Foreplay o en ambos. Además resuelve su
+queja de "se demora / no aparece nada": eligiendo **Solo Foreplay** sale directo en ~3s sin esperar a
+TikTok (que es lento por el pacer de 1 req/s).
+- **backend `/api/creative-search`**: nuevo param `fuentes` (ambos|foreplay|tiktok). `con_tk`/`con_fp`
+  gatean cada rama: solo lanza el job de TikTok si se pidió; solo corre Foreplay si se pidió. Si no hay
+  Foreplay → `foreplay:{ads:[],omitido:true}`; si no hay TikTok → `tiktok:{pendiente:false,omitido:true}`,
+  tiktok_job="". Devuelve `fuentes` en la respuesta. El análisis (Gemini) se hace 1 vez igual.
+  Verificado en vivo: fuentes=foreplay → 20 ads en 3.05s, sin tiktok_job. fuentes=tiktok → solo job TK,
+  foreplay omitido.
+- **frontend**: `<select id="tkFuentes">` (Ambos / Solo Foreplay rápido / Solo TikTok) junto al de
+  cantidad. `tkRun` lo manda y lo guarda; `tkRender` lo mete en `_tkS.fuentes`; `tkPaint` GATEA las
+  secciones (no pinta TikTok si fuentes=foreplay; no pinta Foreplay si fuentes=tiktok). JS 20/20 OK.
+- Nota: verifiqué que todos los helpers de render (tkFpCard/tkVerBadge/tkCandBadge/…) existen → el
+  "no aparece nada" era el spinner tapando (ya arreglado antes) + pestaña sin refrescar, no un crash.
+AVISO Juan: solo /api/creative-search (param opcional aditivo) + index.html. Nada más tuyo tocado.

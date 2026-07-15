@@ -756,6 +756,11 @@
         <input type="text" id="tkNombre" class="full" placeholder="Nombre del producto (ej. repelente ultrasónico plagas)">
         <input type="text" id="tkLanding" class="full" placeholder="🔗 Link de tu landing (opcional — mejora los términos de búsqueda)">
         <select id="tkCount"><option value="15">15 por fuente</option><option value="20" selected>20 por fuente</option><option value="30">30 por fuente</option></select>
+        <select id="tkFuentes" title="Dónde buscar. Solo Foreplay = resultados al instante (TikTok es lento por su límite de 1 búsqueda/seg)">
+          <option value="ambos" selected>🔎 Ambos (Foreplay + TikTok)</option>
+          <option value="foreplay">📚 Solo Foreplay (rápido)</option>
+          <option value="tiktok">🎵 Solo TikTok</option>
+        </select>
       </div>
       <button class="autoBtn" id="tkGo" onclick="tkRun()">🔍 Buscar creativos</button>
       <div class="autoProg hidden" id="tkProg"><div class="autoMsg" id="tkMsg">Buscando…</div></div>
@@ -813,7 +818,10 @@
         vs.slice(0,2).forEach(v=>fd.append('videos_ref',v));   // hasta 2 videos → frames como fotos extra
         if(landing) fd.append('landing',landing);         // página de venta → mejores términos
         const cnt=document.getElementById('tkCount').value;
+        const fuentes=(document.getElementById('tkFuentes')||{}).value||'ambos';
+        window._tkFuentes=fuentes;
         fd.append('nombre',nombre); fd.append('count',cnt); fd.append('fp_count',cnt);
+        fd.append('fuentes',fuentes);
         document.getElementById('tkGo').disabled=true;
         document.getElementById('tkProg').classList.remove('hidden');
         document.getElementById('tkMsg').textContent='Buscando en Foreplay… (TikTok sigue en 2do plano)';
@@ -903,6 +911,7 @@
         // estado vivo de la búsqueda (para 🔄 cambiar / 🎯 más con este ángulo)
         window._tkS={nombre:document.getElementById('tkNombre').value.trim(), foto:j.foto||'',
                      framesVideo:(j.frames_video||[]),   // miniaturas de los frames sacados del video
+                     fuentes:(j.fuentes||window._tkFuentes||'ambos'),   // ambos | foreplay | tiktok (selector)
                      fase:(j.fase||'final'), keywords:(j.keywords||''),   // 2 fases: 'preliminar' → 'final'
                      desc:j.desc||'', variants:(j.variants||[]), links:links, ads:ads,
                      candIdxTk:new Set(candTk.map((_,k)=>linksConf.length+k)),
@@ -953,6 +962,7 @@
         }
         // ── grupo 1: TikTok ──────────────────────────────────────────────
         const candIdxTk=S.candIdxTk||new Set(), candIdxFp=S.candIdxFp||new Set();
+        if(S.fuentes!=='foreplay'){          // selector: pintar TikTok solo si se pidió
         if(S.tkPend){
           // TikTok cargando en 2do plano (job): sección "⏳ buscando…" — Foreplay ya está pintado arriba
           h+=`<h3 style="margin:18px 0 4px">🎵 TikTok <span class="s" style="font-weight:400">— ⏳ buscando en 2do plano…</span></h3>`;
@@ -993,7 +1003,9 @@
         // mensaje HONESTO cuando los confirmados no llegan al count pedido (con las búsquedas probadas)
         if(S.tkMens){ h+='<div class="autoStep" style="margin-top:8px">💬 '+tkEsc(S.tkMens)+'</div>'; }
         }  // fin del else de S.tkPend (TikTok ya cargado en 2do plano)
+        }  // fin gate TikTok (selector fuentes)
         // ── grupo 2: Foreplay ────────────────────────────────────────────
+        if(S.fuentes!=='tiktok'){            // selector: pintar Foreplay solo si se pidió
         const mainFp=ads.map((a,i)=>[a,i]).filter(p=>!clFp.has(p[1])&&!candIdxFp.has(p[1]));
         const candFpIdxs=[...candIdxFp].filter(i=>ads[i]&&!clFp.has(i));
         const fpConf=mainFp.map(p=>p[0]).filter(a=>a.verificado_producto);
@@ -1035,6 +1047,7 @@
           candFpIdxs.forEach(i=>{ h+=tkFpCard(ads[i],i,S.fpVerif); });
           h+='</div>';
         }
+        }  // fin gate Foreplay (selector fuentes)
         // ── grupo 3: 🎬 B-ROLL de apoyo (escenas para darle ritmo/dopamina al ad) ──
         const br=S.broll||[];
         if(br.length){

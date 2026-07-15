@@ -1636,7 +1636,8 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
                           fotos: list[UploadFile] = File([]),
                           videos_ref: list[UploadFile] = File([]),
                           fotos_url: str = Form(""),
-                          landing: str = Form("")):
+                          landing: str = Form(""),
+                          fuentes: str = Form("ambos")):   # "ambos" | "foreplay" | "tiktok"
     """Foto + nombre del producto → Foreplay RÁPIDO ya + TikTok en 2do plano (job).
     /api/tiktok-search y /api/foreplay-search siguen funcionando IGUAL; esto es aditivo.
     `fotos` acepta hasta 3 del MISMO producto (frente/lado/empaque) → ficha y jueces más precisos.
@@ -1653,6 +1654,9 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
         raise HTTPException(400, "Dame el nombre del producto, una foto o un video")
     _t0 = time.time()
     landing_text = _texto_landing(landing)
+    fuentes = fuentes if fuentes in ("ambos", "foreplay", "tiktok") else "ambos"
+    con_tk = fuentes in ("ambos", "tiktok")     # ¿buscar en TikTok?
+    con_fp = fuentes in ("ambos", "foreplay")   # ¿buscar en Foreplay?
     tk_job = ""
     try:
         # 1 sola llamada de análisis, compartida por Foreplay y TikTok (cero doble costo de Gemini)
@@ -1660,18 +1664,24 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
                                      gemini_key=_load_env_key(), image_paths=img_paths or None,
                                      landing_text=landing_text)
         # TikTok (lento por tikwm 1 req/s) arranca YA en 2do plano; el front lo inyecta al terminar
-        tk_job = uuid.uuid4().hex[:12]
-        JOBS[tk_job] = {"tipo": "tiktok_bg", "status": "running", "progress": 0,
-                        "message": "⏳ Buscando en TikTok…", "result": None, "created": time.time()}
-        threading.Thread(target=_run_tiktok_bg_job,
-                         args=(tk_job, img_path, img_paths, nombre.strip(), int(count), analisis),
-                         daemon=True).start()
+        if con_tk:
+            tk_job = uuid.uuid4().hex[:12]
+            JOBS[tk_job] = {"tipo": "tiktok_bg", "status": "running", "progress": 0,
+                            "message": "⏳ Buscando en TikTok…", "result": None, "created": time.time()}
+            threading.Thread(target=_run_tiktok_bg_job,
+                             args=(tk_job, img_path, img_paths, nombre.strip(), int(count), analisis),
+                             daemon=True).start()
         # Foreplay RÁPIDO (reusa el MISMO análisis) → responde en ~10-15s SIN esperar a TikTok
-        fr = buscar_foreplay_rapido(image_path=img_path, nombre=nombre.strip(),
-                                    gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
-                                    anthropic_key=_load_anthropic_key(), fp_count=int(fp_count),
-                                    image_paths=img_paths or None, landing_text=landing_text,
-                                    rellenar_n=True, analisis=analisis)
+        if con_fp:
+            fr = buscar_foreplay_rapido(image_path=img_path, nombre=nombre.strip(),
+                                        gemini_key=_load_env_key(), foreplay_key=_load_foreplay_key(),
+                                        anthropic_key=_load_anthropic_key(), fp_count=int(fp_count),
+                                        image_paths=img_paths or None, landing_text=landing_text,
+                                        rellenar_n=True, analisis=analisis)
+        else:   # solo TikTok: Foreplay va vacío pero conservamos keywords/desc del análisis
+            fr = {"ok": True, "keywords": (analisis or {}).get("keywords") or nombre.strip(),
+                  "desc": (analisis or {}).get("desc", ""), "variants": (analisis or {}).get("variants") or [],
+                  "foreplay": {"ok": True, "ads": [], "candidatos": [], "omitido": True}}
     except Exception as e:  # noqa: BLE001
         # 🤖 bitácora del asistente: la búsqueda era 100% efímera (ni job ni archivo) → si fallaba,
         # después NADIE (ni la IA) podía decir qué pasó. Ahora queda anotado el error concreto.
@@ -1688,9 +1698,12 @@ def creative_search(nombre: str = Form(""), count: int = Form(20),
     r = {"ok": bool(fr.get("ok")), "keywords": fr.get("keywords") or nombre.strip(),
          "desc": fr.get("desc", ""), "variants": fr.get("variants") or [],
          "foreplay": _fp,
-         # TikTok llega por el job en 2do plano → placeholder para que el front pinte "⏳ Buscando…"
-         "tiktok": {"pendiente": True, "links": [], "candidatos": [], "broll": []},
+         # TikTok llega por el job en 2do plano → placeholder "⏳ Buscando…". Si NO se pidió TikTok
+         # (fuentes=foreplay), va `omitido:true` para que el front NO pinte esa sección.
+         "tiktok": {"pendiente": bool(con_tk), "omitido": (not con_tk),
+                    "links": [], "candidatos": [], "broll": []},
          "tiktok_job": tk_job,
+         "fuentes": fuentes,
          # la foto queda guardada para 🔄 cambiar / 🎯 más con este ángulo (solo el basename viaja)
          "foto": os.path.basename(img_path) if img_path else "",
          "frames_video": _thumbs_b64(frames_video)}       # miniaturas de los frames usados (UI)

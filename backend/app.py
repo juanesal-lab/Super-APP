@@ -73,6 +73,17 @@ def _gc_disk(days: int = 3, keep_recent: int = 25) -> None:
             except OSError:
                 pass
 
+def _backup_diario() -> None:
+    """Respaldo diario best-effort de los archivos críticos fuera de git (.env con las keys,
+    estado del Radar). Se llama al arrancar en un hilo aparte. respaldar() nunca lanza, pero
+    igual va envuelto por si el import falla en una copia sin el módulo."""
+    try:
+        from pipeline.backups import respaldar
+        respaldar()
+    except Exception:  # noqa: BLE001 — jamás frenar el arranque
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Baja el modelo EAST (~92 MB) la primera vez, en segundo plano para no
@@ -82,6 +93,10 @@ async def lifespan(app: FastAPI):
     # Auto-limpieza de disco al arrancar (renders viejos >3 días) — evita que work/ crezca a decenas
     # de GB. En segundo plano para no frenar el arranque.
     threading.Thread(target=_gc_disk, daemon=True).start()
+    # 💾 Respaldo diario de lo IRREEMPLAZABLE (los .env con las API keys + estado del Radar) a
+    # ~/Backups/creativemaxing. Con solo prender la app queda un backup del día. Best-effort en
+    # hilo aparte: si algo falla, JAMÁS frena el arranque (respaldar() nunca lanza).
+    threading.Thread(target=_backup_diario, daemon=True).start()
     yield
 
 
@@ -630,6 +645,30 @@ def get_config():
     except Exception:  # noqa: BLE001
         cfg["gemini_key_status"] = "desconocido"
     return cfg
+
+
+# ── 💾 BACKUPS: respaldo de lo IRREEMPLAZABLE fuera de git (.env con las API keys + estado del
+#    Radar) a ~/Backups/creativemaxing. Diario y automático al arrancar; aquí van el estado y el
+#    botón manual "Respaldar ahora" de la pestaña 🔑 Claves. ──
+@app.get("/api/backup-status")
+def backup_status():
+    """Estado del último respaldo (para la tarjeta de 🔑 Claves): última fecha, hace cuánto, días
+    guardados y la carpeta destino. Nunca falla (best-effort)."""
+    try:
+        from pipeline.backups import estado
+        return estado()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "ultimo": None, "hace_segundos": None, "dias": [], "root": "", "error": str(e)}
+
+
+@app.post("/api/backup-now")
+def backup_now():
+    """Respalda AHORA los archivos críticos (botón manual). Devuelve qué copió, bytes y estado."""
+    try:
+        from pipeline.backups import respaldar
+        return respaldar()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "respaldados": [], "bytes": 0, "error": str(e)}
 
 
 # ── 🎬 MONTADOR: app INDEPENDIENTE que VIAJA en este repo (subcarpeta montador/, su propio server

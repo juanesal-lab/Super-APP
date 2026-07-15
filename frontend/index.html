@@ -1920,6 +1920,18 @@
       archivos nuevos, y nada sube sin tu aprobación.</p>
   </div>
 
+  <!-- 💾 Respaldo de tus claves y estado (fuera de git, por si se corrompe el disco) -->
+  <div class="card" id="backupCard">
+    <h2>💾 Respaldo de tus claves <span id="backupPill" class="pill off">…</span></h2>
+    <div class="keyrow">
+      <div id="backupInfo" class="pmsg" style="margin:0;flex:1">Revisando el último respaldo…</div>
+      <button class="btn sec" id="backupNow" style="width:auto" onclick="respaldarAhora()">Respaldar ahora</button>
+    </div>
+    <p class="pmsg" style="margin:10px 0 0">Copia automática (cada vez que prendes la app) de tus <b>API keys</b> y el estado del
+      <b>📡 Radar</b> a <code>~/Backups/creativemaxing/</code>, FUERA del repo. Guarda los últimos <b>14 días</b>. Si se
+      corrompe el disco o borras algo sin querer, recuperas tus claves. Cómo restaurar: <code>tests/RESTORE.md</code>.</p>
+  </div>
+
   </div><!-- /p-config -->
 
   <div class="panel" id="p-crear">
@@ -3526,6 +3538,43 @@ document.getElementById("shopDomainSave").onclick = ()=>saveKey("shopify_domain"
 document.getElementById("shopTokenSave").onclick = ()=>saveKey("shopify_token","shopTokenInput");
 document.getElementById("shopThemeSave").onclick = ()=>saveKey("shopify_theme","shopThemeInput");
 refreshConfig();
+
+// --- 💾 Respaldo de las claves (estado + botón manual) ---
+function _haceTxt(seg){
+  if(seg==null) return "hace un momento";
+  if(seg<90) return "hace un momento";
+  const m=Math.floor(seg/60); if(m<60) return "hace "+m+" min";
+  const h=Math.floor(m/60); if(h<24) return "hace "+h+" h";
+  const d=Math.floor(h/24); return "hace "+d+" día"+(d===1?"":"s");
+}
+async function refreshBackup(){
+  try{
+    const j = await (await fetch("/api/backup-status")).json();
+    const pill=document.getElementById("backupPill"), info=document.getElementById("backupInfo");
+    if(!pill||!info) return;
+    if(j.ultimo){
+      pill.textContent="al día ✓"; pill.className="pill";
+      info.innerHTML="Último respaldo de tus claves: <b>"+_haceTxt(j.hace_segundos)+"</b> ("+j.ultimo+") · "
+        +(j.dias?j.dias.length:1)+" día(s) guardado(s).";
+    }else{
+      pill.textContent="sin respaldo"; pill.className="pill off";
+      info.textContent="Todavía no hay respaldo. Dale “Respaldar ahora”.";
+    }
+  }catch(e){/* best-effort: la UI nunca se rompe por esto */}
+}
+async function respaldarAhora(){
+  const b=document.getElementById("backupNow"), info=document.getElementById("backupInfo");
+  if(b) b.disabled=true; const old=b?b.textContent:""; if(b) b.textContent="Respaldando…";
+  try{
+    const j = await (await fetch("/api/backup-now",{method:"POST"})).json();
+    if(j.ok && info){ const n=(j.respaldados||[]).length;
+      info.innerHTML="✅ Respaldados <b>"+n+"</b> archivo(s) ("+Math.round((j.bytes||0)/1024)+" KB). Recién ahora."; }
+    else if(info){ info.textContent="⚠️ No se pudo respaldar"+(j.error?": "+j.error:"."); }
+  }catch(e){ if(info) info.textContent="⚠️ No se pudo respaldar (error de red)."; }
+  if(b){ b.disabled=false; b.textContent=old; }
+  refreshBackup();
+}
+refreshBackup();
 
 // --- Textos del proveedor: mostrar selector Tapar/Traducir al activar ---
 const blurCaptions = document.getElementById("blurCaptions");

@@ -33,28 +33,31 @@ def render_end_card(W: int, H: int,
     d = ImageDraw.Draw(img)
     fp = _fontpath(True)
 
-    margin_x = int(W * 0.07)
+    # márgenes laterales ≥64px (regla del dueño, CLAUDE.md §7): 0.07·1080≈76px, ya cumple
+    margin_x = max(int(W * 0.07), round(64 * W / 1080))
     max_w = W - 2 * margin_x
 
     line1 = _strip_emoji((line1 or "").strip().upper())
     line2 = _strip_emoji((line2 or "").strip().upper())
     cta = _strip_emoji((cta or "").strip().upper())
 
+    # Pisos legibles (regla del dueño): título ≥48px, secundarios/CTA ≥44px (escalados a 1920)
+    _min48, _min44 = max(24, round(48 * H / 1920)), max(20, round(44 * H / 1920))
     # ── medir cada bloque (mismo motor _fit de los banners) ──
     f1 = ls1 = lh1 = None
     if line1:
         f1, ls1, lh1, _ = _fit(d, line1, fp, max_w, int(H * 0.20), int(H * 0.052),
-                               min_size=max(24, int(H * 0.024)))
+                               min_size=_min48)
     f2 = ls2 = lh2 = None
     if line2:
         f2, ls2, lh2, _ = _fit(d, line2, fp, max_w, int(H * 0.10), int(H * 0.026),
-                               min_size=max(18, int(H * 0.015)))
+                               min_size=_min44)
     fc = cs = None
     pill_w = pill_h = px = py = 0
     if cta:
         # el CTA cabe en UNA línea dentro de la pill (max_h chico → _fit lo encoge hasta 1 línea)
         fc, _lsc, _lhc, cs = _fit(d, cta, fp, int(max_w * 0.9), int(H * 0.05),
-                                  int(H * 0.030), min_size=max(18, int(H * 0.016)))
+                                  int(H * 0.030), min_size=_min44)
         cw = d.textlength(cta, font=fc)
         px, py = int(cs * 0.85), int(cs * 0.55)
         pill_w, pill_h = int(cw + 2 * px), int(cs + 2 * py)

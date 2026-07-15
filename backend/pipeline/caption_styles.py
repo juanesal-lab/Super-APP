@@ -42,17 +42,22 @@ _POPPINS_XBOLD = os.path.join(_FONTS_DIR, "Poppins-ExtraBold.ttf")
 _FALLBACK = ["/System/Library/Fonts/Supplemental/Arial Bold.ttf",
              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
 
-SAFE = 120                      # margen seguro por borde (UI de TikTok)
+# Margen seguro por borde: la columna de botones de TikTok/Reels tapa los últimos ~130px de la
+# DERECHA (regla dura del dueño, CLAUDE.md §7) → 132 para que ninguna letra caiga ahí.
+SAFE = 132
 ESTILOS = ["bold_outline", "hormozi", "yellow_highlight", "red_highlight", "highlight_box",
            "pill", "clean_minimal", "karaoke", "bounce", "typewriter"]
 
 # Tamaño del subtítulo elegible por el usuario (regla de Juan: default MEDIANO, los gigantes no)
 TAMANOS = {"pequeno": 0.66, "mediano": 0.82, "grande": 1.0}
 
-# Safe zone por DESTINO (Manual Maestro §10.1): TikTok tolera captions a ~80% de altura;
-# Meta Reels/Stories exige el 35% INFERIOR libre (la UI de Meta tapa esa franja) → el bloque
-# sube a ~60%. Global tipo _ACCENT: el job lo fija con set_destino() antes de quemar.
+# Safe zone por DESTINO + REGLA DURA del dueño (CLAUDE.md §7): los subtítulos viven en la franja
+# 55%-78% del alto (y ≈ 1060-1500 sobre 1920) y NUNCA más abajo de y=1500 — los últimos ~420px
+# los tapa el caption/botones de la plataforma. Meta Reels/Stories además exige el 35% inferior
+# libre → el bloque sube a ~60%. Global tipo _ACCENT: el job lo fija con set_destino().
 _DESTINO = "tiktok"
+_SUB_Y_MAX = 0.78125            # borde INFERIOR máximo del bloque de subtítulos (1500/1920)
+_MIN_SUB_REF = 48               # tamaño mínimo legible en celular (px sobre 1920 de alto)
 
 
 def set_destino(destino: str | None):
@@ -61,13 +66,24 @@ def set_destino(destino: str | None):
 
 
 def _y_centro(H: int) -> int:
-    """Centro vertical del bloque de captions según la safe zone del destino."""
-    return int(H * (0.60 if _DESTINO == "meta" else 0.80))
+    """Centro vertical del bloque de captions según la safe zone del destino.
+    TikTok era 0.80 → quedaba bajo y=1500 (zona muerta); ahora 0.70 (centro de la franja segura)."""
+    return int(H * (0.60 if _DESTINO == "meta" else 0.70))
 
 
 def _y_piso(H: int) -> int:
     """Techo superior del bloque (que no suba más de esto)."""
     return int(H * (0.42 if _DESTINO == "meta" else 0.55))
+
+
+def _y_max(H: int) -> int:
+    """Borde inferior MÁXIMO del bloque (regla dura: nunca bajo y=1500 sobre 1920)."""
+    return int(H * _SUB_Y_MAX)
+
+
+def _min_sub(H: int, f: float) -> int:
+    """Piso de tamaño de letra del subtítulo: ≥48px escalados (regla del dueño)."""
+    return max(18, round(_MIN_SUB_REF * H / 1920))
 
 
 def _tam(cap_size) -> float:
@@ -223,13 +239,14 @@ def render_caption(text: str, W: int, H: int, style: str = "bold_outline",
     disp = text.upper() if style in ("hormozi",) else text
     size0 = int(H * (0.066 if style in ("hormozi", "bounce") else 0.05) * f)
     font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, max_h, size0,
-                                     min_size=max(18, int(30 * f)))
+                                     min_size=_min_sub(H, f))   # ≥48px escalados (regla del dueño)
     stroke = max(2, size // 9)
     keywords = _keywords(text)
 
     total_h = line_h * len(lines)
     y0 = _y_centro(H) - total_h // 2           # bloque según safe zone del destino
-    y0 = max(_y_piso(H), min(y0, H - SAFE - total_h))
+    # clamp DURO: la base del bloque nunca bajo y=1500/1920 (zona muerta de la UI)
+    y0 = max(_y_piso(H), min(y0, _y_max(H) - total_h))
 
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
     if _ACCENT:                      # acento dinámico: contrasta con el color del producto/video
@@ -332,12 +349,12 @@ def _render_wordgroup(group: list[dict], active: int, W: int, H: int, style: str
     xbold = style in ("hormozi", "bounce", "wordpop")
     fontpath = _fontpath(xbold)
     disp = text.upper() if style in ("hormozi", "karaoke", "wordpop") else text
-    # Más pequeño, líneas juntas y en el tercio INFERIOR (tapa menos el video)
+    # Más pequeño, líneas juntas, dentro de la FRANJA SEGURA 55-78% (regla dura del dueño)
     font, lines, line_h, size = _fit(draw, disp, fontpath, max_w, int(H * 0.165 * f), int(H * 0.046 * f),
-                                     min_size=max(16, int(30 * f)))
+                                     min_size=_min_sub(H, f))   # ≥48px escalados
     stroke = max(3, size // 8)
     total_h = line_h * len(lines)
-    y0 = max(_y_piso(H), min(_y_centro(H) - total_h // 2, H - SAFE - total_h))
+    y0 = max(_y_piso(H), min(_y_centro(H) - total_h // 2, _y_max(H) - total_h))
     yellow, red, white = (255, 214, 10, 255), (240, 60, 50, 255), (255, 255, 255, 255)
     accent = _ACCENT or (red if style == "red_highlight" else yellow)
     boxed = style in ("pill", "highlight_box", "karaoke")

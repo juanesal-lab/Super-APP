@@ -850,7 +850,7 @@ def process(
     if settings["hooks_por_version"]:      # el hook por versión reemplaza al global (no doble pastilla)
         settings["hook_text"] = ""
         settings["auto_hook"] = False
-    threading.Thread(target=_run_job, args=(job_id, paths, settings), daemon=True).start()
+    _lanzar_job(job_id, _run_job, paths, settings)
     return {"job_id": job_id}
 
 
@@ -913,7 +913,7 @@ def more_versions(job_id: str = Form(...), n: int = Form(1)):
     rid = uuid.uuid4().hex[:12]
     JOBS[rid] = {"tipo": "mas_versiones", "status": "running", "progress": 0, "message": "Iniciando…",
                  "result": None, "created": time.time()}
-    threading.Thread(target=_run_more_versions_job, args=(rid, job_id, ya, n), daemon=True).start()
+    _lanzar_job(rid, _run_more_versions_job, job_id, ya, n)
     return {"job_id": rid}
 
 
@@ -1206,7 +1206,7 @@ def auto(
         "banner_oferta": bool(banner_oferta),
         "modo_ganador": bool(modo_ganador),
     }
-    threading.Thread(target=_run_auto_job, args=(job_id, paths, settings), daemon=True).start()
+    _lanzar_job(job_id, _run_auto_job, paths, settings)
     return {"job_id": job_id}
 
 
@@ -1602,9 +1602,8 @@ def creative_search_job(nombre: str = Form(""), count: int = Form(20),
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {"tipo": "buscar_creativos", "status": "running", "progress": 0,
                     "message": "Iniciando…", "result": None, "created": time.time()}
-    threading.Thread(target=_run_creative_search_job,
-                     args=(job_id, img_paths, frames_video, nombre.strip(), int(count),
-                           int(fp_count), _texto_landing(landing)), daemon=True).start()
+    _lanzar_job(job_id, _run_creative_search_job, img_paths, frames_video, nombre.strip(),
+                int(count), int(fp_count), _texto_landing(landing))
     return {"job_id": job_id}
 
 
@@ -1708,9 +1707,7 @@ def clone(
         "verticalizar": bool(verticalizar),
         "caption_style": caption_style, "caption_size": caption_size,
     }
-    threading.Thread(target=_run_clone_job,
-                     args=(job_id, winner_path, photo_paths, video_paths, settings),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_clone_job, winner_path, photo_paths, video_paths, settings)
     return {"job_id": job_id}
 
 # ---- Proceso por pasos para VOZ EN OFF ----
@@ -1925,7 +1922,7 @@ def scripts(
     if settings["hooks_por_version"]:      # el hook por versión reemplaza al global (no doble pastilla)
         settings["hook_text"] = ""
         settings["auto_hook"] = False
-    threading.Thread(target=_run_scripts_job, args=(job_id, paths, settings), daemon=True).start()
+    _lanzar_job(job_id, _run_scripts_job, paths, settings)
     return {"job_id": job_id}
 
 
@@ -2226,9 +2223,7 @@ def swap(old: UploadFile = File(...), new_files: list[UploadFile] = File(...),
         new_paths.append(dest)
     JOBS[job_id] = {"tipo": "reemplazar_producto", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_swap_job,
-                     args=(job_id, old_path, new_paths, product_desc.strip(), new_desc.strip()),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_swap_job, old_path, new_paths, product_desc.strip(), new_desc.strip())
     return {"job_id": job_id}
 
 
@@ -2309,10 +2304,8 @@ def dub(video: UploadFile = File(None), target_lang: str = Form("en"),
         raise HTTPException(400, "Sube un video o pasa un creativo de Foreplay")
     JOBS[job_id] = {"tipo": "doblaje", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_dub_job,
-                     args=(job_id, vpath, target_lang, source_lang, bool(oferta_2x1),
-                           product_desc.strip()),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_dub_job, vpath, target_lang, source_lang, bool(oferta_2x1),
+                product_desc.strip())
     return {"job_id": job_id}
 
 
@@ -2379,8 +2372,7 @@ def dub_preview(video: UploadFile = File(None), video_url: str = Form(""),
     job_id, vpath = _save_dub_upload(video, video_url)
     JOBS[job_id] = {"tipo": "doblaje_traduccion", "status": "running", "progress": 0, "message": "Analizando el video...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_dub_preview_job, args=(job_id, vpath, product_desc.strip()),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_dub_preview_job, vpath, product_desc.strip())
     return {"job_id": job_id}
 
 
@@ -2483,10 +2475,8 @@ def dub_generar(prev_job_id: str = Form(...), voz: str = Form("juan_carlos"),
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {"tipo": "doblaje_voz", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_dub_generar_job,
-                     args=(job_id, prev_job_id.strip(), voz, lst, bool(oferta_2x1),
-                           oferta_texto.strip(), target_lang.strip() or "es"),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_dub_generar_job, prev_job_id.strip(), voz, lst, bool(oferta_2x1),
+                oferta_texto.strip(), target_lang.strip() or "es")
     return {"job_id": job_id}
 
 
@@ -2520,7 +2510,7 @@ def download_videos(urls: str = Form(...)):
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {"tipo": "descargar_videos", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_download_job, args=(job_id, links), daemon=True).start()
+    _lanzar_job(job_id, _run_download_job, links)
     return {"job_id": job_id}
 
 
@@ -2708,9 +2698,8 @@ def producto_clips(
         settings["mix"] = _mix
     JOBS[job_id] = {"tipo": "producto_clips", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_producto_job,
-                     args=(job_id, links, product_url.strip(), image_path,
-                           product_desc.strip(), settings), daemon=True).start()
+    _lanzar_job(job_id, _run_producto_job, links, product_url.strip(), image_path,
+                product_desc.strip(), settings)
     return {"job_id": job_id}
 
 
@@ -2815,9 +2804,8 @@ def landing_generate(tipo: str = Form(...), producto: str = Form(""), link: str 
         paths.append(p)
     JOBS[job_id] = {"tipo": "landing", "status": "running", "progress": 0, "message": "Iniciando…",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_landing_job,
-                     args=(job_id, tipo, producto.strip(), link.strip(), precio.strip(),
-                           oferta.strip(), paths), daemon=True).start()
+    _lanzar_job(job_id, _run_landing_job, tipo, producto.strip(), link.strip(), precio.strip(),
+                oferta.strip(), paths)
     return {"job_id": job_id}
 
 
@@ -2926,9 +2914,7 @@ def foreplay_producto_api(nombre: str = Form(""), solo_activos: bool = Form(Fals
         raise HTTPException(400, "Dame el nombre del producto o su foto")
     JOBS[job_id] = {"tipo": "foreplay_producto", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_foreplay_producto_job,
-                     args=(job_id, image_path, nombre.strip(), bool(solo_activos)),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_foreplay_producto_job, image_path, nombre.strip(), bool(solo_activos))
     return {"job_id": job_id}
 
 
@@ -3013,7 +2999,7 @@ def foreplay_clips(videos: str = Form(...), aspect: str = Form("9:16"),
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {"tipo": "foreplay_clips", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time()}
-    threading.Thread(target=_run_foreplay_clips_job, args=(job_id, ads, settings), daemon=True).start()
+    _lanzar_job(job_id, _run_foreplay_clips_job, ads, settings)
     return {"job_id": job_id}
 
 
@@ -3543,9 +3529,7 @@ def variar_hook_ep(producto: str = Form(""), link: str = Form(""),
     JOBS[job_id] = {"tipo": "variar_hook", "status": "running", "progress": 0, "message": "Iniciando...",
                     "result": None, "created": time.time(), "_winner": winner,
                     "_producto": producto, "_modo": modo, "_voz": voz, "_page_text": ""}
-    threading.Thread(target=_run_varhook_job,
-                     args=(job_id, winner, producto, modo, max(1, min(8, n)), voz),
-                     daemon=True).start()
+    _lanzar_job(job_id, _run_varhook_job, winner, producto, modo, max(1, min(8, n)), voz)
     return {"job_id": job_id}
 
 
@@ -3672,6 +3656,318 @@ def asistente_chat(mensaje: str = Form(...), historial: str = Form("[]")):
                     duda_anotada=anotada)
     return {"ok": True, "respuesta": r.get("respuesta", ""), "motor": r.get("motor", ""),
             "duda_anotada": anotada}
+
+
+# ═══ 🗂 PANEL DE CONTROL UX (2026-07-13) — jobs siempre a la vista, reintentar, galería, ═══
+# ═══ historial de búsquedas, salud de las keys y "mandar al Telegram del dueño".         ═══
+# Todo ADITIVO: ningún endpoint existente cambia. El frontend tiene el panel flotante 🗂,
+# la pestaña 🗃️ Resultados, el historial en Buscar creativos y la barra de salud arriba.
+
+# Tipos de job que asistente.TIPO_LEGIBLE no conoce (no toco pipeline/: el mapa extra vive acá)
+_TIPO_EXTRA = {"tiktok_bg": "Buscar en TikTok (2º plano)", "buscar_creativos": "Buscar creativos",
+               "landing": "Crear landing", "descubrir": "Descubrir productos",
+               "doblaje_traduccion": "Doblar · traducir", "doblaje_voz": "Doblar · voz"}
+
+# job.tipo → pestaña del front donde se relanza a mano (para "↗ ir a la pestaña")
+_TIPO_TAB = {"cortar_clips": "p-crear", "mas_versiones": "p-crear", "render_versiones": "p-crear",
+             "guiones": "p-crear", "crear_creativo": "p-auto", "clonar_ganador": "p-clone",
+             "reemplazar_producto": "p-swap", "doblaje": "p-dub", "doblaje_traduccion": "p-dub",
+             "doblaje_voz": "p-dub", "descargar_videos": "p-descargar",
+             "producto_clips": "p-producto", "foreplay_producto": "p-foreplay",
+             "foreplay_clips": "p-foreplay", "ads_imagen": "p-disruptivo",
+             "variar_imagen": "p-varimg", "variar_hook": "p-varhook",
+             "buscar_creativos": "p-buscar", "tiktok_bg": "p-buscar", "landing": "p-landings",
+             "regenerar_version": "p-crear", "descubrir": "p-descubrir"}
+
+
+@app.get("/api/jobs")
+def jobs_panel():
+    """🗂 Foto en vivo de los trabajos para el panel flotante: qué corre (con % y cuánto suele
+    tardar), qué terminó (y qué produjo) y qué falló (con el error CONCRETO). Reusa el snapshot
+    del asistente + marca cuáles se pueden reintentar con un clic."""
+    out = asst.snapshot_jobs(JOBS, 14)
+    for d in out:
+        j = JOBS.get(d.get("job")) or {}
+        raw = j.get("tipo", "")
+        d["tipo_raw"] = raw
+        if raw and d.get("tipo") == raw and raw in _TIPO_EXTRA:   # snapshot no lo supo traducir
+            d["tipo"] = _TIPO_EXTRA[raw]
+        d["tab"] = _TIPO_TAB.get(raw, "")
+        d["reintentable"] = bool(j.get("_retry")) and j.get("status") == "error"
+    corriendo = sum(1 for j in JOBS.values() if j.get("status") == "running")
+    return {"ok": True, "jobs": out, "corriendo": corriendo}
+
+
+@app.post("/api/retry")
+def retry_job(job_id: str = Form(...)):
+    """🔄 Reintenta un job FALLIDO con sus MISMOS insumos y ajustes (la receta quedó guardada por
+    _lanzar_job). Devuelve el job_id NUEVO para seguirlo. Si no hay receta (job de otro tipo o el
+    server se reinició), contesta honesto con a qué pestaña volver."""
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "Ese trabajo ya no está en memoria — relanzalo desde su pestaña.")
+    if job.get("status") == "running":
+        raise HTTPException(400, "Ese trabajo todavía está corriendo — esperá a que termine.")
+    receta = job.get("_retry")
+    if not receta:
+        return {"ok": False, "error": "Este tipo de trabajo no se puede reintentar con un clic — "
+                                      "relanzalo desde su pestaña.",
+                "tab": _TIPO_TAB.get(job.get("tipo", ""), "")}
+    fn, args = receta
+    rid = uuid.uuid4().hex[:12]
+    JOBS[rid] = {"tipo": job.get("tipo", ""), "status": "running", "progress": 0,
+                 "message": "Reintentando…", "result": None, "created": time.time()}
+    _lanzar_job(rid, fn, *args)
+    asst.log_evento(WORK_DIR, "retry", de=job_id, nuevo=rid, tipo=job.get("tipo", ""))
+    return {"ok": True, "job_id": rid}
+
+
+@app.get("/api/salud")
+def salud():
+    """🩺 Semáforo de las keys/servicios con AVISOS accionables (qué pasa + qué hacer), para la
+    barra de arriba del front. Antes esos errores quedaban escondidos (la pill de Claves o el
+    error críptico recién al generar). Barato: reusa los caches de 10 min (Gemini y Foreplay)."""
+    avisos: list[dict] = []
+    gk = _load_env_key()
+    if not gk:
+        gstat = "sin_key"
+        avisos.append({"nivel": "error", "texto": "Falta la key de Gemini — sin ella no hay "
+                       "guiones, búsquedas, hooks ni imágenes.",
+                       "accion": "Pegala en 🔑 Claves (aistudio.google.com → API keys).",
+                       "tab": "p-config"})
+    else:
+        chk = _check_gemini_key(gk)
+        gstat = "ok" if chk.get("ok") is True else (chk.get("reason") or "desconocido"
+                                                    if chk.get("ok") is False else "desconocido")
+        if gstat == "cuota":
+            avisos.append({"nivel": "error", "texto": "La key de Gemini está SIN CRÉDITOS (429): "
+                           "guiones, búsquedas e imágenes van a fallar.",
+                           "accion": "Recargá créditos en aistudio.google.com (Billing) y en "
+                                     "unos minutos vuelve a andar solo.", "tab": "p-config"})
+        elif gstat == "invalida":
+            avisos.append({"nivel": "error", "texto": "La key de Gemini es INVÁLIDA — Google la "
+                           "rechaza.", "accion": "Pegá la key buena en 🔑 Claves.",
+                           "tab": "p-config"})
+    tiene_eleven, tiene_claude = bool(_load_eleven_key()), bool(_load_anthropic_key())
+    if not tiene_eleven:
+        avisos.append({"nivel": "warn", "texto": "Sin key de ElevenLabs no hay voz en off, "
+                       "subtítulos ni doblaje.", "accion": "Pegala en 🔑 Claves (elevenlabs.io).",
+                       "tab": "p-config"})
+    if not tiene_claude:
+        avisos.append({"nivel": "warn", "texto": "Sin key de Claude no salen los Ads de imagen, "
+                       "Variar hook ni las Landings.", "accion": "Pegala en 🔑 Claves.",
+                       "tab": "p-config"})
+    fp_u = _foreplay_creditos()   # None = sin key (no molesta); cache 10 min
+    if isinstance(fp_u, dict):
+        rem = fp_u.get("remaining")
+        if fp_u.get("ok") and isinstance(rem, (int, float)) and rem <= 0:
+            avisos.append({"nivel": "error", "texto": "Foreplay quedó SIN CRÉDITOS — 'Buscar "
+                           "creativos' va a salir vacío de ads ganadores.",
+                           "accion": "Recargá en foreplay.co o esperá el ciclo de facturación.",
+                           "tab": "p-buscar"})
+        elif not fp_u.get("ok") and "inválida" in str(fp_u.get("error", "")):
+            avisos.append({"nivel": "warn", "texto": "La key de Foreplay es inválida.",
+                           "accion": "Pegá la key buena en 🔑 Claves.", "tab": "p-config"})
+    return {"ok": True, "gemini": gstat, "eleven": tiene_eleven, "anthropic": tiene_claude,
+            "foreplay": fp_u, "avisos": avisos}
+
+
+@app.get("/api/historial-busquedas")
+def historial_busquedas(n: int = 40):
+    """🕘 Últimas búsquedas de creativos (de la bitácora work/_eventos.jsonl que ya existía pero
+    nadie veía): producto, fuente, cuántos encontró, si falló y por qué. Más recientes primero."""
+    evs = [e for e in asst.leer_eventos(WORK_DIR, 400) if e.get("evento") == "busqueda"]
+    return {"ok": True, "busquedas": list(reversed(evs))[:max(1, min(100, int(n)))]}
+
+
+# ── 🗃️ GALERÍA: todo lo producido (memoria + disco), con preview y envío a Telegram ──
+_GAL_IMG = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _gal_items_de_result(res) -> list[dict]:
+    """Archivos FINALES de un result de job (versiones, creativos, imágenes, video suelto)."""
+    items: list[dict] = []
+
+    def add(p, nombre=""):
+        if p and isinstance(p, str) and os.path.exists(p) and _within(p, WORK_DIR, UPLOAD_DIR):
+            items.append({"path": p, "nombre": (nombre or os.path.basename(p))[:80],
+                          "clase": "imagen" if p.lower().endswith(_GAL_IMG) else "video"})
+
+    if not isinstance(res, dict):
+        return items
+    for v in (res.get("versions") or []):
+        if isinstance(v, dict):
+            add(v.get("path"), ("Versión " + str(v.get("name", ""))).strip())
+    for c in (res.get("creativos") or []):
+        if isinstance(c, dict):
+            add(c.get("video"), c.get("nombre", ""))
+    for v in (res.get("variantes") or []):
+        if isinstance(v, dict):
+            add(v.get("imagen"), v.get("titular") or v.get("estilo") or "")
+    for v in (res.get("variaciones") or []):
+        if isinstance(v, dict):
+            add(v.get("video"), v.get("hook", ""))
+    add(res.get("path"))     # reemplazo / doblaje / export del editor
+    add(res.get("video"))    # creativo automático
+    return items
+
+
+def _gal_escanear_dir(d: str) -> list[dict]:
+    """Fallback SIN job en memoria: pesca los archivos FINALES de una carpeta work/<id>.
+    Las versiones encadenan sufijos (_vo,_of,_mx,_ln…) → el final del grupo es el de mtime
+    más nuevo. Singles conocidos: doblajes, swap, export del editor, ads/variaciones png."""
+    finales: dict[str, str] = {}
+    try:
+        nombres = os.listdir(d)
+    except OSError:
+        return []
+    for nm in nombres:
+        p = os.path.join(d, nm)
+        low = nm.lower()
+        if not os.path.isfile(p):
+            continue
+        m = re.match(r"(version_[a-z0-9]+)", low)
+        if m and low.endswith(".mp4") and "_45" not in low:     # el cut 4:5 es un derivado
+            k = m.group(1)
+            try:
+                if k not in finales or os.path.getmtime(p) > os.path.getmtime(finales[k]):
+                    finales[k] = p
+            except OSError:
+                pass
+        elif low.endswith((".mp4", ".webm")) and low.startswith(
+                ("dubbed", "video_doblado", "swapped", "editor_export", "variacion")):
+            finales[low] = p
+        elif low.endswith(".png") and low.startswith(("ad_", "var_")):
+            finales[low] = p
+    return [{"path": p, "nombre": os.path.basename(p)[:80],
+             "clase": "imagen" if p.lower().endswith(_GAL_IMG) else "video"}
+            for _, p in sorted(finales.items())]
+
+
+def _gal_producto(job: dict) -> str:
+    """La descripción del producto del job (si viajó en los settings) para agrupar la galería."""
+    for src in (job.get("_src_settings"), job.get("settings")):
+        if isinstance(src, dict) and src.get("product_desc"):
+            return str(src["product_desc"])[:70]
+    if job.get("_producto"):
+        return str(job["_producto"])[:70]
+    res = job.get("result")
+    if isinstance(res, dict) and res.get("producto"):
+        return str(res["producto"])[:70]
+    return ""
+
+
+@app.get("/api/galeria")
+def galeria(n: int = 12):
+    """🗃️ Los últimos resultados producidos, agrupados por trabajo (con su producto y fecha),
+    para verlos/descargarlos/mandarlos al Telegram SIN buscar en qué pestaña quedaron.
+    Memoria primero (result completo); si el server se reinició, escanea work/ (heurística)."""
+    n = max(1, min(24, int(n)))
+    grupos: list[dict] = []
+    vistos: set[str] = set()
+    for jid, j in sorted(JOBS.items(), key=lambda kv: kv[1].get("created", 0), reverse=True):
+        if len(grupos) >= n:
+            break
+        if j.get("status") not in ("done", "error") and not j.get("result"):
+            continue
+        items = _gal_items_de_result(j.get("result"))
+        vistos.add(jid)
+        if not items:
+            continue
+        grupos.append({"job": jid, "tipo": asst.TIPO_LEGIBLE.get(j.get("tipo", ""),
+                       _TIPO_EXTRA.get(j.get("tipo", ""), j.get("tipo", "") or "proyecto")),
+                       "producto": _gal_producto(j),
+                       "cuando": time.strftime("%d/%m %H:%M", time.localtime(j.get("created", 0)))
+                       if j.get("created") else "", "items": items[:12]})
+    # Disco: carpetas work/<id> que la memoria no conoce (server reiniciado)
+    try:
+        dirs = [os.path.join(WORK_DIR, x) for x in os.listdir(WORK_DIR)
+                if not x.startswith("_") and os.path.isdir(os.path.join(WORK_DIR, x))]
+        dirs.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    except OSError:
+        dirs = []
+    for d in dirs:
+        if len(grupos) >= n:
+            break
+        jid = os.path.basename(d)
+        if jid in vistos:
+            continue
+        job = _get_job(jid)                              # levanta job.json si existe
+        items = (_gal_items_de_result((job or {}).get("result")) if job else []) \
+            or _gal_escanear_dir(d)
+        if not items:
+            continue
+        grupos.append({"job": jid,
+                       "tipo": asst.TIPO_LEGIBLE.get((job or {}).get("tipo", ""),
+                               _TIPO_EXTRA.get((job or {}).get("tipo", ""), "proyecto anterior")),
+                       "producto": _gal_producto(job or {}),
+                       "cuando": time.strftime("%d/%m %H:%M",
+                                               time.localtime(os.path.getmtime(d))),
+                       "items": items[:12]})
+    return {"ok": True, "grupos": grupos}
+
+
+# ── 📲 Mandar un resultado al Telegram del dueño (mismo bot del negocio, @Jacabuenashopbot) ──
+_TG_OWNER_FILE = "/Users/jaca/Vidaria/data/.telegram-owner"
+
+
+def _tg_credenciales() -> tuple[str, str]:
+    """(token, chat) del bot del negocio: token del .env de Vidaria (jamás se muestra) y el chat
+    del dueño del archivo .telegram-owner (mismo esquema que scripts/telegram-bot.js)."""
+    token = asst._leer_env_vidaria("TELEGRAM_BOT_TOKEN")
+    chat = ""
+    try:
+        with open(_TG_OWNER_FILE) as f:
+            chat = f.read().strip()
+    except OSError:
+        pass
+    if not chat:
+        chat = (asst._leer_env_vidaria("TELEGRAM_OWNER_IDS") or "").split(",")[0].strip()
+    return token, chat
+
+
+@app.post("/api/enviar-telegram")
+def enviar_telegram(path: str = Form(...), nota: str = Form("")):
+    """📲 Manda un archivo de la galería (video/imagen) al Telegram del dueño. Solo archivos
+    dentro de work/ o uploads/ (misma validación que /api/file). Errores HONESTOS, sin colgarse."""
+    full = _safe_path(path)
+    token, chat = _tg_credenciales()
+    if not (token and chat):
+        return {"ok": False, "error": "El bot de Telegram del negocio no está configurado en esta "
+                                      "máquina (falta el token o el chat del dueño en Vidaria)."}
+    try:
+        tam = os.path.getsize(full)
+    except OSError:
+        tam = 0
+    if tam > 49 * 1024 * 1024:
+        return {"ok": False, "error": "El archivo pesa más de 49MB y Telegram no lo acepta por "
+                                      "bot — bajá una versión más liviana (⬇️ 720) y mandá esa."}
+    ext = os.path.splitext(full)[1].lower()
+    if ext in _GAL_IMG:
+        metodo, campo = "sendPhoto", "photo"
+    elif ext in (".mp4", ".mov", ".webm"):
+        metodo, campo = "sendVideo", "video"
+    else:
+        metodo, campo = "sendDocument", "document"
+    caption = (nota or os.path.basename(full))[:900]
+    try:
+        with open(full, "rb") as fh:
+            r = requests.post(f"https://api.telegram.org/bot{token}/{metodo}",
+                              data={"chat_id": chat, "caption": caption},
+                              files={campo: (os.path.basename(full), fh)}, timeout=180)
+        ok = r.status_code == 200 and bool((r.json() or {}).get("ok"))
+        if ok:
+            asst.log_evento(WORK_DIR, "telegram_envio", archivo=os.path.basename(full), ok=True)
+            return {"ok": True}
+        desc = ""
+        try:
+            desc = str((r.json() or {}).get("description", ""))[:150]
+        except Exception:  # noqa: BLE001
+            pass
+        return {"ok": False, "error": f"Telegram no lo aceptó ({r.status_code}"
+                                      + (f": {desc}" if desc else "") + ")"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"No se pudo mandar: {str(e)[:150]}"}
 
 
 if __name__ == "__main__":

@@ -151,19 +151,20 @@ def _render_pill_png(text: str, vw: int, vh: int, font_path: str, png_path: str,
     SOLUCIÓN' arriba). Centrada, ancho ajustado al texto, alto ≤ `max_frac` de la pantalla.
     Devuelve el alto del bloque. Igual que _render_png pero look pill blanco → alto contraste."""
     meas = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
-    font_size = max(26, int(vh * 0.044))
+    floor = safe_px(vh, SAFE_MIN_BANNER_PX)       # pill de hook = banner → ≥44px legibles
+    font_size = max(floor, int(vh * 0.044))
     max_h = int(vh * max_frac)
-    max_text_w = int(vw * 0.80)
+    max_text_w = min(int(vw * 0.80), vw - 2 * safe_margin_x(vw))
     for _ in range(16):
         font = ImageFont.truetype(font_path, font_size)
         lines = _wrap(text.upper(), font, max_text_w)
         ascent, descent = font.getmetrics()
         line_h = ascent + descent
         gap = int(line_h * 0.14)
-        pad_y = int(font_size * 0.42)
-        pad_x = int(font_size * 0.75)
+        pad_y = max(int(font_size * 0.42), safe_px(vh, SAFE_BANNER_PAD_PX))  # padding ≥24px
+        pad_x = max(int(font_size * 0.75), safe_px(vh, SAFE_BANNER_PAD_PX))
         block_h = line_h * len(lines) + gap * (len(lines) - 1) + pad_y * 2
-        if block_h <= max_h or font_size <= 26:
+        if block_h <= max_h or font_size <= floor:
             break
         font_size = int(font_size * 0.9)
     text_w = max(meas.textlength(l, font=font) for l in lines)

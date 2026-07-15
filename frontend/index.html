@@ -510,6 +510,7 @@
     <button data-p="p-disruptivo">🎨 Ads imagen</button>
     <button data-p="p-varimg">📸 Variar imagen</button>
     <button data-p="p-descargar">📥 Descargar</button>
+    <button data-p="p-galeria">🗃️ Resultados</button>
 
     <div class="navgroup">🎬 Montador ads</div>
     <button data-p="p-montador">🎬 Montar ad (voz + clips)</button>
@@ -524,6 +525,8 @@
   </aside>
 
   <main class="appmain">
+  <!-- 🩺 BARRA DE SALUD: avisos de keys/servicios con qué hacer (antes escondidos hasta que fallaba algo) -->
+  <div id="saludBar" style="display:none;margin:0 0 14px"></div>
   <!-- ✨ MODO AUTOMÁTICO (sección nueva, autocontenida) -->
   <style>
     .autoHero{position:relative;border-radius:20px;padding:26px;margin:0 0 22px;
@@ -746,6 +749,10 @@
       <button class="autoBtn" id="tkGo" onclick="tkRun()">🔍 Buscar creativos</button>
       <div class="autoProg hidden" id="tkProg"><div class="autoMsg" id="tkMsg">Buscando…</div></div>
       <div id="tkResult"></div>
+      <div style="margin-top:14px">
+        <button onclick="histToggle(this)" style="background:var(--card2);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer">🕘 Historial de búsquedas</button>
+        <div id="histOut" style="display:none;margin-top:10px"></div>
+      </div>
     </div>
     <script>
       (function(){
@@ -3380,6 +3387,17 @@
     <div id="dubResult"></div>
   </div>
   </div><!-- /p-dub -->
+
+  <!-- 🗃️ RESULTADOS: todo lo que produjiste, agrupado por trabajo, con preview y "mandar al Telegram" -->
+  <div class="panel" id="p-galeria" style="display:none">
+    <div class="autoHero">
+      <h2>🗃️ <span>Resultados</span> — todo lo que hiciste, en un solo lugar</h2>
+      <p class="lead">Tus videos e imágenes terminados, agrupados por trabajo. Míralos, descárgalos o
+        mandalos derecho al <b>Telegram del dueño</b> — sin perder tiempo buscando en qué pestaña quedaron.</p>
+      <button class="autoBtn" onclick="galCargar(this)" style="max-width:220px">🔄 Actualizar</button>
+      <div id="galOut" style="margin-top:16px"></div>
+    </div>
+  </div><!-- /p-galeria -->
 
   <div class="panel" id="p-guia" style="display:none">
     <div class="card">

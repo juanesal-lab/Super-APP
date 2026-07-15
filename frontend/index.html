@@ -3597,6 +3597,16 @@ function avatarBadge(o){
   const txt = [o.avatar, o.estructura].filter(Boolean).join(' · ');
   return `<span style="${_stageBase};background:#7c3aed" title="Avatar (a quién le habla) · estructura validada (arco y duración)">🎯 ${txt}</span>`;
 }
+// 🩺 QA técnico: badge ROJO honesto si el chequeo automático (backend/pipeline/qa_tecnico.py) halló
+// defectos baratos (frames negros, congelado, silencio, clipping…). NO bloquea: solo avisa a Jack.
+function qaBadge(v){
+  const qa = v && v.qa_tecnico;
+  if(!qa || qa.ok || !(qa.defectos && qa.defectos.length)) return '';
+  const det = qa.defectos.map(d=>d.detalle||d.tipo).filter(Boolean);
+  const corto = det.slice(0,2).join(' · ') + (det.length>2 ? ` (+${det.length-2})` : '');
+  const full = det.join(' · ').replace(/"/g,'&quot;');
+  return `<div style="margin-top:4px"><span style="${_stageBase};background:#dc2626" title="${full}">🩺 QA: ${corto}</span></div>`;
+}
 function funnelMix(){
   return {TOFU:+(document.getElementById('funTofu').value||0),
           MOFU:+(document.getElementById('funMofu').value||0),
@@ -4111,6 +4121,7 @@ function renderResults(res, rootId){
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
         ${(v.avatar||v.estructura)?`<div style="margin-top:4px">${avatarBadge(v)}</div>`:''}
         ${v.qa_aviso?`<div style="color:var(--warn);font-size:11px;margin-top:3px">⚠️ ${v.qa_aviso}</div>`:''}
+        ${qaBadge(v)}
         ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
           <select id="res${i}">
@@ -4312,6 +4323,7 @@ function appendVersions(res){
         <div class="name">${names[v.name]||v.name} ${v.voiceover?'<span class="tag" style="background:var(--accent2);color:#08130f">🔊 voz</span>':''} ${stageBadge(v.stage)}</div>
         <div class="meta">${v.n_clips} clips · ${res.aspect}</div>
         ${(v.avatar||v.estructura)?`<div style="margin-top:4px">${avatarBadge(v)}</div>`:''}
+        ${qaBadge(v)}
         ${v.path_45?`<a href="/api/file?path=${enc(v.path_45)}" download style="display:block;font-size:12px;color:var(--accent2);font-weight:600;text-decoration:none;margin-top:4px">⬇️ Cut 4:5 para Meta feed</a>`:''}
         <div class="dlrow">
           <select id="res${i}">

@@ -4202,3 +4202,14 @@ pregunté cuáles usa y reorganicé el nav SIN borrar nada (todo sigue a un clic
   tocada — los 20 data-p y sus paneles intactos (verificado), JS 20/20, smoke 28/28.
 - Nota: quedó pendiente (opcional) FUSIONAR de verdad Ads imagen + Variar imagen en una sola pestaña con
   modo; por ahora Variar imagen vive en "＋ Más". AVISO Juan: solo toqué el nav de index.html.
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🔁 Historial de búsquedas CLICKEABLE (repetir búsqueda)
+Pedido de Jack: en "Buscar creativos", que el 🕘 Historial de búsquedas sea memoria — al hacer clic en
+una entrada, que lo devuelva directo a ESA búsqueda "como si estuviera de nuevo".
+- **frontend (histToggle + nuevo `histReRun`)**: cada entrada del historial con producto ahora es
+  CLICKEABLE (cursor pointer + hover dorado + hint "🔁 repetir"). Al hacer clic: rellena `tkNombre`
+  con el producto, limpia fotos/videos/urls viejos (búsqueda limpia por nombre — el historial NO guarda
+  las fotos), resetea el contador/chips de fotos (`_tkChips()`), cierra el historial, sube arriba y
+  dispara `tkRun()`. Las entradas sin nombre no son clickeables.
+- Solo frontend (index.html). JS OK. Con el supervisor (auto-pull 30s) la app se actualiza sola; Jack
+  solo refresca el navegador. AVISO Juan: nada de backend tocado.

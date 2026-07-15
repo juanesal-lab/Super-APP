@@ -4972,12 +4972,37 @@ async function histToggle(btn){
       const nums=[]; if(b.tiktok!=null) nums.push(`🎵 ${b.tiktok}`); if(b.foreplay!=null) nums.push(`📚 ${b.foreplay}`);
       const err=(b.error||b.error_foreplay||b.error_tiktok||'');
       const ok=b.ok!==false && !err;
-      return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:6px;font-size:12.5px">
-        <b>${esc(b.producto||'(sin nombre)')}</b> <span style="color:var(--muted)">· ${esc(b.t||'')}</span>
+      const prod=b.producto||'';
+      const clickable=!!prod.trim();
+      // clic en la entrada = repite esa búsqueda (rellena el nombre y busca de nuevo)
+      const attrs=clickable
+        ? ` onclick="histReRun('${encodeURIComponent(prod)}')" title="Clic para repetir esta búsqueda" style="background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:6px;font-size:12.5px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--line)'"`
+        : ` style="background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:6px;font-size:12.5px"`;
+      return `<div${attrs}>
+        <b>${esc(prod||'(sin nombre)')}</b> <span style="color:var(--muted)">· ${esc(b.t||'')}</span>${clickable?' <span style="color:var(--accent);float:right">🔁 repetir</span>':''}
         <div style="color:var(--muted);margin-top:2px">${ok?'✅':'❌'} ${esc(b.fuente||'')} ${nums.length?'· '+nums.join(' '):''}${err?' · '+esc(String(err).slice(0,90)):''}</div>
       </div>`;
     }).join('');
   }catch(e){ box.innerHTML='<p class="pmsg err">No se pudo cargar el historial.</p>'; }
+}
+
+// 🔁 Repetir una búsqueda del historial: rellena el nombre y la lanza de nuevo (como si estuviera
+// buscando otra vez). Las fotos/videos viejos NO se guardan en el historial → busca por nombre limpio.
+function histReRun(enc){
+  const producto=decodeURIComponent(enc||'').trim();
+  if(!producto) return;
+  const inp=document.getElementById('tkNombre');
+  if(!inp){ return; }
+  inp.value=producto;
+  // limpiar cualquier foto/video/link viejo para que sea una búsqueda LIMPIA por nombre
+  window._tkFotos=[]; window._tkFoto=null; window._tkVids=[]; window._tkUrls=[];
+  const fIn=document.getElementById('tkFoto'); if(fIn) fIn.value='';
+  const vIn=document.getElementById('tkVids'); if(vIn) vIn.value='';
+  if(typeof window._tkChips==='function') window._tkChips();   // resetea contador de fotos + chips
+  const box=document.getElementById('histOut'); if(box) box.style.display='none';   // cierra el historial
+  window.scrollTo({top:0,behavior:'smooth'});
+  inp.focus();
+  if(typeof tkRun==='function') tkRun();
 }
 
 // 🗃️ Galería de resultados

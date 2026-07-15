@@ -4187,3 +4187,18 @@ a que cerrara). Combinado verificado: 75 rutas, smoke 28/28, cazador ✅, JS 20/
   al arrancar + /api/backup-now y /api/backup-status + tarjeta en 🔑 Claves + tests/RESTORE.md. 25/25.
 - **🔍 Research + quick win (NUEVO testing_plan.py + assets/research-mejoras-2026.md)**: roadmap 2026 con
   fuentes + implementó el quick win #1 (plan de testeo Meta/TikTok por lote con umbrales concretos, $0 IA).
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🧹 MENOS RUIDO: nav condensado (pedido de Jack "hay mucho duplicado")
+Jack: la app creció a 20 pestañas hechas por agentes distintos = mucho ruido y cosas que se pisan. Le
+pregunté cuáles usa y reorganicé el nav SIN borrar nada (todo sigue a un clic):
+- **Arriba (lo que usa)**: 🔎 Buscar ganadores (Foreplay · Buscar creativos · Radar) · 🎬 Crear videos
+  (Cortar clips · Clon con mi producto · Doblar · Ads imagen · Editor) · 🛍️ Landing & Montador · 📂 Mis
+  cosas (Resultados · Descargar) · ⚙️ Ajustes.
+- **Plegado en "＋ Más herramientas"** (las que dijo que casi no usa): 📦 Mi producto (auto), ✨ Crear
+  creativo (auto), 🔄 Reemplazar producto, 🔁 Variar hook, 📸 Variar imagen, 🧭 Descubrir productos.
+- Implementación segura: solo se reordenó el `<nav>` + toggle `toggleMas()` (botón `.masToggle` sin
+  data-p, excluido del handler de pestañas con selector `#tabs button[data-p]`); si entras a una pestaña
+  de adentro (por restore/botón externo) la sección se auto-abre. CERO paneles borrados, cero lógica
+  tocada — los 20 data-p y sus paneles intactos (verificado), JS 20/20, smoke 28/28.
+- Nota: quedó pendiente (opcional) FUSIONAR de verdad Ads imagen + Variar imagen en una sola pestaña con
+  modo; por ahora Variar imagen vive en "＋ Más". AVISO Juan: solo toqué el nav de index.html.

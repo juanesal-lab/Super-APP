@@ -4213,3 +4213,16 @@ una entrada, que lo devuelva directo a ESA búsqueda "como si estuviera de nuevo
   dispara `tkRun()`. Las entradas sin nombre no son clickeables.
 - Solo frontend (index.html). JS OK. Con el supervisor (auto-pull 30s) la app se actualiza sola; Jack
   solo refresca el navegador. AVISO Juan: nada de backend tocado.
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🐛 FIX "Buscar creativos se queda pensando"
+Jack: "no me funciona Buscar creativos, se queda ahí pensando". DIAGNÓSTICO: el backend responde bien
+(probé /api/creative-search: HTTP 200 en 2.1s con Foreplay listo + tiktok_job en 2º plano). El bug era
+100% FRONTEND: `tkProg` (el indicador "Buscando…"/spinner) se MOSTRABA (tkRun línea 818) pero NUNCA se
+ocultaba — no había ni un `add('hidden')` en todo index.html → quedaba encima para siempre aunque los
+resultados de Foreplay ya estuvieran pintados debajo.
+- FIX en `tkRun`: apenas `tkRender(j)` pinta los resultados, `tkProg.classList.add('hidden')` (el estado
+  de TikTok en 2º plano ya se muestra DENTRO de los resultados, sección "⏳ buscando…", no en el spinner).
+  Y en el `catch`: oculta el spinner + muestra el error en `tkResult` (antes dejaba el spinner colgado).
+- La Foreplay key nueva (10k créditos) responde OK (el 402 viejo del historial era la key anterior sin cuota).
+- Solo frontend. JS 20/20. Con el supervisor (auto-pull 30s) se despliega solo; Jack refresca navegador.
+AVISO Juan: nada de backend tocado.

@@ -827,13 +827,15 @@
           window._tkJ=j;                 // guardo la respuesta para inyectarle TikTok cuando llegue
           tkRender(j);                   // Foreplay se pinta YA; TikTok muestra "⏳ buscando…"
           document.getElementById('tkGo').disabled=false;
-          if(j.tiktok_job){
-            document.getElementById('tkMsg').textContent='✅ Foreplay listo · ⏳ TikTok en 2do plano…';
-            tkPollTikTok(j.tiktok_job);
-          } else {
-            document.getElementById('tkMsg').textContent='✅ Listo';
-          }
-        }catch(e){ document.getElementById('tkMsg').textContent='Error: '+errMsg(e); document.getElementById('tkGo').disabled=false; }
+          // 🐛 FIX (Jack: "se queda pensando"): apenas hay resultados, OCULTO el spinner. El estado de
+          // TikTok en 2º plano se muestra DENTRO de los resultados (sección "⏳ buscando…"), no en el spinner.
+          document.getElementById('tkProg').classList.add('hidden');
+          if(j.tiktok_job){ tkPollTikTok(j.tiktok_job); }
+        }catch(e){
+          document.getElementById('tkProg').classList.add('hidden');   // nunca dejar el spinner colgado
+          document.getElementById('tkGo').disabled=false;
+          document.getElementById('tkResult').innerHTML='<p class="pmsg err" style="padding:14px">❌ '+errMsg(e)+'</p>';
+        }
       }
       // Sondea el JOB de TikTok (2do plano) y lo inyecta en su sección al terminar. Si falla/se pierde,
       // deja el mensaje honesto ("No salieron por API… ábrelo a mano") que ya pinta tkPaint.

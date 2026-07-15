@@ -327,14 +327,30 @@ def clonar_ganador(
     except Exception as e:  # noqa: BLE001
         paso("Pacing", False, str(e))
 
+    # ── QA CREATIVOS (portero, CLAUDE.md §7): 9:16 exacto + zonas seguras + revisión visual ──
+    report("🔎 QA final del clon (formato + zonas seguras + visual)...", 99)
+    qa = None
+    try:
+        from .qa_creativos import qa_video
+        qa = qa_video(current, gemini_key=gemini_key, work_dir=work_dir)
+        paso("QA creativos", qa["aprobado"],
+             qa["resolucion"] + (" · " + "; ".join(qa["motivos"]) if qa["motivos"] else " · OK"))
+    except Exception as e:  # noqa: BLE001
+        paso("QA creativos", True, f"QA no pudo correr (no bloquea): {e}")
+
     report("✅ Clon terminado", 100)
     ok_n = sum(1 for p in pasos if p["ok"])
     # ok REAL (auditoría 2026-07-06 + REGLA DE JUAN): si el producto del COMPETIDOR sigue visible
     # (no se detectó o el reemplazo falló), el clon NO sirve — jamás reportarlo como "listo".
     reemplazo_ok = any(p["paso"] == "Reemplazo" and p["ok"] for p in pasos)
-    res = {"ok": reemplazo_ok, "video": current, "pasos": pasos, "decisiones": decisiones,
-           "resumen": f"{ok_n}/{len(pasos)} pasos OK"}
-    if not reemplazo_ok:
+    qa_rechazo = bool(qa) and not qa.get("aprobado", True)
+    res = {"ok": reemplazo_ok and not qa_rechazo, "video": current, "pasos": pasos,
+           "decisiones": decisiones, "resumen": f"{ok_n}/{len(pasos)} pasos OK", "qa": qa}
+    if qa_rechazo:
+        res["estado"] = "rechazado por QA"
+        res["error"] = ("❌ Rechazado por QA (no cumple las reglas de creativos del dueño): "
+                        + "; ".join(qa.get("motivos", [])))
+    elif not reemplazo_ok:
         if det_err:
             res["error"] = ("No pude buscar el producto del competidor en el video — "
                             + det_err[0] + " El clon quedaría mostrando el producto AJENO.")

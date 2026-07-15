@@ -856,6 +856,24 @@ def render_versions(
             except Exception:  # noqa: BLE001
                 v["sfx_events"] = None
 
+    # ── QA CREATIVOS (portero, CLAUDE.md §7): formato 9:16 EXACTO por versión (barato, $0).
+    #    La revisión visual (Gemini) se hace en los flujos de 1 salida (auto_studio/winner_clone/
+    #    hook_variator); acá, con muchas versiones, solo el check determinista de formato para no
+    #    disparar costos. Si una versión no es 9:16, se marca con qa_aviso (no se reporta "listo OK").
+    try:
+        from .qa_creativos import qa_video
+        for v in versions:
+            try:
+                r_qa = qa_video(v["path"], con_vision=False)
+                if not r_qa["aprobado"]:
+                    v["qa_creativos"] = r_qa["motivos"]
+                    prev = v.get("qa_aviso")
+                    v["qa_aviso"] = ((prev + " · " if prev else "") + "; ".join(r_qa["motivos"]))
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+
     report("Finalizando...", 98)
 
     # ── VALIDACIÓN DE SALIDA: que ningún mp4 truncado/corrupto se entregue como "listo" ──
@@ -893,7 +911,8 @@ def render_versions(
                 "cut_times": list(v.get("cut_times") or []),
                 "sfx_events": v.get("sfx_events"),
                 "path_45": v.get("path_45"),      # cut 4:5 para Meta (§10.2)
-                "qa_aviso": v.get("qa_aviso"),     # ⚠️ producto no visible ≤3s (§11.1)
+                "qa_aviso": v.get("qa_aviso"),     # ⚠️ producto no visible ≤3s (§11.1) o QA creativos
+                "qa_creativos": v.get("qa_creativos"),   # ⚠️ no cumple 9:16 exacto (§7) — motivos
                 "stage": stage_by_name.get(v["name"]),   # embudo: TOFU/MOFU/BOFU (None = clásico)
             }
             for v in versions

@@ -483,6 +483,18 @@ def generar_creativo_auto(
     except Exception:
         pass
 
+    # ── QA CREATIVOS (portero, CLAUDE.md §7): 9:16 exacto + zonas seguras + visual (2-3 frames).
+    #    Si RECHAZA, el job NO se reporta "listo": queda en estado "rechazado por QA" con motivos.
+    report("🔎 QA final del creativo (formato + zonas seguras + revisión visual)...", 99)
+    qa = None
+    try:
+        from .qa_creativos import qa_video
+        qa = qa_video(current, gemini_key=gemini_key, work_dir=work_dir)
+        paso("QA creativos", qa["aprobado"],
+             qa["resolucion"] + (" · " + "; ".join(qa["motivos"]) if qa["motivos"] else " · OK"))
+    except Exception as e:  # noqa: BLE001
+        paso("QA creativos", True, f"QA no pudo correr (no bloquea): {e}")
+
     report("✅ Creativo terminado", 100)
     ok_pasos = sum(1 for p in pasos if p["ok"])
     # ok REAL (auditoría 2026-07-06): "listo" solo si la IA le APORTÓ algo al video. Si Narrativa,
@@ -491,9 +503,15 @@ def generar_creativo_auto(
     _criticos = ("Narrativa", "Doblaje CO", "Subtítulos")
     _fallidos = [p for p in pasos if p["paso"] in _criticos and not p["ok"]]
     ok_real = any(p["ok"] for p in pasos if p["paso"] in _criticos)
-    res = {"ok": ok_real, "video": current, "pasos": pasos,
-           "resumen": f"{ok_pasos}/{len(pasos)} pasos OK", "blueprint": blueprint}
-    if not ok_real:
+    # el QA es un candado DURO: si rechaza, el creativo NO está "listo" (aunque la IA aportó)
+    qa_rechazo = bool(qa) and not qa.get("aprobado", True)
+    res = {"ok": ok_real and not qa_rechazo, "video": current, "pasos": pasos,
+           "resumen": f"{ok_pasos}/{len(pasos)} pasos OK", "blueprint": blueprint, "qa": qa}
+    if qa_rechazo:
+        res["estado"] = "rechazado por QA"
+        res["error"] = ("❌ Rechazado por QA (no cumple las reglas de creativos del dueño): "
+                        + "; ".join(qa.get("motivos", [])))
+    elif not ok_real:
         from .ia_errors import error_amigable
         detalle = next((p["detalle"] for p in _fallidos if p.get("detalle")), "")
         res["error"] = ("La IA no pudo procesar este video (narrativa, doblaje y subtítulos "

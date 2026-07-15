@@ -3685,15 +3685,22 @@ def jobs_panel():
     """🗂 Foto en vivo de los trabajos para el panel flotante: qué corre (con % y cuánto suele
     tardar), qué terminó (y qué produjo) y qué falló (con el error CONCRETO). Reusa el snapshot
     del asistente + marca cuáles se pueden reintentar con un clic."""
-    out = asst.snapshot_jobs(JOBS, 14)
-    for d in out:
+    out = []
+    for d in asst.snapshot_jobs(JOBS, 24):
         j = JOBS.get(d.get("job")) or {}
+        # Solo trabajos REALES: descarta contextos intermedios (ej. status 'angles' del paso 1 de
+        # Ads imagen) que no son un trabajo que Jack lanzó y solo ensucian el panel.
+        if j.get("status") not in ("running", "done", "error"):
+            continue
         raw = j.get("tipo", "")
         d["tipo_raw"] = raw
         if raw and d.get("tipo") == raw and raw in _TIPO_EXTRA:   # snapshot no lo supo traducir
             d["tipo"] = _TIPO_EXTRA[raw]
         d["tab"] = _TIPO_TAB.get(raw, "")
         d["reintentable"] = bool(j.get("_retry")) and j.get("status") == "error"
+        out.append(d)
+        if len(out) >= 14:
+            break
     corriendo = sum(1 for j in JOBS.values() if j.get("status") == "running")
     return {"ok": True, "jobs": out, "corriendo": corriendo}
 

@@ -4134,3 +4134,34 @@ romper contratos — si estás ahí ahora, avisa; (3) QA técnico $0 de cada ver
 negros/congelados, silencio, streams) con aviso en la tarjeta; (4) research de mejoras 2026 + roadmap
 priorizado + 1 quick win; (5) backups locales de .env/estado crítico con rotación. Fusiono verificando
 con las 2 suites como la 1ª flota.
+
+### 2026-07-13 · Claude (jackingshop1-cell) · 🗂 UX: panel de trabajos + reintentar, galería→Telegram, salud de keys, historial
+Pedido de Jack: operar cómodo desde una sola pantalla, ver qué corre/qué falló y por qué, y menos
+fricción. Solo **app.py + index.html** (NADA de pipeline/). Todo ADITIVO, cero regresiones.
+- **🗂 Panel de trabajos flotante (siempre a la vista):** GET /api/jobs pinta en vivo qué corre (% +
+  "lleva X / suele tardar Y" + alerta si se cuelga), qué falló CON el error concreto, y qué produjo.
+  Botón **🔄 Reintentar** (POST /api/retry) que relanza con los mismos insumos: los 19 flujos
+  principales ahora pasan por un helper `_lanzar_job` que guarda la receta (fn+args) en el job. Los
+  sub-jobs internos (render/regen/tiktok-bg/disruptive/variar_imagen/descubrir) quedan sin retry de
+  1 clic pero SÍ se ven + ofrecen "↗ ir a la pestaña" (honesto).
+- **🩺 Barra de salud arriba (GET /api/salud):** avisos accionables SOLO si hay algo que arreglar
+  (Gemini sin key/429/inválida, ElevenLabs/Claude faltantes, Foreplay sin créditos) con "Arreglar →"
+  a la pestaña. Reusa los caches de 10 min → barato.
+- **🗃️ Pestaña Resultados (GET /api/galeria):** todo lo producido agrupado por trabajo, con preview.
+  Memoria primero; si el server reinició, escanea work/ (agarra el archivo FINAL aunque encadene
+  _vo_of_mx_ln). Botón **📲 Telegram** (POST /api/enviar-telegram) manda el archivo al bot del negocio
+  (@Jacabuenashopbot): token del .env de Vidaria (jamás impreso) + chat de data/.telegram-owner, igual
+  que telegram-bot.js. sendPhoto/Video/Document por extensión; rechaza >49MB y sin-config con mensaje claro.
+- **🕘 Historial de búsquedas (GET /api/historial-busquedas):** por fin una vista de la bitácora
+  work/_eventos.jsonl que ya existía (producto, fuente, cuántos encontró, error). Toggle en Buscar creativos.
+- VERIFICADO (uvicorn de prueba en :8421, la app viva de :8420 NO se tocó, el :8440 Montador tampoco):
+  py_compile OK; 20 bloques JS parsean; nuevos endpoints OK (galería 3 grupos de disco, item servible
+  200; retry happy-path ok:true con job nuevo; validaciones 403/404); viejos sin regresión (/ 200,
+  /api/config, /api/foreplay-usage, /api/status 404, /api/last-project 404). Filtro: contextos 'angles'
+  del paso 1 de Ads imagen ya no ensucian el panel. NO mandé Telegram de prueba al dueño.
+- ⚠️ HAY QUE REINICIAR :8420 (corre sin --reload) para que los endpoints nuevos vivan. No lo reinicié
+  (app en producción local) — que lo levante el supervisor/quien administra el server.
+AVISO Juan: app.py ganó `_lanzar_job` + 6 endpoints nuevos al FINAL del archivo; los Thread(target=
+_run_*_job) de los flujos principales ahora van por `_lanzar_job` (misma semántica). index.html: pestaña
+Resultados + barra de salud + panel flotante 🗂 + historial, cada uno con su JS propio; no toqué la
+lógica de ninguna pestaña tuya.

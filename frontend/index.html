@@ -4684,6 +4684,211 @@ async function dubGenPoll(id){
 })();
 </script>
 
+<!-- ═══ 🗂 PANEL DE TRABAJOS — siempre a la vista: qué corre (% y tiempo), qué falló y POR QUÉ, con 🔄 Reintentar ═══ -->
+<style>
+  #jobsBtn{position:fixed;right:22px;bottom:88px;z-index:9000;min-width:56px;height:56px;padding:0 6px;
+    border-radius:28px;background:var(--card);border:1px solid var(--line);color:var(--txt);
+    font-size:22px;display:flex;align-items:center;justify-content:center;gap:4px;
+    cursor:pointer;box-shadow:var(--shadow);user-select:none;transition:transform .15s}
+  #jobsBtn:hover{transform:scale(1.06)}
+  #jobsBtn .cnt{font-size:12px;font-weight:800;background:var(--gold);color:var(--ink);
+    border-radius:12px;padding:1px 7px;display:none}
+  #jobsBtn.hay .cnt{display:inline-block}
+  #jobsPanel{position:fixed;right:22px;bottom:150px;z-index:9001;width:min(420px,calc(100vw - 44px));
+    max-height:min(560px,calc(100vh - 180px));display:none;flex-direction:column;background:var(--card);
+    border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  #jobsPanel.abierto{display:flex}
+  #jobsHead{padding:12px 14px;background:var(--card2);border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:8px;font-weight:700}
+  #jobsHead small{font-weight:400;color:var(--muted);font-size:11px;flex:1}
+  #jobsHead b{cursor:pointer;color:var(--muted);font-weight:400}
+  #jobsList{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:9px}
+  .jrow{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 12px;font-size:13px}
+  .jrow .jt{display:flex;align-items:center;gap:8px;justify-content:space-between}
+  .jrow .jname{font-weight:700}
+  .jrow .jst{font-size:11px;padding:2px 8px;border-radius:99px;white-space:nowrap}
+  .jst.run{background:rgba(224,165,58,.16);color:var(--warn)}
+  .jst.done{background:rgba(120,190,110,.16);color:#8fce7f}
+  .jst.err{background:rgba(220,90,80,.16);color:#e78a80}
+  .jrow .jbar{height:6px;background:var(--card);border-radius:99px;overflow:hidden;margin:8px 0 4px}
+  .jrow .jbar>div{height:100%;background:var(--gold);transition:width .4s}
+  .jrow .jmsg{color:var(--muted);font-size:11.5px;margin-top:3px;line-height:1.4}
+  .jrow .jacts{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+  .jrow .jacts button{background:var(--card);border:1px solid var(--line);color:var(--txt);
+    border-radius:7px;padding:5px 10px;font-size:11.5px;cursor:pointer}
+  .jrow .jacts button.prim{background:var(--gold);color:var(--ink);border:0;font-weight:700}
+  #jobsEmpty{color:var(--muted);font-size:12.5px;text-align:center;padding:22px 12px}
+  /* Barra de salud */
+  .saludMsg{border-radius:11px;padding:11px 14px;margin-bottom:8px;font-size:13px;display:flex;
+    gap:10px;align-items:flex-start;line-height:1.45}
+  .saludMsg.error{background:rgba(220,90,80,.12);border:1px solid rgba(220,90,80,.4)}
+  .saludMsg.warn{background:rgba(224,165,58,.12);border:1px solid rgba(224,165,58,.4)}
+  .saludMsg a{color:var(--accent);cursor:pointer;text-decoration:underline;white-space:nowrap}
+  /* Galería */
+  .galGrupo{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+  .galGrupo h3{font-size:14px;margin:0 0 3px}
+  .galGrupo .gm{color:var(--muted);font-size:12px;margin:0 0 10px}
+  .galGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .galItem{background:var(--card2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .galItem video,.galItem img{width:100%;display:block;background:#000;aspect-ratio:9/16;object-fit:cover}
+  .galItem .gi{padding:7px 8px}
+  .galItem .gn{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .galItem .ga{display:flex;gap:6px;margin-top:6px}
+  .galItem .ga button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--txt);
+    border-radius:7px;padding:5px 0;font-size:11px;cursor:pointer}
+  .galItem .ga button.tg{background:#229ED9;color:#fff;border:0}
+</style>
+<div id="jobsBtn" onclick="jobsToggle()" title="Tus trabajos: qué corre, qué terminó, qué falló">🗂<span class="cnt" id="jobsCnt">0</span></div>
+<div id="jobsPanel">
+  <div id="jobsHead">🗂 Trabajos <small>qué corre, qué terminó, qué falló y por qué</small><b onclick="jobsToggle()">✕</b></div>
+  <div id="jobsList"><div id="jobsEmpty">Cargando…</div></div>
+</div>
+<script>
+(function(){
+  let timer=null;
+  const TABNOMBRE={'p-crear':'✂️ Cortar clips','p-producto':'📦 Mi producto','p-auto':'✨ Crear creativo',
+    'p-clone':'🎯 Clon','p-swap':'🔄 Reemplazar','p-dub':'🎙️ Doblar','p-varhook':'🔁 Variar hook',
+    'p-disruptivo':'🎨 Ads imagen','p-varimg':'📸 Variar imagen','p-descargar':'📥 Descargar',
+    'p-buscar':'🔍 Buscar creativos','p-foreplay':'🔥 Foreplay','p-landings':'🛍️ Landings',
+    'p-descubrir':'🧭 Descubrir'};
+  function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+  window.irTab=function(tab){ const b=document.querySelector(`#tabs button[data-p="${tab}"]`);
+    if(b){ if(typeof window.homeEnter==='function') window.homeEnter(tab); else b.click(); } };
+  async function pintar(){
+    let j; try{ j=await (await fetch('/api/jobs')).json(); }catch(e){ return; }
+    const btn=document.getElementById('jobsBtn'), cnt=document.getElementById('jobsCnt');
+    const n=j.corriendo||0; cnt.textContent=n; btn.classList.toggle('hay',n>0);
+    const list=document.getElementById('jobsList');
+    const rows=(j.jobs||[]);
+    if(!rows.length){ list.innerHTML='<div id="jobsEmpty">Todavía no lanzaste ningún trabajo.<br>Andá a una pestaña y generá algo — acá vas a ver el progreso.</div>'; return; }
+    let h='';
+    rows.forEach(r=>{
+      const est=r.estado==='running'?'run':(r.estado==='error'?'err':'done');
+      const etq=r.estado==='running'?'corriendo':(r.estado==='error'?'falló':'listo');
+      let sub='';
+      if(r.estado==='running'){
+        sub=esc(r.mensaje||'');
+        if(r.suele_tardar_min) sub+=` · lleva ${r.arranco_hace_min||0} min (suele tardar ${r.suele_tardar_min})`;
+        if(r.alerta) sub+=` · ⚠️ ${esc(r.alerta)}`;
+      } else if(r.estado==='error'){ sub='❌ '+esc(r.error||r.mensaje||'error'); }
+      else { sub='✅ '+esc(r.produjo||'listo'); }
+      h+=`<div class="jrow"><div class="jt"><span class="jname">${esc(r.tipo||'Trabajo')}</span><span class="jst ${est}">${etq}</span></div>`;
+      if(r.estado==='running') h+=`<div class="jbar"><div style="width:${r.progreso_pct||0}%"></div></div>`;
+      h+=`<div class="jmsg">${sub}</div><div class="jacts">`;
+      if(r.reintentable) h+=`<button class="prim" onclick="jobRetry('${r.job}',this)">🔄 Reintentar</button>`;
+      if(r.tab && TABNOMBRE[r.tab]) h+=`<button onclick="irTab('${r.tab}')">↗ ${esc(TABNOMBRE[r.tab])}</button>`;
+      h+=`</div></div>`;
+    });
+    list.innerHTML=h;
+  }
+  window.jobRetry=async function(id,btn){
+    btn.disabled=true; const o=btn.textContent; btn.textContent='⏳…';
+    try{ const fd=new FormData(); fd.append('job_id',id);
+      const j=await (await fetch('/api/retry',{method:'POST',body:fd})).json();
+      if(j.ok){ btn.textContent='✅ relanzado'; setTimeout(pintar,600); }
+      else { btn.textContent='😕 '+(j.error?'no se pudo':'error'); alert(j.error||'No se pudo reintentar'); btn.disabled=false; setTimeout(()=>btn.textContent=o,3000); }
+    }catch(e){ btn.disabled=false; btn.textContent=o; alert('Error: '+e); }
+  };
+  window.jobsToggle=function(){
+    const p=document.getElementById('jobsPanel'); p.classList.toggle('abierto');
+    if(p.classList.contains('abierto')) pintar();
+  };
+  // Sondeo suave: cada 5s si hay algo corriendo o el panel abierto; cada 20s si no.
+  async function loop(){
+    let corriendo=false;
+    try{ const j=await (await fetch('/api/jobs')).json();
+      corriendo=(j.corriendo||0)>0;
+      const btn=document.getElementById('jobsBtn'), cnt=document.getElementById('jobsCnt');
+      cnt.textContent=j.corriendo||0; btn.classList.toggle('hay',corriendo);
+      if(document.getElementById('jobsPanel').classList.contains('abierto')) pintar();
+    }catch(e){}
+    clearTimeout(timer);
+    timer=setTimeout(loop, (corriendo||document.getElementById('jobsPanel').classList.contains('abierto'))?5000:20000);
+  }
+  setTimeout(loop, 1500);
+})();
+
+// 🩺 Barra de salud — avisos accionables de las keys/servicios (antes escondidos)
+async function refrescarSalud(){
+  let j; try{ j=await (await fetch('/api/salud')).json(); }catch(e){ return; }
+  const bar=document.getElementById('saludBar'); if(!bar) return;
+  const av=(j.avisos||[]);
+  if(!av.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+  const esc=s=>{const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;};
+  bar.innerHTML=av.map(a=>`<div class="saludMsg ${a.nivel==='error'?'error':'warn'}">
+    <span>${a.nivel==='error'?'⛔':'⚠️'}</span>
+    <span>${esc(a.texto)} <b>${esc(a.accion)}</b>${a.tab?` <a onclick="irTab('${a.tab}')">Arreglar →</a>`:''}</span></div>`).join('');
+  bar.style.display='';
+}
+setTimeout(refrescarSalud, 1800);
+setInterval(refrescarSalud, 120000);   // cada 2 min (reusa caches del backend, barato)
+
+// 🕘 Historial de búsquedas
+async function histToggle(btn){
+  const box=document.getElementById('histOut');
+  if(box.style.display!=='none'){ box.style.display='none'; return; }
+  box.style.display=''; box.innerHTML='<p class="pmsg" style="color:var(--muted)">Cargando…</p>';
+  try{
+    const j=await (await fetch('/api/historial-busquedas?n=30')).json();
+    const bs=(j.busquedas||[]);
+    if(!bs.length){ box.innerHTML='<p class="pmsg" style="color:var(--muted)">Todavía no hay búsquedas anotadas.</p>'; return; }
+    const esc=s=>{const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;};
+    box.innerHTML=bs.map(b=>{
+      const nums=[]; if(b.tiktok!=null) nums.push(`🎵 ${b.tiktok}`); if(b.foreplay!=null) nums.push(`📚 ${b.foreplay}`);
+      const err=(b.error||b.error_foreplay||b.error_tiktok||'');
+      const ok=b.ok!==false && !err;
+      return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:6px;font-size:12.5px">
+        <b>${esc(b.producto||'(sin nombre)')}</b> <span style="color:var(--muted)">· ${esc(b.t||'')}</span>
+        <div style="color:var(--muted);margin-top:2px">${ok?'✅':'❌'} ${esc(b.fuente||'')} ${nums.length?'· '+nums.join(' '):''}${err?' · '+esc(String(err).slice(0,90)):''}</div>
+      </div>`;
+    }).join('');
+  }catch(e){ box.innerHTML='<p class="pmsg err">No se pudo cargar el historial.</p>'; }
+}
+
+// 🗃️ Galería de resultados
+async function galCargar(btn){
+  const out=document.getElementById('galOut');
+  if(btn){ btn.disabled=true; }
+  out.innerHTML='<p class="pmsg" style="color:var(--muted)">Cargando tus resultados…</p>';
+  try{
+    const j=await (await fetch('/api/galeria?n=12')).json();
+    const gs=(j.grupos||[]);
+    if(btn) btn.disabled=false;
+    if(!gs.length){ out.innerHTML='<p class="pmsg" style="color:var(--muted)">Todavía no produjiste nada — generá clips, creativos o imágenes y van a aparecer acá.</p>'; return; }
+    const esc=s=>{const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;};
+    out.innerHTML=gs.map(g=>{
+      const items=(g.items||[]).map(it=>{
+        const url='/api/file?path='+encodeURIComponent(it.path);
+        const media=it.clase==='imagen'
+          ? `<img src="${url}" loading="lazy">`
+          : `<video src="${url}" preload="metadata" muted playsinline onclick="this.paused?this.play():this.pause()"></video>`;
+        const nota=encodeURIComponent((g.producto||g.tipo||'')+' · '+it.nombre);
+        return `<div class="galItem">${media}<div class="gi"><div class="gn" title="${esc(it.nombre)}">${esc(it.nombre)}</div>
+          <div class="ga">
+            <button onclick="window.open('${url}','_blank')">⬇️ Abrir</button>
+            <button class="tg" onclick="galEnviar('${encodeURIComponent(it.path)}','${nota}',this)">📲 Telegram</button>
+          </div></div></div>`;
+      }).join('');
+      return `<div class="galGrupo"><h3>${esc(g.tipo||'Proyecto')}${g.producto?' · '+esc(g.producto):''}</h3>
+        <p class="gm">${esc(g.cuando||'')}</p><div class="galGrid">${items}</div></div>`;
+    }).join('');
+  }catch(e){ if(btn) btn.disabled=false; out.innerHTML='<p class="pmsg err">No se pudieron cargar los resultados.</p>'; }
+}
+async function galEnviar(pathEnc, notaEnc, btn){
+  btn.disabled=true; const o=btn.textContent; btn.textContent='📤 enviando…';
+  try{
+    const fd=new FormData(); fd.append('path', decodeURIComponent(pathEnc)); fd.append('nota', decodeURIComponent(notaEnc));
+    const j=await (await fetch('/api/enviar-telegram',{method:'POST',body:fd})).json();
+    if(j.ok){ btn.textContent='✅ enviado'; setTimeout(()=>{btn.textContent=o;btn.disabled=false;},4000); }
+    else { btn.textContent='😕 no salió'; alert(j.error||'No se pudo mandar a Telegram'); setTimeout(()=>{btn.textContent=o;btn.disabled=false;},3000); }
+  }catch(e){ btn.textContent=o; btn.disabled=false; alert('Error: '+e); }
+}
+// Al entrar a la pestaña Resultados, cargar solo (una vez)
+document.querySelector('#tabs button[data-p="p-galeria"]').addEventListener('click',()=>{
+  if(!document.getElementById('galOut').dataset.cargado){ document.getElementById('galOut').dataset.cargado='1'; galCargar(); }
+});
+</script>
+
 <!-- ═══ 🤖 ASISTENTE DE LA APP — pregunta lo que sea: mira el estado REAL del backend y responde con evidencia ═══ -->
 <style>
   #asisBtn{position:fixed;right:22px;bottom:22px;z-index:9000;width:56px;height:56px;border-radius:50%;

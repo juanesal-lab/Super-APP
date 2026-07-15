@@ -358,11 +358,24 @@ def variar_hook(winner_path: str, product_desc: str, *,
                                     voz=voz, eleven_key=eleven_key, pasos=pasos)
         except Exception as e:  # noqa: BLE001
             pasos.append({"paso": "Armado", "ok": False, "detalle": str(e)})
+        # ── QA CREATIVOS por variación (portero, CLAUDE.md §7): 9:16 + zonas seguras + visual ──
+        qa = None
+        if video:
+            try:
+                from .qa_creativos import qa_video
+                qa = qa_video(video, gemini_key=gemini_key, work_dir=wd)
+                pasos.append({"paso": "QA creativos", "ok": qa["aprobado"],
+                              "detalle": qa["resolucion"] + (" · " + "; ".join(qa["motivos"])
+                                                             if qa["motivos"] else " · OK")})
+            except Exception as e:  # noqa: BLE001
+                pasos.append({"paso": "QA creativos", "ok": True, "detalle": f"QA no corrió: {e}"})
         salida.append({"hook": var.get("hook", ""), "angulo": var.get("angulo", ""),
                        "guion": var.get("guion", ""), "copy_pantalla": var.get("copy_pantalla", ""),
-                       "escenas": var.get("escenas") or [], "video": video, "pasos": pasos})
+                       "escenas": var.get("escenas") or [], "video": video, "pasos": pasos,
+                       "qa": qa, "qa_rechazado": bool(qa) and not qa.get("aprobado", True)})
 
-    ok_n = sum(1 for v in salida if v["video"])
+    # solo cuentan como OK las variaciones con video Y que el QA no rechazó
+    ok_n = sum(1 for v in salida if v["video"] and not v.get("qa_rechazado"))
     report("✅ Variaciones listas", 100)
     return {"ok": ok_n > 0, "modo": modo, "arco": arco, "hook_fin": hook_fin,
             "variaciones": salida, "resumen": f"{ok_n}/{len(salida)} videos OK"}

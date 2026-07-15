@@ -4033,7 +4033,8 @@ function renderResults(res, rootId){
   // avisos honestos del backend: pasos de IA que NO corrieron (traducir texto, gancho auto)
   (res.avisos||[]).forEach(a=>{ warn += `<div class="card" style="border-color:var(--warn)"><p style="margin:0;color:var(--warn);font-size:14px">⚠️ ${a}</p></div>`; });
   const editBar = `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--card2)"><div><b>🎬 ¿Quieres ajustarlo?</b> <span style="color:var(--muted)">Ábrelo en el editor para reordenar, borrar clips y exportar a tu gusto.</span></div><button class="btn" onclick="edOpen()" style="background:var(--accent2);white-space:nowrap">✏️ Editar en el editor</button></div>`;
-  let html = warn + editBar + `<div class="card"><h2>Versiones del video ${gem} ${enh}</h2>${hookLine}<div class="vgrid">`;
+  const planBar = (res.versions&&res.versions.length) ? `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--card2)"><div><b>📋 ¿Y ahora cómo lo testeo?</b> <span style="color:var(--muted)">Plan Meta/TikTok 2026: cuánto gastar, cuándo matar y cuándo escalar — por avatar. Gratis, no gasta IA.</span></div><button class="btn" onclick="planTesteo(this)" style="background:var(--accent2);white-space:nowrap">📋 Plan de testeo</button></div>` : '';
+  let html = warn + editBar + planBar + `<div class="card"><h2>Versiones del video ${gem} ${enh}</h2>${hookLine}<div class="vgrid">`;
   const names = {A_gancho:"Versión A · Gancho primero", B_narrativa:"Versión B · Narrativa", C_corta:"Versión C · Corta", D_dinamica:"Versión D · Dinámica", E_inversa:"Versión E · Inversa", F_express:"Versión F · Express", G_mixta:"Versión G · Mixta", H_alterna:"Versión H · Alterna"};
   res.versions.forEach((v,i)=>{
     const file = "/api/file?path="+enc(v.path);
@@ -4090,11 +4091,65 @@ function renderResults(res, rootId){
     html += `</div></div>`;
   }
   root.innerHTML = html;
+  // 📋 contexto para el Plan de testeo (lo consume planTesteo()): versiones + producto de la pestaña
+  const _pd = document.getElementById('productDesc');
+  window._planCtx = {versions: res.versions||[], aspect: res.aspect||'9:16',
+                     hook_used: res.hook_used||'', producto: (_pd&&_pd.value.trim())||''};
   // "1 de prueba → N más": solo en Cortar clips (root por defecto) y si hay contexto de generación
   if(!rootId && window._gen){
     window._gen.generated = (res.versions||[]).length;
     appendMorePanel();
   }
+}
+
+// 📋 Plan de testeo Meta/TikTok 2026 — determinístico ($0). Pide CPA/precio opcionales y muestra el plan.
+async function planTesteo(btn){
+  const ctx = window._planCtx; if(!ctx || !ctx.versions.length){ alert('Genera videos primero.'); return; }
+  const cpa = prompt('¿Tu CPA objetivo por venta? (opcional — deja vacío y te doy las reglas por múltiplos)\nSolo el número, ej: 25000','')||'';
+  const old = btn.textContent; btn.textContent='📋 Armando…'; btn.disabled=true;
+  try{
+    const fd=new FormData();
+    fd.append('versions_json', JSON.stringify(ctx.versions));
+    fd.append('producto', ctx.producto||'');
+    fd.append('aspect', ctx.aspect||'9:16');
+    fd.append('hook_used', ctx.hook_used||'');
+    fd.append('cpa_objetivo', cpa.trim());
+    const r=await fetch('/api/testing-plan',{method:'POST',body:fd});
+    if(!r.ok){ throw new Error('El servidor respondió '+r.status); }
+    const plan=await r.json();
+    showPlanModal(plan);
+  }catch(e){ alert('No se pudo armar el plan: '+(e.message||e)); }
+  finally{ btn.textContent=old; btn.disabled=false; }
+}
+
+function showPlanModal(plan){
+  const md = plan.markdown||'(sin contenido)';
+  document.getElementById('planModal')?.remove();
+  const ov=document.createElement('div');
+  ov.id='planModal';
+  ov.style.cssText='position:fixed;inset:0;z-index:9700;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.onclick=(e)=>{ if(e.target===ov) ov.remove(); };
+  const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  ov.innerHTML=`<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;max-width:720px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)">
+      <b style="font-size:16px">📋 Plan de testeo Meta/TikTok 2026</b>
+      <div style="display:flex;gap:8px">
+        <button class="btn sec" style="width:auto" onclick="navigator.clipboard.writeText(this.dataset.md);this.textContent='✅ Copiado'" data-md="${esc(md).replace(/"/g,'&quot;')}">📋 Copiar</button>
+        <button class="btn sec" style="width:auto" onclick="dlPlan(this.dataset.md)" data-md="${esc(md).replace(/"/g,'&quot;')}">⬇️ Descargar</button>
+        <button class="btn" style="width:auto;background:var(--card2)" onclick="document.getElementById('planModal').remove()">✕</button>
+      </div>
+    </div>
+    <pre style="margin:0;padding:18px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.6;color:var(--txt)">${esc(md)}</pre>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+function dlPlan(md){
+  const blob=new Blob([md],{type:'text/markdown'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='plan-testeo-2026.md';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
 // ── "1 de prueba → N más" + loop de feedback ─────────────────────────────────────────────

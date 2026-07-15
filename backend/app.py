@@ -38,6 +38,7 @@ from pipeline.image_variator import variar_imagen
 from pipeline import foreplay_search as fp
 from pipeline.hook_variator import variar_hook
 from pipeline.creative_variator import generar_variaciones
+from pipeline.testing_plan import generar_plan_testeo
 from pipeline import asistente as asst
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1131,6 +1132,41 @@ def status(job_id: str):
         "status": job.get("status", "running"), "progress": job.get("progress", 0),
         "message": job.get("message", ""), "result": job.get("result"),
     }
+
+
+@app.post("/api/testing-plan")
+def testing_plan(versions_json: str = Form("[]"), producto: str = Form(""),
+                 aspect: str = Form("9:16"), hook_used: str = Form(""),
+                 cpa_objetivo: str = Form(""), precio: str = Form(""),
+                 presupuesto_dia: str = Form(""), moneda: str = Form("")):
+    """📋 Plan de testeo Meta/TikTok 2026 del lote (determinístico, $0 de APIs). Recibe las
+    `versions` que ya están en el manifest (name/stage/avatar/hook) y devuelve el plan con umbrales
+    2026 + nombre de anuncio por versión. Nunca inventa cifras: si Jack no da CPA/precio, da la regla."""
+    import json as _json
+
+    def _num(x):
+        try:
+            v = float(str(x).replace(",", ".").strip())
+            return v if v > 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    try:
+        versions = _json.loads(versions_json) if versions_json else []
+        if not isinstance(versions, list):
+            versions = []
+    except Exception:  # noqa: BLE001
+        versions = []
+    try:
+        plan = generar_plan_testeo(
+            versions, producto=producto.strip(), aspect=aspect or "9:16",
+            cpa_objetivo=_num(cpa_objetivo), precio=_num(precio),
+            presupuesto_dia=_num(presupuesto_dia), moneda=moneda.strip(),
+            hook_used=hook_used.strip(),
+        )
+        return plan
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo armar el plan de testeo: {e}")
 
 
 # ---- MODO AUTOMÁTICO: un video ganador -> creativo terminado (cadena completa) ----

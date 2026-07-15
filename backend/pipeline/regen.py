@@ -131,7 +131,7 @@ def regenerar_version(estado: dict, name: str, motivo: str, *,
             selected, fases, frases, usage,
             version_i=int(vers.get("version_i", 0)), n_versiones=int(estado.get("n_versiones", 8)),
             hook_srcs=set(), max_usos=99, firmas=firmas, evitar=evitar,
-            afinidad=(af[0] if af else None), broll_idx=broll_idx)
+            afinidad=(af[0] if af else None), broll_idx=broll_idx, mismatch_duro=True)
         if plan:
             order, caps = plan
             vers["order"], vers["caps"] = order, caps

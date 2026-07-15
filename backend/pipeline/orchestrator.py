@@ -430,7 +430,8 @@ def render_versions(
                                                    hook_srcs=hook_srcs, max_usos=max_usos,
                                                    firmas=firmas,
                                                    afinidad=(afinidad_pv[v_i] if afinidad_pv else None),
-                                                   broll_idx=broll_idx)
+                                                   broll_idx=broll_idx,
+                                                   mismatch_duro=True)
                           if frases else None)
                 if frases:
                     frases_por_nombre[name] = frases

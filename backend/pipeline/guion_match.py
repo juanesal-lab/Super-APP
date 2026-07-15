@@ -40,6 +40,23 @@ _PREFERENCIA: dict[str, list[str]] = {
     "cta": ["solucion", "producto", "resultado", "funcionamiento", "caracteristicas", "problema"],
 }
 
+# AVISO Juan: MISMATCH DURO (queja histórica #1 de Jack: "los clips no cuadran con la voz").
+# Mapa frase→fases de clip PROHIBIDAS: no es un orden de preferencia (eso ya lo hace _PREFERENCIA),
+# sino un veto semántico. La regla ganadora: en el momento de DOLOR no se enseña el PRODUCTO/caja
+# (rompe el gancho), y en el CTA/RESULTADO no se enseña gente SUFRIENDO (rompe el "payoff"/compra).
+# Cuando el único clip fresco que saldría es un veto, es mejor REPETIR un clip compatible lejano
+# (look distinto) que descoordinar voz e imagen. Solo actúa si plan_montaje recibe mismatch_duro=True
+# (default False → comportamiento idéntico al de siempre; lo activa el orchestrator y regen).
+_MISMATCH_DURO: dict[str, set[str]] = {
+    "problema":       {"producto", "caracteristicas"},   # dolor mostrando la cajita = no cuadra
+    "solucion":       {"problema"},                       # "por fin existe" mostrando sufrimiento
+    "funcionamiento": {"problema"},                       # demo/uso mostrando dolor
+    "producto":       {"problema"},
+    "caracteristicas": {"problema"},
+    "resultado":      {"problema"},                       # "caminarás feliz" mostrando dolor
+    "cta":            {"problema"},                       # "pídelo hoy" mostrando dolor = mata la venta
+}
+
 _KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("cta", ("pide", "pídelo", "ordena", "escríbe", "contraentrega", "contra entrega", "envío",
              "envio", "paga al recibir", "toca", "aprovecha", "oferta", "promoción", "promocion",
@@ -242,7 +259,8 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                  firmas: dict[int, object] | None = None,
                  evitar: set[int] | None = None,
                  afinidad: list[set[int]] | None = None,
-                 broll_idx: set[int] | None = None) -> tuple[list[int], list[float]] | None:
+                 broll_idx: set[int] | None = None,
+                 mismatch_duro: bool = False) -> tuple[list[int], list[float]] | None:
     """Elige los clips para UNA versión siguiendo el guion. Devuelve (orden, topes por slot).
 
     - Cada frase se llena con el mejor clip de SU fase (fallback: fases vecinas en significado);
@@ -251,6 +269,11 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
       la IA marcó como los que MEJOR ilustran ESA frase concreta (no solo su fase). Entra como
       desempate FUERTE, después de las reglas anti-congelado — así, empatando en fase, gana el clip
       cuyo contenido calza con lo que se está diciendo. Sin afinidad, comportamiento idéntico al viejo.
+    - `mismatch_duro` (opcional, default False): activa el VETO semántico frase↔clip de
+      `_MISMATCH_DURO` (dolor no enseña producto/caja; cta/resultado no enseñan sufrimiento).
+      Con él, antes de asignar un clip fresco pero incoherente, se prefiere REPETIR uno compatible
+      lejano (look distinto). Apaga la queja histórica de Jack "los clips no cuadran con la voz".
+      Sin él (callers viejos), comportamiento idéntico al de siempre.
     - JAMÁS se repite un clip dentro de la versión (regla dura de Juan).
     - DIVERSIDAD ENTRE VERSIONES (queja real de Juan: "los mismos clips en todos los anuncios"):
       (1) `usage` castiga clips ya usados por otras versiones; (2) BUCKETS: el pool se reparte
@@ -303,9 +326,16 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                     break
 
         es_hook = not orden                       # primer plano de la versión
+        # AVISO Juan: fases de clip VETADAS para ESTA frase (solo si mismatch_duro). Se usa como
+        # primera clave de orden (van al fondo) y para decidir si conviene repetir un compatible.
+        mism = _MISMATCH_DURO.get(fase, set()) if mismatch_duro else set()
+
+        def _incompat(i: int) -> bool:
+            return bool(mism) and fases_por_idx.get(i) in mism
 
         def _ordenar(pool: list[int]) -> list[int]:
             pool.sort(key=lambda i: (
+                _incompat(i),                               # AVISO Juan: mismatch duro frase↔clip al fondo
                 i in evitar,                                # los "a evitar" van de últimos
                 selected[i].source_index in hook_srcs if es_hook else False,  # gancho: fuente NUEVA
                 _mismo_look(i, prev_i) if prev_i is not None else False,      # look distinto 1º
@@ -322,34 +352,51 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
         # solo cambia el guion"): la 1ª respeta el tope en TODAS las fases; solo si el pool
         # entero quedó agotado bajo el tope, la 2ª lo relaja. (Antes se relajaba por-fase y el
         # tope no servía: un clip salía en 7 de 8 versiones.)
-        for relajar in (False, True):
-            def _cabe(i: int) -> bool:
-                # B-roll exento del tope de reuso: puede salir en TODAS las versiones (el usuario
-                # lo bajó para el momento de dolor y quiere verlo sí o sí).
-                return i not in usados and (relajar or i in broll_idx or usage.get(i, 0) < max_usos)
+        def _pick_normal() -> int | None:
+            for relajar in (False, True):
+                def _cabe(i: int) -> bool:
+                    # B-roll exento del tope de reuso: puede salir en TODAS las versiones (el usuario
+                    # lo bajó para el momento de dolor y quiere verlo sí o sí).
+                    return i not in usados and (relajar or i in broll_idx or usage.get(i, 0) < max_usos)
 
-            candidato_misma_fuente: int | None = None
-            for f in _PREFERENCIA.get(fase, list(FASES)):
-                pool = [i for i, ff in fases_por_idx.items() if ff == f and _cabe(i)]
-                if not pool:
-                    continue
-                pool = _ordenar(pool)
-                pick = pool[0]
-                if prev_i is None or not _mismo_look(pick, prev_i):
-                    return pick
-                # toda esta fase se ve igual al plano anterior: guarda y prueba la fase vecina
-                if candidato_misma_fuente is None:
-                    candidato_misma_fuente = pick
-            sobrantes = _ordenar([i for i in fases_por_idx if _cabe(i)])
-            if sobrantes and (prev_i is None or not _mismo_look(sobrantes[0], prev_i)):
-                # no había fuente distinta en ninguna fase preferida, pero sí en el resto del pool
-                if candidato_misma_fuente is None or racha >= 2:
+                candidato_misma_fuente: int | None = None
+                for f in _PREFERENCIA.get(fase, list(FASES)):
+                    pool = [i for i, ff in fases_por_idx.items() if ff == f and _cabe(i)]
+                    if not pool:
+                        continue
+                    pool = _ordenar(pool)
+                    pick = pool[0]
+                    if prev_i is None or not _mismo_look(pick, prev_i):
+                        return pick
+                    # toda esta fase se ve igual al plano anterior: guarda y prueba la fase vecina
+                    if candidato_misma_fuente is None:
+                        candidato_misma_fuente = pick
+                sobrantes = _ordenar([i for i in fases_por_idx if _cabe(i)])
+                if sobrantes and (prev_i is None or not _mismo_look(sobrantes[0], prev_i)):
+                    # no había fuente distinta en ninguna fase preferida, pero sí en el resto del pool
+                    if candidato_misma_fuente is None or racha >= 2:
+                        return sobrantes[0]
+                if candidato_misma_fuente is not None and racha < 2:
+                    return candidato_misma_fuente  # se permite UNA repetición de fuente, no racha
+                if sobrantes:
                     return sobrantes[0]
-            if candidato_misma_fuente is not None and racha < 2:
-                return candidato_misma_fuente      # se permite UNA repetición de fuente, no racha
-            if sobrantes:
-                return sobrantes[0]
-        return None
+            return None
+
+        pick = _pick_normal()
+        # AVISO Juan: si el único clip fresco que saldría es un MISMATCH DURO (producto en una frase
+        # de DOLOR, o dolor en el CTA/resultado), preferimos REPETIR un clip compatible lejano —con
+        # look distinto al anterior— antes que romper la coherencia voz↔imagen (queja histórica #1
+        # de Jack). La repetición queda lejos en el tiempo y respeta la regla anti-congelado.
+        if mismatch_duro and mism and pick is not None and _incompat(pick):
+            compat = [i for i in fases_por_idx
+                      if not _incompat(i) and selected[i].duration() >= _SLOT_MIN
+                      and (prev_i is None or not _mismo_look(i, prev_i))]
+            if compat:
+                # prefiere el aún NO usado en esta versión; luego afinidad, menos reuso, mejor score
+                compat.sort(key=lambda i: (i in usados, i not in afin_ids,
+                                           usage.get(i, 0), -selected[i].score))
+                return compat[0]
+        return pick
 
     n_frases = len(frases)
     for fi, fr in enumerate(frases):
@@ -363,9 +410,13 @@ def plan_montaje(selected, fases_por_idx: dict[int, str], frases: list[dict],
                 # pool agotado: REPETIR el clip menos usado (fuente distinta si se puede) es
                 # mucho mejor que dejar un hueco congelado (quejas de Jack: imagen pegada ~1s
                 # varias veces por video). La repetición queda lejos en el tiempo.
+                # AVISO Juan: al repetir, respeta el veto semántico — un clip COMPATIBLE con la
+                # frase gana a uno vetado (así el CTA no repite dolor: "los clips no cuadran").
                 ult = selected[orden[-1]].source_index if orden else None
+                _mism_fr = _MISMATCH_DURO.get(str(fr.get("fase", "producto")), set()) if mismatch_duro else set()
                 cands = sorted((j for j in fases_por_idx if selected[j].duration() >= _SLOT_MIN),
-                               key=lambda j: (usage.get(j, 0), selected[j].source_index == ult))
+                               key=lambda j: (fases_por_idx.get(j) in _mism_fr,
+                                              usage.get(j, 0), selected[j].source_index == ult))
                 if not cands:
                     break
                 i = cands[0]

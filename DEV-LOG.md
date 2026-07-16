@@ -4264,3 +4264,21 @@ stacks y cazó la causa:
 - NOTA: la sesión paralela arregló EN PARALELO el lado FRONT del mismo síntoma (ocultar spinner tkProg
   al cargar + selector de fuente Ambos/Solo TikTok/Solo Foreplay) — se complementan (front + backend).
 AVISO Juan: tiktok_search/creative_search ganaron timeouts y deadline global (aditivo, contrato intacto).
+
+### 2026-07-16 · Claude (jackingshop1-cell) · 🎞️ B-ROLL SIEMPRE funciona: fallback a TikTok (gratis) con verificación por Claude
+Jack: "en TODOS los videos que el agente de b-rolls SIEMPRE lo haga perfecto, y que busque en TikTok si
+es pertinente". Antes broll.py del Montador solo usaba Pexels/Pixabay (necesitan key) y Jack no tiene key
+→ el b-roll no salía nunca. Ahora la cadena de fuentes es: Pexels → Pixabay (si hay key, más limpio) →
+**TikTok vía tikwm (GRATIS, sin key, SIEMPRE disponible)**. Clave anti-basura (lección de Juan: TikTok
+b-roll daba memes): cada clip de TikTok se VERIFICA con el juez Claude mirando frames ("¿este frame
+muestra CLARAMENTE <concepto>?") — solo se usa si muestra=true; si nada bueno → se salta (regla de Jack:
+mejor el clip del producto). Pacer 1req/s + retry portado de tiktok_search; excluye Colombia; prefiere
+vertical, dur ≥ beat; log honesto.
+- **VERIFICADO EN VIVO ($0 Pexels; tikwm gratis; Claude barato)**: SIN key de Pexels, conceptos reales →
+  "hipopótamo" 3 bajados/1 verificado ✅ (hipopótamo real caminando de noche, 576x1024) · "cucarachas en
+  cocina" 2 bajados/1 verificado ✅. MIRÉ el frame del hipopótamo con Read: real, vertical, cero meme.
+  py_compile OK, smoke 28/28, usar_broll=False deja el pipeline idéntico.
+- Jack ya NO necesita la key de Pexels para que el b-roll jale (si la pone, sube calidad). El producto
+  siempre sale de las tomas de Jack; el b-roll es apoyo dinámico verificado.
+AVISO Juan: montador/backend/agentes/broll.py ganó la fuente TikTok + verificación; pipeline.py solo pasa
+_claude()/_model() a buscar_y_bajar (1 línea, aditivo). Tu montaje/agentes intactos.

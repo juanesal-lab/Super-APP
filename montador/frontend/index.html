@@ -85,6 +85,16 @@
       <div class="drop" id="dropV">Arrastra los <b>videos</b> aquí<br>o haz clic (varios .mp4)</div>
       <input type="file" id="inV" accept="video/mp4,video/quicktime,.mp4,.mov,.webm,.mkv" multiple class="hide">
       <div class="files" id="listV"></div>
+
+      <!-- 📥 …o pega links de TikTok: la app los baja, te da preview reproducible y te deja CANCELAR -->
+      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <label style="margin:0 0 6px">📥 …o pega links de TikTok (uno por línea)</label>
+        <textarea id="tkLinks" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..." style="min-height:56px"></textarea>
+        <button class="sec" id="btnTk" onclick="bajarTikTok()" style="margin-top:8px">📥 Bajar de TikTok</button>
+        <div id="tkHint" class="badge hide" style="margin-top:6px">▶️ Míralos y <b style="color:var(--tx)">❌ cancela</b> los que no te gusten. Los buenos quedan listos para montar.</div>
+        <div id="tkPrev" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"></div>
+      </div>
+
       <input type="text" id="guardarPaquete" class="hide" placeholder="📦 guardar estos clips como paquete: nombre…" maxlength="50" style="margin-top:8px">
     </div>
     <div>
@@ -240,6 +250,7 @@
 <script>
 const $=id=>document.getElementById(id);
 let filesA=[], filesV=[], fileM=null, actual=null, timer=null;
+let tkClips=[];   // clips bajados de TikTok: {file, name, url}. Su File también vive en filesV (para montar).
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function zona(drop,input,multi,onFiles){
@@ -255,8 +266,57 @@ zona($('dropA'),$('inA'),true,fs=>{
   check()});
 function quitarVoz(ev,i){ev.stopPropagation();filesA.splice(i,1);
   $('listA').innerHTML=filesA.map((f,j)=>`<div>🎙️ ${esc(f.name)}<span class="quitar" onclick="quitarVoz(event,${j})">✕</span></div>`).join('');check()}
-zona($('dropV'),$('inV'),true,fs=>{filesV=filesV.concat(fs.filter(f=>/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)));
-  $('listV').innerHTML=filesV.map(f=>`<div>🎞️ ${esc(f.name)}</div>`).join('');check()});
+zona($('dropV'),$('inV'),true,fs=>{filesV=filesV.concat(fs.filter(f=>/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)));pintarV()});
+
+// Pinta la lista de clips arrastrados (con ✕) + el preview reproducible de los clips de TikTok (con ❌ Cancelar).
+function pintarV(){
+  const arrastrados=filesV.filter(f=>!tkClips.some(c=>c.file===f));
+  $('listV').innerHTML=arrastrados.map((f,i)=>`<div>🎞️ ${esc(f.name)}<span class="quitar" onclick="quitarClip(event,${i})">✕</span></div>`).join('');
+  $('tkPrev').innerHTML=tkClips.map((c,i)=>`<div style="width:118px;text-align:center">
+    <video src="${esc(c.blobUrl||c.url)}" controls playsinline preload="metadata" style="width:118px;height:150px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#000"></video>
+    <div class="badge" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
+    <button class="sec" style="width:100%;margin-top:4px;padding:6px;font-size:12px" onclick="tkCancelar(${i})">❌ Cancelar</button>
+  </div>`).join('');
+  $('tkHint').classList.toggle('hide', tkClips.length===0);
+  check();
+}
+function quitarClip(ev,i){ev.stopPropagation();
+  const arrastrados=filesV.filter(f=>!tkClips.some(c=>c.file===f));
+  const gi=filesV.indexOf(arrastrados[i]); if(gi>=0)filesV.splice(gi,1);
+  pintarV();}
+function tkCancelar(i){   // ❌ quita un clip de TikTok del preview Y de lo que se va a montar
+  const c=tkClips[i]; if(!c)return;
+  const gi=filesV.indexOf(c.file); if(gi>=0)filesV.splice(gi,1);
+  if(c.blobUrl){try{URL.revokeObjectURL(c.blobUrl)}catch(e){}}
+  tkClips.splice(i,1);
+  pintarV();}
+async function bajarTikTok(){
+  const raw=$('tkLinks').value.trim();
+  if(!raw){alert('Pega al menos un link de TikTok');return;}
+  const btn=$('btnTk'), orig=btn.textContent; btn.disabled=true; btn.textContent='📥 Bajando…';
+  try{
+    const fd=new FormData(); fd.append('links',raw);
+    const r=await fetch('/api/bajar-tiktok',{method:'POST',body:fd});
+    const j=await r.json();
+    const vids=j.videos||[];
+    if(!vids.length){ btn.textContent=orig; alert(j.error||'No se pudo bajar ningún video (revisa los links)'); return; }
+    let ok=0;
+    for(const v of vids){
+      try{
+        const resp=await fetch(v.url); const blob=await resp.blob();
+        const file=new File([blob], v.name||'tiktok.mp4', {type:blob.type||'video/mp4'});
+        filesV.push(file);
+        tkClips.push({file, name:v.name||'tiktok.mp4', url:v.url, blobUrl:URL.createObjectURL(file)});
+        ok++;
+      }catch(e){}
+    }
+    $('tkLinks').value='';
+    pintarV();
+    btn.textContent=ok?`✅ ${ok} bajado(s) — míralos y cancela los que no`:orig;
+    if(!ok) alert('Bajé los links pero no pude cargarlos para el preview. Reintenta.');
+  }catch(e){ btn.textContent=orig; alert('Error: '+e); }
+  finally{ setTimeout(()=>{btn.disabled=false; if(btn.textContent.startsWith('✅'))btn.textContent=orig;},3500); }
+}
 zona($('dropM'),$('inM'),false,fs=>{fileM=fs[0]||null;pintarMusica()});
 function pintarMusica(){
   $('listM').innerHTML=fileM?`<div>🎵 ${esc(fileM.name)}<span class="quitar" onclick="quitarMusica(event)">✕</span></div>`:'';

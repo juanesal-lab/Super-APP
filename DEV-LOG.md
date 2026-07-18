@@ -4300,3 +4300,28 @@ que sí Generar ahí sí". En "1 · Tus videos" (frontend/index.html):
   clip correcto y al vaciar oculta el hint. Cambios solo en frontend/index.html (HTML + 3 funciones JS).
 AVISO Juan: solo toqué frontend/index.html (sección "1 · Tus videos" y renderFiles + tkClipPrev*).
 Backend y montador intactos.
+
+### 2026-07-17 · Claude (jackingshop1-cell) · 📥 MONTADOR: bajar clips de TikTok por link + preview + ❌ Cancelar (en "Montar ad")
+Jack aclaró que lo quería en **Montar ad (voz + clips)** = el Montador de Juan (:8440), no en Cortar
+clips. En la columna "🎞️ Videos (clips crudos)" ahora, además de arrastrar, puedes:
+- Pegar links de TikTok (uno por línea) → **📥 Bajar de TikTok**.
+- Cada clip bajado sale como **preview reproducible** (tarjeta con reproductor + nombre) y **❌ Cancelar**.
+- Los clips bajados se traen como `File` y entran a `filesV` → se montan IGUAL que un clip arrastrado
+  (el endpoint /api/proyectos no cambió: siguen llegando como `videos`). Cancelar los saca de filesV.
+- Los clips arrastrados ahora también tienen ✕ para quitarlos uno por uno (antes no se podía).
+Archivos nuevos/tocados (SOLO dentro de montador/, app independiente):
+- **montador/backend/descargar.py** (NUEVO): descargador yt-dlp autocontenido (no importa nada de la
+  app principal). PREFIERE **H.264** sobre H.265: TikTok ofrece ambos y el `<video>` de Chrome/Mac NO
+  decodifica H.265 (preview en negro); si solo hay H.265 lo baja igual (ffmpeg lo monta sin problema).
+- **montador/backend/app.py**: + `POST /api/bajar-tiktok` (baja y devuelve name+url) y
+  `GET /api/tk-clip/{job}/{nombre}` (sirve el clip). Carpeta temporal `montador/tmp_tiktok/` (gitignored).
+- **montador/frontend/index.html**: bloque de links + preview (blob URL del File, revoca al cancelar).
+VERIFICADO: descarga real (@scout2015) baja h264 576x1024 ✅; el clip entra a filesV (fileIsInFilesV=true)
+✅; preview card + Cancelar quita de filesV y del preview y oculta el hint ✅; py_compile OK.
+⚠️ La REPRODUCCIÓN del preview NO la pude confirmar en el navegador de automatización (readyState 0 sin
+error incluso con h264 vía blob — el Chrome controlado por la extensión no decodifica video ahí). El
+archivo es h264 válido (ffprobe) y en el Chrome real de Jack debe reproducir. Si a Jack le sale negro,
+la siguiente mejora sería generar un thumbnail/poster con ffmpeg del lado del server.
+AVISO Juan: todo el cambio vive DENTRO de montador/. No toqué backend/ ni frontend/ de la app principal
+en esta tarea. El pipeline de montaje quedó intacto (los clips de TikTok llegan como `videos`, igual que
+los arrastrados).

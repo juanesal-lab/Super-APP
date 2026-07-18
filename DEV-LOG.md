@@ -4282,3 +4282,21 @@ vertical, dur ≥ beat; log honesto.
   siempre sale de las tomas de Jack; el b-roll es apoyo dinámico verificado.
 AVISO Juan: montador/backend/agentes/broll.py ganó la fuente TikTok + verificación; pipeline.py solo pasa
 _claude()/_model() a buscar_y_bajar (1 línea, aditivo). Tu montaje/agentes intactos.
+
+### 2026-07-17 · Claude (jackingshop1-cell) · 📥 "Tus videos" ahora arranca con links de TikTok + preview reproducible + ❌ Cancelar antes de generar
+Jack: "donde dice arrastrar videos me gustaría que fuera con los links directos... yo copio videos de
+TikTok, le doy Bajar de TikTok, las que no me gusten les doy cancelar, me da el preview, y antes de darle
+que sí Generar ahí sí". En "1 · Tus videos" (frontend/index.html):
+- El bloque de **links de TikTok pasó a ser el método PRINCIPAL** (arriba, con explicación). Arrastrar
+  archivos del PC quedó como opción secundaria abajo.
+- Los videos bajados de TikTok ya NO salen como miniatura chiquita en fileList: ahora caen en un
+  **preview reproducible** (`#tkClipPrev`, tarjetas fpCard como las de B-roll) con **▶️ Ver** (reproduce
+  el clip ahí mismo, `/api/file?path=`) y **❌ Cancelar** (lo saca de la lista que se va a generar).
+  Hint que aparece solo cuando hay clips: "míralos, cancela los que no te gusten, y dale Generar".
+- fileList sigue mostrando uploads del PC + b-roll (su flujo intacto). `bajarLinks()` solo cambió el
+  mensaje de éxito (no-broll → "míralos abajo y cancela los que no te gusten"). B-roll sin cambios.
+- VERIFICADO en navegador (127.0.0.1:8420 → Cortar clips): layout nuevo OK, sin errores de consola;
+  inyecté 2 clips fake → 2 tarjetas + hint visible + botón Cancelar por tarjeta; Cancelar quita el
+  clip correcto y al vaciar oculta el hint. Cambios solo en frontend/index.html (HTML + 3 funciones JS).
+AVISO Juan: solo toqué frontend/index.html (sección "1 · Tus videos" y renderFiles + tkClipPrev*).
+Backend y montador intactos.

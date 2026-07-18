@@ -4325,3 +4325,23 @@ la siguiente mejora sería generar un thumbnail/poster con ffmpeg del lado del s
 AVISO Juan: todo el cambio vive DENTRO de montador/. No toqué backend/ ni frontend/ de la app principal
 en esta tarea. El pipeline de montaje quedó intacto (los clips de TikTok llegan como `videos`, igual que
 los arrastrados).
+
+### 2026-07-17 · Claude (jackingshop1-cell) · 🗂️ MONTADOR: lista de proyectos agrupada por DÍA y por PRODUCTO
+Jack: la lista de "Proyectos" del Montador era un muro desordenado (cada voz/variación una fila suelta:
+"mi ad · voz 1..10", "ganador · var 1..5", etc.). Ahora se agrupa:
+- **Por día**: encabezados "📅 Hoy · viernes 17 de julio", "📅 Ayer · jueves 16 de julio", fechas
+  viejas con año. (solo frontend: montador/frontend/index.html, función cargarLista reescrita.)
+- **Por producto/batch**: los hermanos de una misma tanda caen en una tarjeta PLEGABLE con título
+  (base del nombre), nº de ítems, hora y resumen de estado ("1/10 listos", "7 listos ✓", "N con error").
+  La clave de batch se deriva del `id` quitando el sufijo `-vozN` / `-gan[-varN|-original]` (los hermanos
+  comparten el prefijo grupo). Ítems ordenados natural: 🏆 padre → ORIGINAL → voz/var 1..N.
+- Batches EN PROCESO se muestran abiertos por defecto; los ya terminados, colapsados. El usuario puede
+  abrir/cerrar y el estado (grpOpen) PERSISTE entre los refrescos automáticos de 8s (toggle por DOM, sin
+  re-fetch). Proyectos de 1 solo ítem se ven como fila normal.
+VERIFICADO en navegador (8440): días correctos (Hoy/Ayer), "mi ad" 10 ítems abierto con estados reales
+(voz1 listo, voz3 renderizando 65%), ganador/almohadillas colapsados; toggle abre/cierra y sobrevive al
+refresco de 8s; sin errores de consola. NO toqué backend (el endpoint /api/proyectos ya daba id, nombre,
+creado, fase, done, error — todo lo derivo en el front).
+AVISO Juan: cambio 100% frontend dentro de montador/. cargarLista ahora agrupa; agregué helpers
+(_batchKey, _baseNombre, _diaBonito, _ordenItem, toggleGrp) y CSS (.dayhead/.grp/.grpitems). El resto
+del Montador (abrir/pintar/detalle) intacto.

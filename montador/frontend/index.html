@@ -45,6 +45,19 @@
   .plist a:hover{color:var(--acc)}
   .badge{font-size:12px;color:var(--mut)}
   .badge.ok{color:var(--ok)} .badge.err{color:var(--err)}
+  /* 🗂️ lista de proyectos agrupada por DÍA y por PRODUCTO (batch) */
+  .dayhead{margin:16px 0 4px;font-size:12.5px;font-weight:800;color:var(--acc);letter-spacing:.02em}
+  .dayhead:first-child{margin-top:2px}
+  .grp{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;
+       cursor:pointer;border-bottom:1px solid #1d202b}
+  .grp:hover .grptit{color:var(--acc)}
+  .grp .arrow{display:inline-block;width:13px;color:var(--mut);flex:none}
+  .grp .grptit{display:flex;align-items:center;gap:8px;min-width:0}
+  .grp .grptit b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+  .grpitems{border-left:2px solid #262a36;margin:0 0 2px 8px;padding-left:8px}
+  .grpitems.hide{display:none}
+  .grpitems a{font-size:13.5px;color:var(--mut)}
+  .grpitems a:hover{color:var(--acc)}
   textarea{width:100%;min-height:70px;padding:10px 12px;border-radius:9px;border:1px solid var(--line);
            background:#0d0e12;color:var(--tx);font-size:14px;font-family:inherit}
   .hide{display:none}
@@ -425,14 +438,89 @@ $('btnCrear').onclick=async()=>{
   }catch(e){alert('Error subiendo: '+e);$('btnCrear').disabled=false;$('subiendo').classList.add('hide')}
 };
 
+// 🗂️ Lista de proyectos AGRUPADA por día y por producto (batch), para que no sea un muro de "voz 1..10".
+const grpOpen={};   // key -> true/false SOLO cuando el usuario lo abre/cierra a mano (persiste entre refrescos de 8s)
+const _MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const _DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+
+function _batchKey(id){   // el batch = el id sin el sufijo de la voz/variación (los hermanos lo comparten)
+  return String(id||'').replace(/-voz\d+$/,'').replace(/-gan(-var\d+|-original)?$/,'');
+}
+function _baseNombre(nom){   // "mi ad · voz 9 (uuid)" -> "mi ad" ; "🏆 ganador" -> "🏆 ganador"
+  return String(nom||'').split(' · ')[0].replace(/\s*\(.*\)\s*$/,'').trim() || '(sin nombre)';
+}
+function _diaBonito(fechaISO){   // "2026-07-17 21:32" -> "Hoy · jueves 17 de julio"
+  const d=String(fechaISO||'').slice(0,10); const [y,m,dd]=d.split('-').map(Number);
+  if(!y||!m||!dd) return d||'sin fecha';
+  const dt=new Date(y,m-1,dd), hoy=new Date(); hoy.setHours(0,0,0,0);
+  const difDias=Math.round((hoy-dt)/86400000);
+  const etq=difDias===0?'Hoy · ':difDias===1?'Ayer · ':'';
+  return `${etq}${_DIAS[dt.getDay()]} ${dd} de ${_MESES[m-1]}${difDias>1?` de ${y}`:''}`;
+}
+function _ordenItem(p){   // dentro de un batch: 🏆 padre primero, luego ORIGINAL, luego voz/var 1..N
+  if(!/·/.test(p.nombre||'')) return -2;             // el padre (🏆) no lleva " · "
+  if(/original/i.test(p.nombre||'')) return -1;
+  const mm=String(p.nombre||'').match(/\b(?:voz|var)\s*(\d+)/i);
+  return mm?parseInt(mm[1],10):999;
+}
+function _stItem(p){
+  return p.error?`<span class="badge err">error</span>`:
+         p.done?`<span class="badge ok">listo ✓</span>`:
+         `<span class="badge">${p.fase||'en cola'} ${p.progreso||0}%</span>`;
+}
+function _filaItem(p){
+  return `<a href="#" onclick="abrir('${p.id}');return false"><span>${p.nombre||''} <span class="badge">· ${(p.creado||'').slice(11)||''}</span></span>${_stItem(p)}</a>`;
+}
+function toggleGrp(key,def){
+  const cur=(key in grpOpen)?grpOpen[key]:def; grpOpen[key]=!cur;
+  const items=document.querySelector(`[data-items="${key}"]`);
+  const ar=document.querySelector(`[data-arrow="${key}"]`);
+  if(items) items.classList.toggle('hide',!grpOpen[key]);
+  if(ar) ar.textContent=grpOpen[key]?'▾':'▸';
+}
+
 async function cargarLista(){
   const r=await fetch('/api/proyectos'); const ps=await r.json();
-  $('plist').innerHTML=ps.length?ps.map(p=>{
-    const st=p.error?`<span class="badge err">error</span>`:
-             p.done?`<span class="badge ok">listo ✓</span>`:
-             `<span class="badge">${p.fase} ${p.progreso||0}%</span>`;
-    return `<a href="#" onclick="abrir('${p.id}');return false"><span>${p.nombre} <span class="badge">· ${p.creado||''}</span></span>${st}</a>`;
-  }).join(''):'<span class="badge">aún no hay proyectos</span>';
+  if(!ps.length){ $('plist').innerHTML='<span class="badge">aún no hay proyectos</span>'; return; }
+  // 1) agrupar por día → por batch (producto)
+  const dias={}, ordenDia=[];
+  for(const p of ps){
+    const dk=(p.creado||'').slice(0,10)||'sin-fecha';
+    if(!dias[dk]){ dias[dk]={}; ordenDia.push(dk); }
+    const bk=_batchKey(p.id);
+    (dias[dk][bk]=dias[dk][bk]||[]).push(p);
+  }
+  ordenDia.sort((a,b)=>b.localeCompare(a));   // días: más nuevo arriba
+  let html='';
+  for(const dk of ordenDia){
+    const batches=dias[dk];
+    // ordenar batches por su ítem más reciente (desc)
+    const keys=Object.keys(batches).sort((a,b)=>{
+      const ca=batches[a].map(x=>x.creado||'').sort().pop()||'';
+      const cb=batches[b].map(x=>x.creado||'').sort().pop()||'';
+      return cb.localeCompare(ca);
+    });
+    html+=`<div class="dayhead">📅 ${_diaBonito(dk)}</div>`;
+    for(const bk of keys){
+      const items=batches[bk].slice().sort((a,b)=>_ordenItem(a)-_ordenItem(b));
+      if(items.length===1){ html+=_filaItem(items[0]); continue; }
+      // batch con varios: tarjeta plegable
+      const done=items.filter(x=>x.done&&!x.error).length;
+      const errs=items.filter(x=>x.error).length;
+      const total=items.length;
+      const sum=errs?`<span class="badge err">${errs} con error</span>`:
+                done===total?`<span class="badge ok">${total} listos ✓</span>`:
+                `<span class="badge">${done}/${total} listos</span>`;
+      const base=_baseNombre((items.find(x=>!/·/.test(x.nombre||''))||items[0]).nombre);
+      const abierto=(bk in grpOpen)?grpOpen[bk]:(done!==total);   // por defecto: abierto si aún está en proceso
+      const hora=(items.map(x=>x.creado||'').sort()[0]||'').slice(11);
+      html+=`<div class="grp" onclick="toggleGrp('${bk}',${done!==total})">
+        <span class="grptit"><span class="arrow" data-arrow="${bk}">${abierto?'▾':'▸'}</span>
+          <b>${base}</b> <span class="badge">· ${total} ítems${hora?' · '+hora:''}</span></span>${sum}</div>
+        <div class="grpitems${abierto?'':' hide'}" data-items="${bk}">${items.map(_filaItem).join('')}</div>`;
+    }
+  }
+  $('plist').innerHTML=html;
 }
 
 async function abrir(id){

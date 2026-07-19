@@ -113,10 +113,61 @@ def ingerir(args):
     conn.close()
 
 
+def preparar_masivo(args):
+    """Barrido MASIVO del catálogo Dropi por keywords de los nichos (modo sin créditos,
+    19 jul 2026): ~2 keywords por nicho × 85 productos = ~2.000 productos con stock por
+    corrida. Dos snapshots (48h) → ranking de ventas COD reales SIN tocar Meta ni gastar
+    créditos. Genera docs/stock_masivo.js para pegar en la consola de app.dropi.co
+    (sesión iniciada) o para que lo corra Claude-in-Chrome."""
+    cfg = json.loads((BASE / "config.json").read_text())
+    kws = []
+    for nicho, por_pais in cfg.get("nichos", {}).items():
+        lista = por_pais.get("CO") or (next(iter(por_pais.values()), []) if por_pais else [])
+        kws += lista[:2]
+    kws = list(dict.fromkeys(kws))
+    js = """(async () => {
+  const token = JSON.parse(localStorage['DROPI_LoginResult']).token;
+  const kws = %s;
+  const porId = {};
+  for (const kw of kws) {
+    try {
+      const r = await fetch('https://api.dropi.co/api/products/v4/index', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+        body: JSON.stringify({pageSize: 85, startData: 0, privated_product: false,
+          userVerified: false, favorite: false, with_collection: true, get_stock: true,
+          no_count: true, search_type: 'simple', country: 'COLOMBIA', keywords: kw})
+      });
+      const j = await r.json();
+      for (const o of (j.objects || [])) {
+        const stock = (o.warehouse_product || []).reduce((s, w) => s + (w.stock || 0), 0);
+        porId[o.id] = {dropi_id: String(o.id), nombre: o.name, stock: stock,
+          sale_price: o.sale_price, suggested_price: o.suggested_price};
+      }
+      console.log('[stock_masivo]', kw, '→', (j.objects || []).length);
+    } catch (e) { console.log('[stock_masivo] ERROR', kw, String(e)); }
+    await new Promise(res => setTimeout(res, 400));
+  }
+  const out = Object.values(porId);
+  window.__stock_masivo = JSON.stringify(out);
+  console.log('[stock_masivo] TOTAL:', out.length, 'productos únicos — JSON en window.__stock_masivo');
+  try { copy(window.__stock_masivo); console.log('[stock_masivo] copiado al portapapeles'); } catch (e) {}
+  return out.length;
+})()""" % json.dumps(kws, ensure_ascii=False)
+    ruta = BASE / "docs" / "stock_masivo.js"
+    ruta.write_text(js)
+    print(f"{len(kws)} keywords de {len(cfg.get('nichos', {}))} nichos → {ruta}")
+    print("1) Pega el JS en la consola de app.dropi.co (con sesión) — deja el JSON en el "
+          "portapapeles y en window.__stock_masivo")
+    print("2) Guarda ese JSON en docs/stock_resultados.json")
+    print("3) python3 stock.py ingerir   → snapshot + 🔥 ventas/día cuando haya ≥2 snapshots")
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
-    for nombre, fn in (("seed", seed), ("preparar", preparar), ("ingerir", ingerir)):
+    for nombre, fn in (("seed", seed), ("preparar", preparar), ("ingerir", ingerir),
+                       ("preparar_masivo", preparar_masivo)):
         sp = sub.add_parser(nombre)
         sp.set_defaults(fn=fn)
     args = p.parse_args()

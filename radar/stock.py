@@ -40,6 +40,13 @@ def tabla(conn):
       precio_sug INTEGER,
       PRIMARY KEY (dropi_id, fecha)
     )""")
+    # Regla de Juan (19 jul 2026): pocos proveedores = exclusividad = el premio.
+    # Se captura el proveedor de cada listing para medir exclusividad por producto.
+    try:
+        conn.execute("ALTER TABLE dropi_stock ADD COLUMN proveedor_id TEXT")
+        conn.execute("ALTER TABLE dropi_stock ADD COLUMN proveedor TEXT")
+    except Exception:  # noqa: BLE001 — columnas ya existen
+        pass
 
 
 def deltas(conn):
@@ -95,10 +102,11 @@ def ingerir(args):
     tabla(conn)
     hoy = datetime.date.today().isoformat()
     for item in datos:
-        conn.execute("INSERT OR REPLACE INTO dropi_stock VALUES (?,?,?,?,?,?)",
+        conn.execute("INSERT OR REPLACE INTO dropi_stock VALUES (?,?,?,?,?,?,?,?)",
                      (str(item["dropi_id"]), hoy, item.get("nombre"),
                       item.get("stock"), item.get("sale_price"),
-                      item.get("suggested_price")))
+                      item.get("suggested_price"),
+                      item.get("proveedor_id"), item.get("proveedor")))
     conn.commit()
     print(f"{len(datos)} snapshots guardados ({hoy})\n")
     movs = deltas(conn)
@@ -141,8 +149,10 @@ def preparar_masivo(args):
       const j = await r.json();
       for (const o of (j.objects || [])) {
         const stock = (o.warehouse_product || []).reduce((s, w) => s + (w.stock || 0), 0);
+        const u = o.user || {};
         porId[o.id] = {dropi_id: String(o.id), nombre: o.name, stock: stock,
-          sale_price: o.sale_price, suggested_price: o.suggested_price};
+          sale_price: o.sale_price, suggested_price: o.suggested_price,
+          proveedor_id: u.id != null ? String(u.id) : '', proveedor: u.name || ''};
       }
       console.log('[stock_masivo]', kw, '→', (j.objects || []).length);
     } catch (e) { console.log('[stock_masivo] ERROR', kw, String(e)); }

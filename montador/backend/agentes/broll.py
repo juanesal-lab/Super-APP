@@ -6,10 +6,15 @@ meten a tu casa" → cucarachas en una cocina). Este agente:
   1. detectar_necesidades() → UNA llamada a Claude que lee todos los beats y propone
      b-rolls SOLO para esos conceptos ajenos al producto (el producto SIEMPRE se muestra
      con las tomas del usuario — regla de Jack).
-  2. buscar_y_bajar()      → busca en Pexels Videos (y Pixabay de respaldo) y baja el
-     mejor candidato: vertical (o el más cercano), duración >= la del beat, archivo
-     más liviano que cumpla >=720p. Si nada BUENO → se salta (mejor el clip principal
-     que un b-roll malo).
+  2. buscar_y_bajar()      → CADENA DE FUENTES por cada necesidad:
+       (a) Pexels si hay key   → limpio, va primero
+       (b) Pixabay si hay key  → respaldo limpio
+       (c) TikTok vía tikwm     → GRATIS, SIN KEY, SIEMPRE disponible (fallback que garantiza
+           b-roll aunque Jack no tenga ninguna key). OJO: TikTok devuelve mucha basura
+           (memes/comedia/ads), así que cada clip bajado se VERIFICA con Claude frame a
+           frame ("¿este frame muestra CLARAMENTE un hipopótamo real?") y SOLO se usa si
+           el juez dice muestra=true. Si nada BUENO en ninguna fuente → se salta (mejor el
+           clip principal que un b-roll malo — regla de Jack).
   3. integrar()            → mete los bajados a clips_map/catálogo con ids "B1","B2"…
      para que el plan de montaje los vea (y los use SOLO en su beat sugerido).
 
@@ -18,15 +23,24 @@ la Super-APP (la resolvió Juan) — autocontenida aquí, sin importar del repo 
 
 Keys: PEXELS_API_KEY / PIXABAY_API_KEY del entorno (el run.sh del Montador carga su .env);
 si no están, se rescatan del .env del repo padre (la key pegada en 🔑 Claves de la
-Super-APP sirve para ambos). Ambas APIs son GRATIS (key instantánea).
+Super-APP sirve para ambos). Ambas APIs son GRATIS (key instantánea). Si NO hay ninguna
+key, TikTok (tikwm) entra como fuente sin key — por eso el b-roll SIEMPRE tiene una opción.
+
+El juez Claude para verificar los clips de TikTok se INYECTA como parámetro (claude, model)
+desde pipeline.py (usa su _claude()/_model()) — así este agente no se acopla al SDK ni a la
+config del Montador. Sin juez (claude=None) o si el juez falla/timeout → no se aprueba ningún
+TikTok (best-effort: mejor sin b-roll que meter basura sin verificar).
 
 Contrato de agentes: nada de aquí debe tumbar el pipeline — el llamador envuelve todo
 en try/except y sigue sin b-rolls si algo truena.
 """
+import base64
 import json
 import os
 import re
 import subprocess
+import threading
+import time
 import unicodedata
 from pathlib import Path
 
@@ -35,9 +49,11 @@ import requests
 BASE = Path(__file__).resolve().parents[2]        # …/montador
 _PEXELS = "https://api.pexels.com/videos/search"
 _PIXABAY = "https://pixabay.com/api/videos/"
+_TIKWM = "https://tikwm.com/api/feed/search"        # búsqueda de TikTok GRATIS, sin key ni login
 _UA = {"User-Agent": "Mozilla/5.0"}
 _MARGEN = 0.8      # s extra sobre la dur del beat: que el editor corte cómodo (in + dur <= clip - 0.5)
 _MIN_BYTES = 10_000  # una descarga más chica que esto es un error disfrazado, no un video
+_TIK_MAX_CAND = 5    # cuántos candidatos de TikTok bajar+verificar por necesidad (tope de costo/tiempo)
 
 
 # ---------------------------------------------------------------- utils locales
@@ -260,19 +276,185 @@ def _bajar(url, destino):
     return destino.exists() and destino.stat().st_size > _MIN_BYTES
 
 
-def buscar_y_bajar(necesidades, workdir, log=print):
-    """Para cada necesidad busca en Pexels → Pixabay y baja el mejor candidato a
-    workdir/brolls/broll_<beat>_<slug>.mp4. Devuelve {beat_n: {concepto,query,fuente,file,…}}.
-    Sin keys → {} con aviso claro. Si una búsqueda no da nada BUENO → se salta
-    (regla de Jack: mejor el clip principal que un b-roll malo). Lo ya bajado se reusa."""
+# ---------------------------------------------------------------- 2b) TikTok (tikwm, GRATIS)
+# Pacer GLOBAL portado de backend/pipeline/tiktok_search.py de Juan: tikwm gratis aguanta
+# ~1 request/segundo; si se llama en paralelo devuelve code=-1 "Free Api Limit" (que el código
+# viejo confundía con "0 resultados"). Este lock serializa TODAS las llamadas a ~1/s y reintenta
+# con backoff si igual rebota. Aquí el b-roll llama en serie, pero el pacer lo deja a prueba de balas.
+_TK_LOCK = threading.Lock()
+_TK_INTERVALO = 1.05          # segundos entre requests a tikwm (el límite gratis es 1/s)
+_tk_ultimo = 0.0
+
+
+def _tk_get(params, timeout=25, reintentos=2):
+    """GET a tikwm RESPETANDO su límite gratis (1 req/s global) + retry con backoff.
+    Devuelve el JSON con code=0, o {} si tras los reintentos sigue fallando."""
+    global _tk_ultimo
+    for intento in range(reintentos + 1):
+        with _TK_LOCK:                       # pausa global: nadie dispara antes de tiempo
+            espera = _tk_ultimo + _TK_INTERVALO - time.time()
+            if espera > 0:
+                time.sleep(espera)
+            _tk_ultimo = time.time()
+        try:
+            r = requests.get(_TIKWM, params=params, headers=_UA, timeout=timeout)
+            j = r.json() or {}
+        except Exception:  # noqa: BLE001 — timeout / red / JSON roto → reintento
+            j = None
+        if j is not None and j.get("code") == 0:
+            return j
+        if intento < reintentos:             # rate-limit (code=-1) o error → backoff y otra vez
+            time.sleep(1.2 * (intento + 1))
+    return {}
+
+
+def _variantes_tik(query):
+    """Variantes de búsqueda para TikTok (el inglés corto rinde más): la query tal cual y,
+    si tiene ≥2 palabras, su 1ª palabra sola (más amplia, más candidatos)."""
+    q = " ".join(str(query).split())
+    pal = q.split()
+    out = [q]
+    if len(pal) >= 2 and pal[0].lower() not in {x.lower() for x in out}:
+        out.append(pal[0])
+    return out[:2]
+
+
+def _tiktok_candidatos(query, dur_min):
+    """Candidatos de b-roll desde tikwm (gratis). Filtra Colombia (regla de Jack) y sin mp4.
+    Ordena: los que cumplen la duración del beat primero, luego los de más views."""
+    cands, vistos = [], set()
+    for q in _variantes_tik(query):
+        j = _tk_get({"keywords": q, "count": 20, "cursor": 0})
+        for v in (j.get("data") or {}).get("videos") or []:
+            vid = str(v.get("video_id") or "")
+            play = v.get("play") or ""            # mp4 directo (para bajar y verificar)
+            if not (vid and play) or vid in vistos:
+                continue
+            if (v.get("region") or "").upper() == "CO":
+                continue
+            vistos.add(vid)
+            cands.append({"url": play, "dur": float(v.get("duration") or 0),
+                          "plays": int(v.get("play_count") or 0),
+                          "title": (v.get("title") or "")[:120]})
+        if len(cands) >= 14:
+            break
+    # dur >= la del beat primero (si no, el editor no tiene de dónde cortar), luego más virales
+    cands.sort(key=lambda c: (0 if c["dur"] >= dur_min else 1, -c["plays"]))
+    return cands
+
+
+def _frames_b64(video_path, fracs=(0.35, 0.7)):
+    """Extrae 1-2 frames del video (a esas fracciones) como JPG base64 para el juez visual.
+    Usa el mismo patrón que pipeline.extraer_frames (ffmpeg directo). Lista vacía si no se pudo."""
+    med = _ffprobe(video_path)
+    dur = med["dur"] or 0.0
+    out = []
+    for k, fr in enumerate(fracs):
+        t = max(0.1, dur * fr) if dur > 0 else 0.5
+        tmp = Path(video_path).parent / f".vf_{k}.jpg"
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t:.2f}",
+                            "-i", str(video_path), "-frames:v", "1",
+                            "-vf", "scale=480:-2", str(tmp)],
+                           capture_output=True, timeout=20)
+            if tmp.exists() and tmp.stat().st_size > 0:
+                out.append(base64.standard_b64encode(tmp.read_bytes()).decode())
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            tmp.unlink(missing_ok=True)
+    return out
+
+
+VERIF_SYS = (
+    "Eres un verificador VISUAL MUY estricto de b-roll para video ads de dropshipping. Te doy "
+    "1-2 frames sacados de un video de TikTok y un CONCEPTO. Di si el video MUESTRA CLARAMENTE "
+    "ese concepto REAL en escena — no un meme, no un dibujo/animación, no un montaje de texto, "
+    "no una persona hablando a cámara SOBRE el tema, no un producto distinto. "
+    "Ej: concepto «hipopótamo» → muestra=true SOLO si se ve un hipopótamo real; concepto "
+    "«cucarachas en la cocina» → true SOLO si se ven cucarachas reales. "
+    "Ante CUALQUIER duda → muestra=false (mejor descartar un bueno que colar basura). "
+    'Responde SOLO JSON: {"muestra":true/false,"motivo":"máx 6 palabras"}'
+)
+
+
+def _verificar_concepto(frames_b64, concepto, claude, model):
+    """Juez Claude: ¿los frames muestran CLARAMENTE el concepto? Devuelve {muestra,motivo} o
+    None si no se pudo verificar (sin juez, sin frames, error o timeout) → el caller NO aprueba."""
+    if not (frames_b64 and claude and model):
+        return None
+    try:
+        content = [{"type": "text",
+                    "text": f"CONCEPTO a verificar: «{concepto}». ¿Los frames lo muestran CLARAMENTE?"}]
+        for b in frames_b64:
+            content.append({"type": "image",
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": b}})
+        r = claude.messages.create(model=model, max_tokens=200, system=VERIF_SYS,
+                                   messages=[{"role": "user", "content": content}],
+                                   timeout=25.0)   # tope duro: jamás cuelga el montaje
+        texto = "\n".join(b.text for b in r.content if getattr(b, "type", "") == "text")
+        d = _parse_json(texto)
+        if isinstance(d, list):
+            d = d[0] if d else {}
+        if not isinstance(d, dict):
+            return None
+        return {"muestra": bool(d.get("muestra")), "motivo": str(d.get("motivo", ""))[:80]}
+    except Exception:  # noqa: BLE001 — API caída/timeout → best-effort, no se aprueba
+        return None
+
+
+def _tiktok_broll_verificado(concepto, query, dur_min, destino, claude, model, log, beat):
+    """FALLBACK GRATIS (sin key): busca en TikTok, baja hasta _TIK_MAX_CAND candidatos y los
+    VERIFICA con Claude frame a frame. Se queda con el PRIMERO que de verdad muestra el concepto
+    (lo deja en `destino` y devuelve {w,h,dur}). None si ninguno pasa (→ no se mete b-roll)."""
+    if not (claude and model):
+        log(f"🎞️ B-roll «{query}» (beat {beat}): sin juez Claude no verifico TikTok — lo salto")
+        return None
+    cands = _tiktok_candidatos(query, dur_min)
+    if not cands:
+        log(f"🎞️ B-roll «{query}» (beat {beat}): TikTok no devolvió candidatos — lo salto")
+        return None
+    bajados = 0
+    for c in cands[:_TIK_MAX_CAND]:
+        try:
+            if not _bajar(c["url"], destino):
+                destino.unlink(missing_ok=True)
+                continue
+        except Exception:  # noqa: BLE001 — descarga fallida → siguiente candidato
+            destino.unlink(missing_ok=True)
+            continue
+        bajados += 1
+        med = _ffprobe(destino)
+        if med["dur"] <= 0:                       # descarga corrupta
+            destino.unlink(missing_ok=True)
+            continue
+        veredicto = _verificar_concepto(_frames_b64(destino), concepto, claude, model)
+        if veredicto and veredicto["muestra"]:
+            log(f"🎞️ B-roll: busqué «{concepto}» en TikTok → {bajados} bajado(s), 1 verificado ✅ "
+                f"({veredicto.get('motivo', '')})")
+            return {"w": med["w"], "h": med["h"], "dur": med["dur"]}
+        destino.unlink(missing_ok=True)           # no muestra el concepto → fuera, probar el siguiente
+    log(f"🎞️ B-roll: «{concepto}» — bajé {bajados} de TikTok, ninguno mostró el concepto, "
+        "dejo el clip del producto")
+    destino.unlink(missing_ok=True)
+    return None
+
+
+def buscar_y_bajar(necesidades, workdir, log=print, claude=None, model=None):
+    """Para cada necesidad recorre la CADENA DE FUENTES: Pexels (si key) → Pixabay (si key) →
+    TikTok vía tikwm (GRATIS, sin key, con verificación dura por Claude), y baja el mejor
+    candidato a workdir/brolls/broll_<beat>_<slug>.mp4.
+    Devuelve {beat_n: {concepto,query,fuente,file,…}} con fuente ∈ {pexels,pixabay,tiktok}.
+    Sin keys de stock → cae directo a TikTok (por eso el b-roll SIEMPRE tiene opción). Si nada
+    BUENO en ninguna fuente → se salta (regla de Jack: mejor el clip principal que un b-roll
+    malo). `claude`/`model` = juez que verifica los clips de TikTok. Lo ya bajado se reusa."""
     out = {}
     if not necesidades:
         return out
     px, pb = _keys()
     if not (px or pb):
-        log("🎞️ Agente B-roll: falta PEXELS_API_KEY (gratis en pexels.com/api) "
-            "o PIXABAY_API_KEY — sigo sin b-rolls")
-        return out
+        log("🎞️ Agente B-roll: sin PEXELS_API_KEY/PIXABAY_API_KEY — uso TikTok (gratis) "
+            "con verificación por Claude")
     bdir = Path(workdir) / "brolls"
     bdir.mkdir(parents=True, exist_ok=True)
     meta_path = bdir / "bajados.json"
@@ -299,30 +481,40 @@ def buscar_y_bajar(necesidades, workdir, log=print):
             log(f"🎞️ B-roll del beat {beat} ya estaba bajado ({prev.get('fuente', '?')}) — reusado")
             continue
 
+        concepto = str(nec.get("concepto") or q)
+        # (a) Pexels y (b) Pixabay PRIMERO cuando hay key (stock limpio y ya relevante).
         cand, fuente = None, ""
         if px:
             cand, fuente = _buscar_pexels(q, px, dur_min), "pexels"
         if cand is None and pb:
             cand, fuente = _buscar_pixabay(q, pb, dur_min), "pixabay"
-        if cand is None:
-            log(f"🎞️ B-roll «{q}» (beat {beat}): nada BUENO en los bancos "
-                "— mejor tu clip principal que un b-roll malo, lo salto")
-            continue
-        try:
-            if not _bajar(cand["url"], destino):
+
+        if cand is not None:
+            # STOCK: bajar el mp4 elegido (no necesita verificación: viene etiquetado por el banco).
+            try:
+                if not _bajar(cand["url"], destino):
+                    destino.unlink(missing_ok=True)
+                    log(f"🎞️ B-roll «{q}» (beat {beat}): la descarga de {fuente} llegó vacía — lo salto")
+                    continue
+            except Exception as ex:  # noqa: BLE001
                 destino.unlink(missing_ok=True)
-                log(f"🎞️ B-roll «{q}» (beat {beat}): la descarga llegó vacía — lo salto")
+                log(f"🎞️ B-roll «{q}» (beat {beat}): la descarga de {fuente} falló ({ex}) — lo salto")
                 continue
-        except Exception as ex:  # noqa: BLE001
-            destino.unlink(missing_ok=True)
-            log(f"🎞️ B-roll «{q}» (beat {beat}): la descarga falló ({ex}) — lo salto")
-            continue
-        info = {"concepto": str(nec.get("concepto") or q), "query": q, "fuente": fuente,
-                "w": cand["w"], "h": cand["h"], "dur": cand["dur"]}
+            w, h, durc = cand["w"], cand["h"], cand["dur"]
+        else:
+            # (c) TikTok GRATIS como fallback: baja candidatos y los VERIFICA con Claude; si
+            # ninguno muestra de verdad el concepto → devuelve None y no se mete nada.
+            tik = _tiktok_broll_verificado(concepto, q, dur_min, destino, claude, model, log, beat)
+            if tik is None:
+                continue   # ya logueó por qué (mejor el clip del producto que un b-roll malo)
+            fuente, w, h, durc = "tiktok", tik["w"], tik["h"], tik["dur"]
+
+        info = {"concepto": concepto, "query": q, "fuente": fuente,
+                "w": w, "h": h, "dur": durc}
         meta[str(beat)] = info
         out[beat] = {**info, "file": str(destino)}
-        log(f"🎞️ B-roll bajado: «{info['concepto']}» para el beat {beat} "
-            f"({fuente}, {cand['w']}x{cand['h']}, {cand['dur']:.0f}s)")
+        log(f"🎞️ B-roll listo: «{concepto}» para el beat {beat} "
+            f"({fuente}, {w}x{h}, {durc:.0f}s)")
     try:
         with open(meta_path, "w") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)

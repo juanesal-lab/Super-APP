@@ -4243,3 +4243,105 @@ TikTok (que es lento por el pacer de 1 req/s).
 - Nota: verifiqué que todos los helpers de render (tkFpCard/tkVerBadge/tkCandBadge/…) existen → el
   "no aparece nada" era el spinner tapando (ya arreglado antes) + pestaña sin refrescar, no un crash.
 AVISO Juan: solo /api/creative-search (param opcional aditivo) + index.html. Nada más tuyo tocado.
+
+### 2026-07-15 · Claude (jackingshop1-cell) · 🔴→✅ Buscar creativos SE COLGABA INFINITO — causa raíz + tope duro
+Jack: "se queda cargando y nunca termina" con 3 productos reales (repelente, compresas, rodillera).
+NO era Gemini (verifiqué: ya tiene créditos y genera). Agente lo reprodujo EN VIVO con watchdog de
+stacks y cazó la causa:
+- **CAUSA RAÍZ**: llamadas de red SIN tope. El 2º juez Claude (_verificar_claude, opus) leía el socket
+  SSL para SIEMPRE (timeout=120s + retry = hasta 240s/candidato × varios en paralelo = ∞). Gemini
+  (_client) sin timeout alguno. Los ThreadPool + as_completed sin corte → una llamada atascada dejaba
+  el job en "running" para siempre (nunca done/error). La imagen webp NO era el problema (analizar_foto
+  da buenos keywords).
+- **FIX** (tiktok_search.py + creative_search.py): Gemini _client con timeout duro 30s (http_options);
+  Claude a 20s + max_retries=0; DEADLINE GLOBAL _BUDGET_S=80s en buscar() con helpers _deadline/
+  _as_completed_deadline → los bucles drenan hasta el deadline y devuelven lo YA confirmado (+cancel_
+  futures); CAP del pool de portadas max(150,count*8)≈160 → max(48,count*3)≈60; Foreplay recibe el
+  deadline; mensaje honesto "tardó mucho, te muestro lo que alcancé" si vence. NUNCA MÁS cuelgue infinito.
+- ANTES: los 3 productos → cuelgue ∞ en TikTok. DESPUÉS: spinner libre en ~33s, TikTok lleno en ~65-83s,
+  con resultados (prod1: 17 TikTok + 20 candidatos FP). Verificado: smoke 28/28, cazador ✅, contrato del
+  front intacto.
+- NOTA: la sesión paralela arregló EN PARALELO el lado FRONT del mismo síntoma (ocultar spinner tkProg
+  al cargar + selector de fuente Ambos/Solo TikTok/Solo Foreplay) — se complementan (front + backend).
+AVISO Juan: tiktok_search/creative_search ganaron timeouts y deadline global (aditivo, contrato intacto).
+
+### 2026-07-16 · Claude (jackingshop1-cell) · 🎞️ B-ROLL SIEMPRE funciona: fallback a TikTok (gratis) con verificación por Claude
+Jack: "en TODOS los videos que el agente de b-rolls SIEMPRE lo haga perfecto, y que busque en TikTok si
+es pertinente". Antes broll.py del Montador solo usaba Pexels/Pixabay (necesitan key) y Jack no tiene key
+→ el b-roll no salía nunca. Ahora la cadena de fuentes es: Pexels → Pixabay (si hay key, más limpio) →
+**TikTok vía tikwm (GRATIS, sin key, SIEMPRE disponible)**. Clave anti-basura (lección de Juan: TikTok
+b-roll daba memes): cada clip de TikTok se VERIFICA con el juez Claude mirando frames ("¿este frame
+muestra CLARAMENTE <concepto>?") — solo se usa si muestra=true; si nada bueno → se salta (regla de Jack:
+mejor el clip del producto). Pacer 1req/s + retry portado de tiktok_search; excluye Colombia; prefiere
+vertical, dur ≥ beat; log honesto.
+- **VERIFICADO EN VIVO ($0 Pexels; tikwm gratis; Claude barato)**: SIN key de Pexels, conceptos reales →
+  "hipopótamo" 3 bajados/1 verificado ✅ (hipopótamo real caminando de noche, 576x1024) · "cucarachas en
+  cocina" 2 bajados/1 verificado ✅. MIRÉ el frame del hipopótamo con Read: real, vertical, cero meme.
+  py_compile OK, smoke 28/28, usar_broll=False deja el pipeline idéntico.
+- Jack ya NO necesita la key de Pexels para que el b-roll jale (si la pone, sube calidad). El producto
+  siempre sale de las tomas de Jack; el b-roll es apoyo dinámico verificado.
+AVISO Juan: montador/backend/agentes/broll.py ganó la fuente TikTok + verificación; pipeline.py solo pasa
+_claude()/_model() a buscar_y_bajar (1 línea, aditivo). Tu montaje/agentes intactos.
+
+### 2026-07-17 · Claude (jackingshop1-cell) · 📥 "Tus videos" ahora arranca con links de TikTok + preview reproducible + ❌ Cancelar antes de generar
+Jack: "donde dice arrastrar videos me gustaría que fuera con los links directos... yo copio videos de
+TikTok, le doy Bajar de TikTok, las que no me gusten les doy cancelar, me da el preview, y antes de darle
+que sí Generar ahí sí". En "1 · Tus videos" (frontend/index.html):
+- El bloque de **links de TikTok pasó a ser el método PRINCIPAL** (arriba, con explicación). Arrastrar
+  archivos del PC quedó como opción secundaria abajo.
+- Los videos bajados de TikTok ya NO salen como miniatura chiquita en fileList: ahora caen en un
+  **preview reproducible** (`#tkClipPrev`, tarjetas fpCard como las de B-roll) con **▶️ Ver** (reproduce
+  el clip ahí mismo, `/api/file?path=`) y **❌ Cancelar** (lo saca de la lista que se va a generar).
+  Hint que aparece solo cuando hay clips: "míralos, cancela los que no te gusten, y dale Generar".
+- fileList sigue mostrando uploads del PC + b-roll (su flujo intacto). `bajarLinks()` solo cambió el
+  mensaje de éxito (no-broll → "míralos abajo y cancela los que no te gusten"). B-roll sin cambios.
+- VERIFICADO en navegador (127.0.0.1:8420 → Cortar clips): layout nuevo OK, sin errores de consola;
+  inyecté 2 clips fake → 2 tarjetas + hint visible + botón Cancelar por tarjeta; Cancelar quita el
+  clip correcto y al vaciar oculta el hint. Cambios solo en frontend/index.html (HTML + 3 funciones JS).
+AVISO Juan: solo toqué frontend/index.html (sección "1 · Tus videos" y renderFiles + tkClipPrev*).
+Backend y montador intactos.
+
+### 2026-07-17 · Claude (jackingshop1-cell) · 📥 MONTADOR: bajar clips de TikTok por link + preview + ❌ Cancelar (en "Montar ad")
+Jack aclaró que lo quería en **Montar ad (voz + clips)** = el Montador de Juan (:8440), no en Cortar
+clips. En la columna "🎞️ Videos (clips crudos)" ahora, además de arrastrar, puedes:
+- Pegar links de TikTok (uno por línea) → **📥 Bajar de TikTok**.
+- Cada clip bajado sale como **preview reproducible** (tarjeta con reproductor + nombre) y **❌ Cancelar**.
+- Los clips bajados se traen como `File` y entran a `filesV` → se montan IGUAL que un clip arrastrado
+  (el endpoint /api/proyectos no cambió: siguen llegando como `videos`). Cancelar los saca de filesV.
+- Los clips arrastrados ahora también tienen ✕ para quitarlos uno por uno (antes no se podía).
+Archivos nuevos/tocados (SOLO dentro de montador/, app independiente):
+- **montador/backend/descargar.py** (NUEVO): descargador yt-dlp autocontenido (no importa nada de la
+  app principal). PREFIERE **H.264** sobre H.265: TikTok ofrece ambos y el `<video>` de Chrome/Mac NO
+  decodifica H.265 (preview en negro); si solo hay H.265 lo baja igual (ffmpeg lo monta sin problema).
+- **montador/backend/app.py**: + `POST /api/bajar-tiktok` (baja y devuelve name+url) y
+  `GET /api/tk-clip/{job}/{nombre}` (sirve el clip). Carpeta temporal `montador/tmp_tiktok/` (gitignored).
+- **montador/frontend/index.html**: bloque de links + preview (blob URL del File, revoca al cancelar).
+VERIFICADO: descarga real (@scout2015) baja h264 576x1024 ✅; el clip entra a filesV (fileIsInFilesV=true)
+✅; preview card + Cancelar quita de filesV y del preview y oculta el hint ✅; py_compile OK.
+⚠️ La REPRODUCCIÓN del preview NO la pude confirmar en el navegador de automatización (readyState 0 sin
+error incluso con h264 vía blob — el Chrome controlado por la extensión no decodifica video ahí). El
+archivo es h264 válido (ffprobe) y en el Chrome real de Jack debe reproducir. Si a Jack le sale negro,
+la siguiente mejora sería generar un thumbnail/poster con ffmpeg del lado del server.
+AVISO Juan: todo el cambio vive DENTRO de montador/. No toqué backend/ ni frontend/ de la app principal
+en esta tarea. El pipeline de montaje quedó intacto (los clips de TikTok llegan como `videos`, igual que
+los arrastrados).
+
+### 2026-07-17 · Claude (jackingshop1-cell) · 🗂️ MONTADOR: lista de proyectos agrupada por DÍA y por PRODUCTO
+Jack: la lista de "Proyectos" del Montador era un muro desordenado (cada voz/variación una fila suelta:
+"mi ad · voz 1..10", "ganador · var 1..5", etc.). Ahora se agrupa:
+- **Por día**: encabezados "📅 Hoy · viernes 17 de julio", "📅 Ayer · jueves 16 de julio", fechas
+  viejas con año. (solo frontend: montador/frontend/index.html, función cargarLista reescrita.)
+- **Por producto/batch**: los hermanos de una misma tanda caen en una tarjeta PLEGABLE con título
+  (base del nombre), nº de ítems, hora y resumen de estado ("1/10 listos", "7 listos ✓", "N con error").
+  La clave de batch se deriva del `id` quitando el sufijo `-vozN` / `-gan[-varN|-original]` (los hermanos
+  comparten el prefijo grupo). Ítems ordenados natural: 🏆 padre → ORIGINAL → voz/var 1..N.
+- Batches EN PROCESO se muestran abiertos por defecto; los ya terminados, colapsados. El usuario puede
+  abrir/cerrar y el estado (grpOpen) PERSISTE entre los refrescos automáticos de 8s (toggle por DOM, sin
+  re-fetch). Proyectos de 1 solo ítem se ven como fila normal.
+VERIFICADO en navegador (8440): días correctos (Hoy/Ayer), "mi ad" 10 ítems abierto con estados reales
+(voz1 listo, voz3 renderizando 65%), ganador/almohadillas colapsados; toggle abre/cierra y sobrevive al
+refresco de 8s; sin errores de consola. NO toqué backend (el endpoint /api/proyectos ya daba id, nombre,
+creado, fase, done, error — todo lo derivo en el front).
+AVISO Juan: cambio 100% frontend dentro de montador/. cargarLista ahora agrupa; agregué helpers
+(_batchKey, _baseNombre, _diaBonito, _ordenItem, toggleGrp) y CSS (.dayhead/.grp/.grpitems). El resto
+del Montador (abrir/pintar/detalle) intacto.

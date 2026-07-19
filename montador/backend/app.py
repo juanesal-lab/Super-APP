@@ -47,6 +47,47 @@ def salud():
     key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     return {"ok": True, "api_key": key, "modelo": os.environ.get("MONTADOR_MODEL","claude-sonnet-5")}
 
+# --- 📥 Bajar clips de TikTok por link (para no tener que arrastrar archivos) --------------------
+# Jack pega links → los baja aquí → el frontend los trae como File, muestra un preview reproducible
+# y le deja CANCELAR los que no le gusten ANTES de montar. Carpeta temporal aparte de projects/.
+import uuid as _uuid
+from backend import descargar as _descargar  # noqa: E402
+
+_TK_DIR = BASE / "tmp_tiktok"
+_TK_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/api/bajar-tiktok")
+def bajar_tiktok(links: str = Form("")):
+    """Baja los videos de TikTok de la lista (uno por línea) y devuelve name + url para previsualizar."""
+    urls = [u for u in links.split() if u.startswith("http")]
+    if not urls:
+        raise HTTPException(400, "Pega al menos un link de TikTok")
+    if not _descargar.disponible():
+        return {"videos": [], "error": "yt-dlp no está instalado (brew install yt-dlp) — no puedo bajar de TikTok"}
+    job = _uuid.uuid4().hex[:12]
+    out_dir = _TK_DIR / job
+    dl = _descargar.bajar_urls(urls, str(out_dir))
+    vids = [{"name": d.get("filename") or os.path.basename(d["path"]),
+             "url": f"/api/tk-clip/{job}/{os.path.basename(d['path'])}"}
+            for d in dl if d.get("ok") and d.get("path")]
+    if not vids:
+        return {"videos": [], "error": "No se pudo bajar ningún video (revisa los links)"}
+    return {"videos": vids}
+
+
+@app.get("/api/tk-clip/{job}/{nombre}")
+def tk_clip(job: str, nombre: str):
+    """Sirve un clip recién bajado de TikTok (para el preview y para traerlo como File al montaje)."""
+    if not re.fullmatch(r"[\w.\-]+", job) or not re.fullmatch(r"[\w.\-]+", nombre) \
+       or ".." in job or ".." in nombre:
+        raise HTTPException(400, "Ruta inválida")
+    p = (_TK_DIR / job / nombre).resolve()
+    if _TK_DIR.resolve() not in p.parents or not p.is_file():
+        raise HTTPException(404, "No encontrado")
+    return FileResponse(p, media_type="video/mp4")
+
+
 @app.get("/api/proyectos")
 def listar():
     out = []

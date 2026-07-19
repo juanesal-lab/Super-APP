@@ -1969,21 +1969,29 @@
   <!-- Upload -->
   <div class="card">
     <h2>1 · Tus videos</h2>
-    <div class="drop" id="drop">
-      <div class="big">Arrastra tus videos aquí</div>
-      <div class="small">3 a 10+ videos · entre más subas, más variedad y mejores versiones · MP4, MOV, etc.</div>
-      <input type="file" id="fileInput" accept="video/*" multiple class="hidden">
-    </div>
-    <div class="files" id="fileList"></div>
 
-    <!-- O pegar links de TikTok (en vez de subir archivos) -->
+    <!-- PRINCIPAL: pega los links de TikTok, la app los BAJA y te da un preview reproducible -->
+    <label class="lbl">📋 <b>Pega links de TikTok</b> (uno por línea) y dale <b>📥 Bajar de TikTok</b>. La app los baja y te muestra un <b>preview reproducible</b>: mira cada uno y <b>❌ cancela</b> los que no te gusten. Cuando queden solo los buenos, dale <b>Generar clips</b> abajo.</label>
+    <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
+      style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
+    <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
+    <div id="tkClipHint" class="pmsg" style="margin-top:8px;display:none">▶️ Míralos y <b>❌ cancela</b> los que no te gusten. Cuando queden solo los buenos, baja a <b>Ajustes</b> y dale <b>Generar clips</b>.</div>
+    <div id="tkClipPrev" class="fpGrid" style="margin-top:10px"></div>
+
+    <!-- SECUNDARIO: subir archivos desde el PC (arrastrar) -->
     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
-      <label class="lbl">…o pega links de TikTok (uno por línea): la app los BAJA y los agrega arriba. Luego configuras los ajustes de abajo y le das "Generar clips".</label>
-      <textarea id="tkClipLinks" rows="3" placeholder="https://www.tiktok.com/@usuario/video/123...&#10;https://www.tiktok.com/@otro/video/456..."
-        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;resize:vertical"></textarea>
-      <button class="btn sec" id="goLinks" style="margin-top:10px;width:auto" onclick="bajarLinks()">📥 Bajar de TikTok</button>
+      <label class="lbl">…o sube archivos desde tu compu:</label>
+      <div class="drop" id="drop">
+        <div class="big">Arrastra tus videos aquí</div>
+        <div class="small">MP4, MOV, etc. · o haz clic para elegirlos</div>
+        <input type="file" id="fileInput" accept="video/*" multiple class="hidden">
+      </div>
+      <div class="files" id="fileList"></div>
+    </div>
 
-      <label class="lbl" style="margin-top:14px">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> y la IA saca el ángulo y trae b-roll <b>de bancos de video reales</b> (Pexels/Pixabay) — clips limpios, verticales y descargables. Conecta la key GRATIS en 🔑 Claves (si no, cae a TikTok, que da memes).</label>
+    <!-- B-ROLL con IA -->
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <label class="lbl">🎞️ Escenas B-ROLL: tomas del PUNTO DE DOLOR y apoyo del ángulo. Caen en el momento del dolor del guion. <b>Pega la LANDING</b> y la IA saca el ángulo y trae b-roll <b>de bancos de video reales</b> (Pexels/Pixabay) — clips limpios, verticales y descargables. Conecta la key GRATIS en 🔑 Claves (si no, cae a TikTok, que da memes).</label>
       <input id="tkBrollLanding" type="url" placeholder="🔗 Landing del producto (recomendado) — de aquí saco el ángulo de venta y el dolor"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px 12px;font-size:13px;margin-bottom:8px">
       <input id="tkBrollAngulo" placeholder="🎯 …o pega aquí el link de la landing / escribe el ángulo de dolor (ej. mujer desesperada porque se orinó dormida) — sin producto"
@@ -3748,16 +3756,52 @@ function renderFiles(){
     el.appendChild(d);
     vthumbInto(d.querySelector('[data-th]'), f);
   });
+  // Los clips bajados de TikTok (no b-roll) NO van aquí: van al preview reproducible (tkClipPrev).
+  // En esta lista dejamos solo los b-roll (que ya tienen su propio flujo de revisión antes de bajar).
   linkVids.forEach((v,i)=>{
+    if(!v.broll) return;
     const d = document.createElement("div"); d.className="file";
-    const tag = v.broll ? `🎭 B-roll (${v.fase==="resultado"?"resultado":v.fase==="funcionamiento"?"uso":"dolor"})` : "de TikTok";
+    const tag = `🎭 B-roll (${v.fase==="resultado"?"resultado":v.fase==="funcionamiento"?"uso":"dolor"})`;
     d.innerHTML = `<img data-th style="${TH}"> <span>${v.name}</span> <span style="color:var(--muted)">${tag}</span><span class="x" data-l="${i}">×</span>`;
     el.appendChild(d);
     vthumbInto(d.querySelector('[data-th]'), '/api/file?path=' + enc(v.path));
   });
   el.querySelectorAll(".x[data-f]").forEach(x=>x.onclick=()=>{files.splice(+x.dataset.f,1);renderFiles();});
   el.querySelectorAll(".x[data-l]").forEach(x=>x.onclick=()=>{linkVids.splice(+x.dataset.l,1);renderFiles();});
+  tkClipPrevPaint();   // 🎬 preview reproducible de los clips de TikTok bajados
   document.getElementById("go").disabled = (files.length===0 && linkVids.length===0);
+}
+
+// 🎬 Preview REPRODUCIBLE de los videos bajados de TikTok (tarjetas con ▶️ Ver y ❌ Cancelar).
+// Jack pega links → Bajar de TikTok → aquí los mira, cancela los que no le gusten, y recién ahí Generar.
+function tkClipPrevPaint(){
+  const d = document.getElementById('tkClipPrev'); if(!d) return;
+  const clips = linkVids.filter(v=>!v.broll);
+  d.innerHTML = clips.map(v=>{
+    const p = tkEsc(v.path);
+    return `<div class="fpCard" style="cursor:default">
+      <div class="fpThumbWrap">
+        <img class="fpThumb" data-th data-p="${p}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.opacity=0">
+        <span class="fpBadge">de TikTok</span></div>
+      <div class="fpBody"><div class="fpName">${tkEsc(v.name||'video')}</div>
+        <div class="fpBtns">
+          <button class="fpBtn" onclick="tkClipPrevPlay('${p}',this)" title="Míralo aquí mismo">▶️ Ver</button>
+          <button class="fpBtn" onclick="tkClipPrevDel('${p}')" title="Cancelar: quitar este video (no se usará)" style="background:var(--warn);color:#1a1207;font-weight:700">❌ Cancelar</button>
+        </div></div></div>`;
+  }).join('');
+  // miniatura de cada uno (un frame del propio video bajado)
+  d.querySelectorAll('[data-th]').forEach(img=>vthumbInto(img, '/api/file?path=' + enc(img.dataset.p)));
+  const hint = document.getElementById('tkClipHint');
+  if(hint) hint.style.display = clips.length ? 'block' : 'none';
+}
+function tkClipPrevPlay(path, btn){
+  btn.closest('.fpCard').querySelector('.fpThumbWrap').innerHTML =
+    '<video class="fpThumb" src="/api/file?path=' + enc(path) + '" controls autoplay playsinline></video>';
+}
+function tkClipPrevDel(path){   // ❌ Cancelar: lo saca de la lista que se va a generar
+  const i = linkVids.findIndex(v=>!v.broll && v.path===path);
+  if(i>=0) linkVids.splice(i,1);
+  renderFiles();
 }
 
 // --- Settings ---
@@ -3987,7 +4031,7 @@ async function bajarLinks(srcId, btnId){
     if(vids.length){
       document.getElementById(srcId||"tkClipLinks").value = "";
       renderFiles();
-      btn.textContent = `✅ ${vids.length} bajado(s) — configura y dale Generar`;
+      btn.textContent = esBroll ? `✅ ${vids.length} bajado(s)` : `✅ ${vids.length} bajado(s) — míralos abajo y cancela los que no te gusten`;
     } else {
       btn.textContent = orig; alert(j.error || "No se pudo bajar ningún video (revisa los links)");
     }

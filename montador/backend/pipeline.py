@@ -636,8 +636,13 @@ def _procesar(pid, instrucciones=None):
                         with open(nec_path, "w") as f:
                             json.dump(necesidades, f, ensure_ascii=False, indent=2)
                     if necesidades:
+                        # AVISO Juan: le paso el juez Claude (_claude()/_model()) a buscar_y_bajar
+                        # para que verifique los clips de TikTok (fuente GRATIS sin key) frame a
+                        # frame — sin key de Pexels/Pixabay, TikTok es la única fuente y SIN juez
+                        # no se aprueba nada (mejor sin b-roll que meter basura de TikTok).
                         bajadas = mod_br.buscar_y_bajar(necesidades, workdir,
-                                                        log=lambda m: log(pid, m))
+                                                        log=lambda m: log(pid, m),
+                                                        claude=_claude(), model=_model())
                         brolls = mod_br.integrar(beats, clips_map, catalogo, bajadas)
                         for br in brolls:
                             clips_info.append({"id": br["id"], "path": br["path"],

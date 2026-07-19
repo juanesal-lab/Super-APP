@@ -29,3 +29,6 @@ Thumbs.db
 # === Claude Code (worktrees de sesiones paralelas) ===
 .claude/worktrees/
 .claude/settings.local.json
+
+# === Montador: clips temporales bajados de TikTok ===
+montador/tmp_tiktok/
